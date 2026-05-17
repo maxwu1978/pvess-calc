@@ -1,0 +1,54 @@
+{
+  "_README": "Hand-curated subset of US residential electric utilities, keyed by 'city, ST' lowercase exact match. Returns utility_name (the entity homeowners write on their bill), territory_type (IOU/co-op/muni), and interconnection_doc (URL fragment) when known. For multi-utility metros (e.g. Phoenix has APS + SRP service areas), this returns the dominant utility — confirm against the actual bill.",
+  "phoenix, az":     {"utility_name": "Arizona Public Service (APS)", "territory_type": "IOU",
+                      "interconnection_doc": "https://www.aps.com/en/Residential/Service-Plans/Solar/Apply-for-net-metering"},
+  "tucson, az":      {"utility_name": "Tucson Electric Power (TEP)", "territory_type": "IOU"},
+  "scottsdale, az":  {"utility_name": "Arizona Public Service (APS)", "territory_type": "IOU"},
+  "mesa, az":        {"utility_name": "Salt River Project (SRP)", "territory_type": "Public Power",
+                      "note": "Mesa east of Power Rd is SRP; west half is APS."},
+
+  "los angeles, ca": {"utility_name": "Los Angeles Department of Water and Power (LADWP)",
+                      "territory_type": "Municipal"},
+  "san diego, ca":   {"utility_name": "San Diego Gas & Electric (SDG&E)", "territory_type": "IOU"},
+  "san francisco, ca": {"utility_name": "Pacific Gas & Electric (PG&E)", "territory_type": "IOU"},
+  "san jose, ca":    {"utility_name": "Pacific Gas & Electric (PG&E)", "territory_type": "IOU"},
+  "sacramento, ca":  {"utility_name": "Sacramento Municipal Utility District (SMUD)",
+                      "territory_type": "Municipal"},
+
+  "denver, co":      {"utility_name": "Xcel Energy", "territory_type": "IOU"},
+  "colorado springs, co": {"utility_name": "Colorado Springs Utilities", "territory_type": "Municipal"},
+
+  "miami, fl":       {"utility_name": "Florida Power & Light (FPL)", "territory_type": "IOU"},
+  "orlando, fl":     {"utility_name": "Orlando Utilities Commission (OUC)", "territory_type": "Municipal"},
+  "tampa, fl":       {"utility_name": "Tampa Electric (TECO)", "territory_type": "IOU"},
+  "jacksonville, fl": {"utility_name": "Jacksonville Electric Authority (JEA)", "territory_type": "Municipal"},
+
+  "atlanta, ga":     {"utility_name": "Georgia Power", "territory_type": "IOU"},
+  "honolulu, hi":    {"utility_name": "Hawaiian Electric (HECO)", "territory_type": "IOU",
+                      "note": "Rule 14H interconnection standard; CSS / NEM Plus / Smart Export tariffs."},
+
+  "chicago, il":     {"utility_name": "Commonwealth Edison (ComEd)", "territory_type": "IOU"},
+  "boston, ma":      {"utility_name": "Eversource Energy", "territory_type": "IOU"},
+  "detroit, mi":     {"utility_name": "DTE Energy", "territory_type": "IOU"},
+  "minneapolis, mn": {"utility_name": "Xcel Energy", "territory_type": "IOU"},
+
+  "new york, ny":    {"utility_name": "Con Edison (ConEd)", "territory_type": "IOU"},
+  "brooklyn, ny":    {"utility_name": "Con Edison (ConEd)", "territory_type": "IOU"},
+
+  "portland, or":    {"utility_name": "Portland General Electric (PGE)", "territory_type": "IOU"},
+  "philadelphia, pa": {"utility_name": "PECO Energy", "territory_type": "IOU"},
+  "pittsburgh, pa":  {"utility_name": "Duquesne Light", "territory_type": "IOU"},
+
+  "austin, tx":      {"utility_name": "Austin Energy", "territory_type": "Municipal"},
+  "dallas, tx":      {"utility_name": "Oncor Electric Delivery", "territory_type": "TDU",
+                      "note": "Texas deregulated: Oncor owns wires; homeowner picks REP for energy. PV interconnection goes through Oncor."},
+  "houston, tx":     {"utility_name": "CenterPoint Energy", "territory_type": "TDU"},
+  "san antonio, tx": {"utility_name": "CPS Energy", "territory_type": "Municipal"},
+  "fort worth, tx":  {"utility_name": "Oncor Electric Delivery", "territory_type": "TDU"},
+  "lewisville, tx":  {"utility_name": "Oncor Electric Delivery", "territory_type": "TDU",
+                      "interconnection_doc": "https://www.oncor.com/content/oncorwww/us/en/home/residential/programs-and-services/distributed-generation.html"},
+
+  "salt lake city, ut": {"utility_name": "Rocky Mountain Power", "territory_type": "IOU"},
+  "seattle, wa":     {"utility_name": "Seattle City Light", "territory_type": "Municipal"},
+  "spokane, wa":     {"utility_name": "Avista Utilities", "territory_type": "IOU"}
+}

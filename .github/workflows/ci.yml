@@ -1,0 +1,85 @@
+name: CI
+
+# Trigger on push to main + every PR. Doesn't filter by path — any change
+# under src/ / tests/ / pyproject.toml / inputs.yaml fixtures should
+# re-run the full validation set.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# A single CI run per branch — newer pushes cancel in-flight runs so a
+# fast-typing developer doesn't queue up 4 builds for the same branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Project requires Python ≥ 3.10. Test the project's stated
+        # floor + the latest stable release so we catch both
+        # legacy-syntax issues and stdlib drift.
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package + dev extras
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        # `-q` is the local convention; CI just runs everything once.
+        # No coverage gate yet — project hasn't fixed a coverage floor.
+        run: pytest -q
+
+  doctor:
+    name: doctor (Phoenix project, all 28 checks)
+    runs-on: ubuntu-latest
+    # Skip if pytest didn't pass — doctor depends on the same code.
+    needs: pytest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package + dev extras
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run doctor on Phoenix project
+        # The Phoenix project is the canonical "all-features-set" demo;
+        # if 28/28 checks pass here we know every K.* invariant is
+        # holding. Doctor exits non-zero on FAIL — the job fails
+        # automatically.
+        run: pvess doctor projects/002-phoenix-25kw/
+
+      - name: Run doctor on Austin project
+        # Austin is the minimal-features baseline. Catches regressions
+        # in checks that should skip cleanly on sparse yamls.
+        run: pvess doctor projects/001-demo-austin/

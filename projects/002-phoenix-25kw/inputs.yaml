@@ -1,0 +1,143 @@
+project:
+  id: "002-phoenix-25kw"
+  name: "25 kW PV + 41 kWh ESS Residence"
+  location: "Phoenix, AZ"
+  ahj: "City of Phoenix"
+  nec_edition: "2023"
+  # Phase B permit metadata
+  client_name: "Desert Sun Residence"
+  site_address: "1234 Camelback Rd, Phoenix, AZ 85016"
+  coordinates: "33.5079, -112.0476"
+  apn: "R-1234-5678-9012"
+  utility: "APS"
+  drawn_by: "PVE"
+  revision: "A"
+  initial_design_date: "2026-05-12"
+
+design_engineer:
+  firm: "Sunpath Engineering, PLLC"
+  address: "500 N Central Ave, Phoenix, AZ 85004"
+  contact_email: "design@sunpath-eng.com"
+  contact_phone: "(602) 555-0143"
+  firm_number: "AZ-PE-29481"
+
+installer:
+  company: "Desert Solar Solutions"
+  address: "8800 E Bell Rd, Scottsdale, AZ 85260"
+
+pv_array:
+  # 60 × 420 W = 25.2 kW total; module datasheet pulled from device library
+  modules: 60
+  strings: 6
+  modules_per_string: 10
+  module_ref: "generic_420"
+  # ASHRAE 2% mean extreme min for Phoenix, AZ ≈ -2°C (rare frost morning)
+  ashrae_2pct_min_c: -2.0
+  temp_min_c: -2.0
+  temp_max_c: 50.0
+
+battery:
+  # 8 × EG4 LifePower4 V2, 51.2 V nominal, 5.12 kWh each → 40.96 kWh total
+  brand: "EG4"
+  model: "LifePower4 V2"
+  quantity: 8
+  nominal_voltage: 51.2
+  capacity_kwh_each: 5.12
+
+inverter:
+  # 3 × generic 8 kW hybrid in parallel; 240 V split-phase, 33 A each
+  brand: "Generic"
+  model: "8K Hybrid"
+  ac_output_v: 240
+  ac_output_a: 33
+  quantity: 3
+  per_unit: false  # batteries and inverters are NOT integrated 1:1
+
+optimizer:
+  ref: "tigo_ts4_a_o"        # module-level rapid shutdown + monitoring (1 per module)
+
+service:
+  main_panel_a: 200
+  busbar_a: 200
+  busbar_source: "nameplate"
+  voltage: "120/240 split-phase"
+  # 200 + 99 = 299 A backfeed → 120% rule (240) and sum rule (200) both fail;
+  # supply-side tap (705.11) is the realistic interconnection path.
+  interconnection_methods:
+    - "120%_rule"
+    - "sum_rule"
+    - "supply_side_tap"
+  # AC panel topology:
+  #   - Sub Panel #2 = PV aggregation panel (in the PV→MSP path)
+  #     • 3 × 2P-50A breakers (one per inverter feedin)
+  #     • 1 × 2P-150A backfeed feeder out to MSP
+  #   - Sub Panel #1 = critical-loads backup panel (branched OFF the MSP,
+  #     fed from MSP or ESS backup port — not in the PV→grid path)
+  sub_panels:
+    - name: "Sub Panel #2"
+      role: "pv_aggregation"
+      rating_a: 200
+      busbar_a: 200
+      location: "NW exterior wall"
+      backfeed_breaker_a: 50    # one 2P-50A per inverter (× 3 inverters)
+    - name: "Sub Panel #1"
+      role: "critical_loads"
+      rating_a: 125
+      busbar_a: 125
+      location: "Garage (downstream of MSP)"
+      backfeed_breaker_a: 100   # feeder from MSP main bus → critical loads
+
+loads:
+  critical_subpanel_a: 100
+  whole_home_backup: true
+
+# Phase J: roof sections & mounting hardware for attachment plan (PV-4) +
+# string layout (PV-6).
+site:
+  roof_pitch_deg: 22
+  array_azimuth_deg: 180
+  roof_sections:
+    # K.2.6c update: faces sized realistically for 60-module Phoenix
+    # system. Each face 38×24 ft (912 sqft gross, ~735 sqft usable after
+    # 1.5 ft NEC 690.12 setbacks) holds 30 modules at industry-standard
+    # packed density (~22 sqft/module incl. walking rows + rail spacing).
+    # The pre-K.2.6c values (30×12) were schematic placeholders that the
+    # new roof_layout engine correctly flagged as over-packed.
+    - name: "South Roof"
+      roof_type: "Comp Shingle"
+      pitch_deg: 22
+      azimuth_deg: 180
+      module_count: 30
+      width_ft: 38
+      height_ft: 24
+      attachment_count: 40
+    - name: "West Roof"
+      roof_type: "Comp Shingle"
+      pitch_deg: 22
+      azimuth_deg: 270
+      module_count: 30
+      width_ft: 38
+      height_ft: 24
+      attachment_count: 40
+  mounting:
+    rail_system: "IronRidge XR100"
+    flashing: "IronRidge FlashFoot 2"
+    max_x_spacing_in: 48
+    max_y_spacing_in: 32
+    max_cantilever_in: 18
+    fastener: "5/16\" lag screw, 3\" embedment"
+
+# Phase D: real wire lengths for NEC 215.2 / 210.19 voltage-drop validation.
+wire_lengths:
+  pv_string_one_way_ft: 60         # roof to combiner on NW exterior wall
+  pv_to_combiner_ft: 15
+  combiner_to_inverter_ft: 25      # combiner → garage inverter bay
+  inverter_to_ac_disc_ft: 8
+  ac_disc_to_msp_ft: 12
+  ess_to_inverter_ft: 5
+
+# Phase D: NEC 310.15(B) derating context.
+routing:
+  ambient_temp_c: 45               # Phoenix attic / roof conduit summer high
+  pv_conduit_fill_count: 6         # 6 strings × 2 wires can share a conduit
+  ac_conduit_fill_count: 3

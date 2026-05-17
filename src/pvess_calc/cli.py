@@ -1,0 +1,539 @@
+"""Command-line entry points."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import click
+
+from .calc.engine import run
+from .compare.report import write_outputs as write_compare_outputs
+from .compare.scenarios import run_scenarios
+from .dxf.grounding_sheet import render_grounding_dxf
+from .dxf.render import export_preview_png, render_for_result as render_dxf_for_result
+from .labels.render import render_for_result as render_labels_for_result
+from .qet.inject import inject_from_result
+from .report.json_dump import write_json
+from .report.markdown import write_markdown
+from .schema import Inputs
+
+PACKAGE_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = PACKAGE_ROOT.parents[1]
+TEMPLATE_PATH = PROJECT_ROOT / "library" / "templates" / "residential-ess-v1.qet"
+
+
+def _load(project_dir: Path) -> Inputs:
+    inputs_path = project_dir / "inputs.yaml"
+    if not inputs_path.exists():
+        click.echo(f"error: {inputs_path} not found", err=True)
+        sys.exit(2)
+    return Inputs.from_yaml(inputs_path)
+
+
+@click.command(name="pvess-calc")
+@click.argument("project_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def calc_cmd(project_dir: Path) -> None:
+    """Run NEC calculations for the project and write calculation.json + report.md."""
+    inputs = _load(project_dir)
+    result = run(inputs)
+    output_dir = project_dir / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    write_json(result, output_dir / "calculation.json")
+    write_markdown(result, output_dir / "report.md")
+    click.echo(f"wrote {output_dir / 'calculation.json'}")
+    click.echo(f"wrote {output_dir / 'report.md'}")
+    click.echo(
+        f"interconnect: {result.interconnect.overall_status} "
+        f"({result.interconnect.recommended or 'no method PASS'})"
+    )
+
+
+@click.command(name="pvess-render")
+@click.argument("project_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--template",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=TEMPLATE_PATH,
+    show_default=True,
+    help="QET template file (.qet) to inject into.",
+)
+def render_cmd(project_dir: Path, template: Path) -> None:
+    """Inject calculation results into the QET template → output/system.qet."""
+    inputs = _load(project_dir)
+    result = run(inputs)
+    output_path = project_dir / "output" / "system.qet"
+    report = inject_from_result(result, template_path=template, output_path=output_path)
+    click.echo(
+        f"wrote {report.output_path} "
+        f"({report.substitutions_applied} substitutions, "
+        f"{len(report.keys_used)} unique keys used)"
+    )
+
+
+@click.command(name="pvess-labels")
+@click.argument("project_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def labels_cmd(project_dir: Path) -> None:
+    """Generate the NEC label PDF (DC/AC disconnect, RSD, 705.x, 706.7, ...).
+
+    Writes to output/labels.pdf. Print on adhesive label paper or weather-
+    resistant placards per AHJ requirements."""
+    inputs = _load(project_dir)
+    result = run(inputs)
+    output_path = project_dir / "output" / "labels.pdf"
+    count = render_labels_for_result(result, output_path)
+    click.echo(f"wrote {output_path} ({count} labels)")
+
+
+@click.command(name="pvess-permit")
+@click.argument("project_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--ahj", default=None, help="AHJ profile name (Phase G).")
+def permit_cmd(project_dir: Path, ahj: str | None) -> None:
+    """Generate a complete permit submittal PDF (Phase F)."""
+    from .permit.builder import build_permit_package
+    inputs = _load(project_dir)
+    result = run(inputs)
+    out = project_dir / "output" / f"permit-package-{inputs.project.id}.pdf"
+    n_pages = build_permit_package(result, out, ahj_name=ahj)
+    click.echo(f"wrote {out} ({n_pages} pages)")
+
+
+@click.command(name="pvess-compare")
+@click.argument("scenarios_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+def compare_cmd(scenarios_dir: Path) -> None:
+    """Run every subdirectory containing inputs.yaml as a scenario and emit
+    a side-by-side comparison + BOM breakdown.
+
+    Folder layout:
+      scenarios_dir/
+        A/inputs.yaml
+        B/inputs.yaml
+        C/inputs.yaml
+    """
+    scenarios = run_scenarios(scenarios_dir)
+    if not scenarios:
+        click.echo(f"no scenarios found in {scenarios_dir}", err=True)
+        sys.exit(2)
+    md = scenarios_dir / "comparison.md"
+    js = scenarios_dir / "comparison.json"
+    write_compare_outputs(scenarios, md, js)
+    click.echo(f"wrote {md} ({len(scenarios)} scenarios)")
+    click.echo(f"wrote {js}")
+
+
+@click.command(name="pvess-dxf")
+@click.argument("project_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--preview / --no-preview",
+    default=False,
+    help="Also emit a PNG preview alongside each DXF (matplotlib).",
+)
+def dxf_cmd(project_dir: Path, preview: bool) -> None:
+    """Generate ACADE-friendly DXF schematics (ANSI B, 11×17"):
+
+    \b
+      • output/sheet-EE-1.dxf — three-line diagram
+      • output/sheet-EE-2.dxf — grounding & bonding (NEC 250 + 690.41–50)
+    """
+    inputs = _load(project_dir)
+    result = run(inputs)
+
+    sheet1 = project_dir / "output" / "sheet-EE-1.dxf"
+    sheet2 = project_dir / "output" / "sheet-EE-2.dxf"
+
+    n_devices = render_dxf_for_result(result, sheet1)
+    click.echo(f"wrote {sheet1} ({n_devices} devices)")
+
+    render_grounding_dxf(result, sheet2)
+    click.echo(f"wrote {sheet2} (grounding & bonding)")
+
+    if preview:
+        for path in [sheet1, sheet2]:
+            png_path = path.with_suffix(".png")
+            export_preview_png(path, png_path)
+            click.echo(f"wrote {png_path}")
+
+
+@click.command(name="pvess-init")
+@click.argument("project_id", type=str)
+@click.option(
+    "--resume", is_flag=True,
+    help="Resume an interrupted wizard session for this project_id.",
+)
+@click.option(
+    "--address", "-a", type=str, default=None,
+    help=("Free-text site address (e.g. '2500 Hollow Hill Lane, "
+          "Lewisville, TX 75067'). Pre-fills utility / AHJ / NEC "
+          "edition / ASHRAE temps from the offline lookup tables. The "
+          "wizard still asks each field — pre-fills appear as the "
+          "default; press <enter> to accept."),
+)
+def init_cmd(project_id: str, resume: bool, address: str | None) -> None:
+    """Run the interactive wizard to create a new project (Phase K.2).
+
+    Walks every required `inputs.yaml` field with a hint + yaml_path
+    tag, validates via pydantic at the end, writes the file to
+    `projects/<project_id>/inputs.yaml`. Wizard state is checkpointed
+    after every prompt; ctrl-C then `pvess-init --resume <id>` picks
+    up where you left off.
+
+    \b
+      pvess-init 003-jones-residence
+      pvess-init --resume 003-jones-residence
+      pvess-init --address "Phoenix, AZ" 004-aps-residence
+    """
+    from .wizard.runner import run_wizard
+    try:
+        run_wizard(project_id, resume=resume, address=address)
+    except (KeyboardInterrupt, click.exceptions.Abort):
+        click.echo(click.style(
+            f"\n  Wizard interrupted. Resume with: "
+            f"pvess-init --resume {project_id}", fg="yellow"))
+        raise SystemExit(130)
+
+
+@click.command(name="pvess-customer-summary")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--address", "-a", type=str, default=None,
+              help=("Optional site address to pull NREL/Mapbox/utility-rate "
+                    "data for a city-specific savings estimate. Falls back "
+                    "to the project's `project.location` field, then to "
+                    "USA-average rates."))
+def customer_summary_cmd(project_dir: Path, address: str | None) -> None:
+    """Generate the customer-friendly one-pager PDF (Phase K.4).
+
+    Reads the project's inputs.yaml, runs the NEC engine, optionally
+    enriches via the K.3 lookup chain (NREL PVWatts + utility rate), and
+    writes `output/customer-summary.pdf` — a homeowner-readable summary
+    with system size / monthly savings / backup runtime / monthly
+    production chart.
+
+    \b
+      pvess-customer-summary projects/002-phoenix-25kw/
+      pvess-customer-summary -a "Phoenix, AZ" projects/002-phoenix-25kw/
+    """
+    from .customer.pdf import render_customer_summary
+    inputs = _load(project_dir)
+    result = run(inputs)
+
+    # Try address-based lookup for richer numbers; fall back gracefully.
+    lookup_fields: dict | None = None
+    addr = address or inputs.project.location
+    if addr:
+        try:
+            from .lookup import resolve
+            lookup_fields = resolve(addr).fields
+        except Exception as exc:
+            click.echo(click.style(
+                f"  (lookup for {addr!r} failed: {exc!r} — "
+                "using default rates)", fg="yellow"))
+            lookup_fields = None
+
+    out = project_dir / "output" / "customer-summary.pdf"
+    render_customer_summary(result, out, lookup_fields=lookup_fields)
+    click.echo(f"wrote {out}")
+
+
+@click.command(name="pvess-lookup-check")
+@click.argument("address", nargs=-1, required=False)
+def lookup_check_cmd(address: tuple[str, ...]) -> None:
+    """Verify lookup-service configuration & connectivity (Phase K.3).
+
+    Prints **fingerprints** (NOT full values) of any API keys found,
+    runs the K.3a offline chain, and — if keys are configured — exercises
+    the online providers against the given address. Default address is
+    'Phoenix, AZ' for a quick smoke test.
+
+    Use this after creating `.env` to confirm the file is being picked
+    up before running the real wizard:
+
+    \b
+      pvess-lookup-check
+      pvess-lookup-check "2500 Hollow Hill Lane, Lewisville TX"
+    """
+    from .lookup import resolve
+    from .lookup.config import (
+        ENV_GOOGLE_SOLAR_KEY, ENV_MAPBOX_TOKEN, ENV_NREL_API_KEY,
+        get_google_solar_key, get_mapbox_token, get_nrel_api_key,
+        token_fingerprint,
+        _find_dotenv,
+    )
+
+    # 1. Show where credentials came from.
+    dotenv = _find_dotenv()
+    click.echo(click.style("Configuration", bold=True))
+    if dotenv:
+        click.echo(f"  .env file:           {dotenv}")
+    else:
+        click.echo("  .env file:           (none found in CWD upward)")
+    mbox = get_mapbox_token()
+    nrel = get_nrel_api_key()
+    gsolar = get_google_solar_key()
+    click.echo(f"  {ENV_MAPBOX_TOKEN}:     "
+               + click.style(token_fingerprint(mbox),
+                             fg="green" if mbox else "yellow"))
+    click.echo(f"  {ENV_NREL_API_KEY}:      "
+               + click.style(token_fingerprint(nrel),
+                             fg="green" if nrel else "yellow"))
+    click.echo(f"  {ENV_GOOGLE_SOLAR_KEY}:  "
+               + click.style(token_fingerprint(gsolar),
+                             fg="green" if gsolar else "yellow"))
+
+    if mbox and mbox.startswith("sk."):
+        click.echo(click.style(
+            "  ⚠ Mapbox token is SECRET (sk.*). Rotate to a public (pk.*) "
+            "token with URL whitelist for safer use.", fg="yellow"))
+
+    # 2. Run a resolve() on the address and print field provenance.
+    addr_str = " ".join(address) if address else "Phoenix, AZ"
+    click.echo()
+    click.echo(click.style(f"Resolving: {addr_str!r}", bold=True))
+    result = resolve(addr_str, use_cache=False)
+
+    if not result.fields:
+        click.echo(click.style(
+            "  ✗ no fields returned — address may not be in offline tables",
+            fg="red"))
+        raise SystemExit(2)
+
+    offline_count = 0
+    online_count = 0
+    for k, v in result.fields.items():
+        src = result.field_sources[k]
+        conf = result.field_confidence[k]
+        is_online = src.startswith(("mapbox", "nrel", "google"))
+        if is_online:
+            online_count += 1
+        else:
+            offline_count += 1
+        marker = "🛰 " if is_online else "  "
+        # Truncate long values for terminal hygiene.
+        v_str = str(v)
+        if len(v_str) > 60:
+            v_str = v_str[:57] + "..."
+        click.echo(
+            f"  {marker}{k:34} = {v_str:30}  [{src}, {conf}]"
+        )
+
+    # 3. Summary + verdict.
+    click.echo()
+    click.echo(click.style(
+        f"Summary: {offline_count} offline + {online_count} online "
+        f"= {len(result.fields)} fields", bold=True))
+    if mbox and online_count == 0:
+        click.echo(click.style(
+            "  ⚠ Mapbox token configured but no online fields returned — "
+            "check network or token scope.", fg="yellow"))
+        raise SystemExit(1)
+    if not mbox and not nrel and not gsolar:
+        click.echo("  (Set PVESS_MAPBOX_TOKEN / PVESS_NREL_API_KEY / "
+                   "PVESS_GOOGLE_SOLAR_KEY to enable online enrichment.)")
+    # K.3c hint: only emitted when Google Solar key is missing AND
+    # other online providers already work — otherwise the message
+    # competes with the broader "no keys set" hint.
+    elif (mbox or nrel) and not gsolar:
+        click.echo("  (Set PVESS_GOOGLE_SOLAR_KEY to auto-populate "
+                   "per-face roof_sections from Google Solar API.)")
+
+
+@click.command(name="pvess-site-checklist")
+@click.option(
+    "--output", "-o",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("site-survey-checklist.pdf"),
+    show_default=True,
+    help="Output PDF path.",
+)
+def site_checklist_cmd(output: Path) -> None:
+    """Generate the site-survey checklist PDF (Phase K.1).
+
+    A field-technician form covering every on-site measurement the
+    design engine needs (MSP / busbar / roof faces / wire lengths /
+    climate). Field list lives in
+    `src/pvess_calc/site_checklist/field_specs.py`.
+
+    \b
+      pvess-site-checklist                         # → site-survey-checklist.pdf
+      pvess-site-checklist -o /tmp/survey.pdf      # custom path
+    """
+    from .site_checklist.builder import render_checklist
+    render_checklist(output)
+    click.echo(f"wrote {output}")
+
+
+@click.command(name="pvess-symbols-preview")
+@click.option(
+    "--output", "-o",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("symbols-swatch.pdf"),
+    show_default=True,
+    help="Output PDF path.",
+)
+@click.option(
+    "--dxf-only",
+    is_flag=True,
+    help="Emit only the DXF (skip PDF conversion). Useful for CI / fast loops.",
+)
+def symbols_preview_cmd(output: Path, dxf_only: bool) -> None:
+    """Render a one-page swatch of all icon glyphs (DEV TOOL).
+
+    Use this to iterate on `dxf/symbols.py` without running the full
+    permit pipeline. Each icon is rendered at its production size,
+    same dispatch path the EE-1 sheet uses.
+
+    \b
+      pvess-symbols-preview                          # → symbols-swatch.pdf
+      pvess-symbols-preview -o /tmp/swatch.pdf       # custom path
+      pvess-symbols-preview --dxf-only -o swatch.dxf # skip matplotlib pass
+    """
+    from tempfile import TemporaryDirectory
+    from .dxf.symbols_preview import render_swatch
+
+    if dxf_only:
+        render_swatch(output)
+        click.echo(f"wrote {output}")
+        return
+
+    # DXF → PDF via the same matplotlib backend as the permit pipeline.
+    from .permit.builder import _dxf_to_pdf
+    with TemporaryDirectory() as tmp:
+        dxf_path = Path(tmp) / "swatch.dxf"
+        render_swatch(dxf_path)
+        _dxf_to_pdf(dxf_path, output)
+    click.echo(f"wrote {output}")
+
+
+# ─── K.3c sidekick: address → rooftop visualization ──────────────────
+
+
+@click.command(name="pvess-roof-vis")
+@click.argument("address", nargs=-1, required=True)
+@click.option(
+    "--output", "-o",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output PNG path. Default: <slugified-address>-roof-diagram.png",
+)
+@click.option(
+    "--density",
+    type=click.Choice(["rural", "suburban", "urban", "unknown"]),
+    default="unknown",
+    show_default=True,
+    help="Site density — drives default shading factor when a face's "
+         "shading_factor stays at 1.0 (the 'I didn't measure' default).",
+)
+@click.option(
+    "--dpi", type=int, default=150, show_default=True,
+    help="Output resolution. 150 dpi → ~2100×1200 px (Letter-friendly).",
+)
+@click.option(
+    "--satellite/--no-satellite",
+    default=False,
+    show_default=True,
+    help="Include real aerial imagery + annual-flux heatmap via Google "
+         "Solar dataLayers (~$0.50 / render). Recommended for SIGNED "
+         "customers only; the free analytical view is plenty for "
+         "prospects.",
+)
+@click.option(
+    "--confirm-cost", is_flag=True,
+    help="Skip the interactive 'this will cost $0.50, continue?' prompt "
+         "for --satellite renders. Use in non-interactive contexts "
+         "(scripts, batch). Also honours PVESS_ALLOW_PAID_RENDERS=1.",
+)
+def roof_vis_cmd(
+    address: tuple[str, ...], output: Path | None,
+    density: str, dpi: int, satellite: bool, confirm_cost: bool,
+) -> None:
+    """Generate a rooftop visualization PNG straight from an address.
+
+    Runs the K.3 / K.3c lookup chain (Mapbox + NREL + Google Solar) and
+    renders a 2-panel analytical diagram (compass rose + ranked bars) by
+    default. Pass `--satellite` to additionally overlay real aerial
+    imagery + an annual-flux heatmap — paid Google Solar dataLayers
+    feature, ~$0.50 per render.
+
+    \b
+    PROSPECT-tier (no deposit) — free analytical view:
+      pvess roof-vis "7652 Glasshouse Walk, Frisco TX 75035"
+
+    \b
+    SIGNED-customer-tier (deposit paid) — full satellite + flux:
+      pvess roof-vis "7652 Glasshouse Walk, Frisco TX 75035" \\
+                     --satellite --confirm-cost
+
+    Requires `PVESS_GOOGLE_SOLAR_KEY` (see `.env.example`). Without the
+    key, exits 2. Satellite renders without confirmation prompt exit 4.
+    """
+    import os
+    from .lookup.config import get_google_solar_key
+
+    if not get_google_solar_key():
+        click.echo(click.style(
+            "✗ PVESS_GOOGLE_SOLAR_KEY not set — this command needs Google "
+            "Solar API access.", fg="red"))
+        click.echo(
+            "  Enable at https://console.cloud.google.com/apis/library/"
+            "solar.googleapis.com and add to .env (see .env.example).")
+        raise SystemExit(2)
+
+    addr_str = " ".join(address).strip()
+    if output is None:
+        slug = "".join(
+            c if c.isalnum() else "-" for c in addr_str.lower()
+        ).strip("-")
+        while "--" in slug:
+            slug = slug.replace("--", "-")
+        slug = slug[:60] or "roof"
+        suffix = "-roof-satellite" if satellite else "-roof-diagram"
+        output = Path(f"{slug}{suffix}.png")
+
+    # ── Paid-render gate ────────────────────────────────────────────
+    if satellite:
+        env_allow = os.environ.get("PVESS_ALLOW_PAID_RENDERS", "").strip()
+        env_confirmed = env_allow in ("1", "true", "yes")
+        if not confirm_cost and not env_confirmed:
+            click.echo(click.style(
+                "⚠ --satellite uses Google Solar dataLayers (~$0.50/render).",
+                fg="yellow", bold=True))
+            click.echo("  For PROSPECT-tier leads (no deposit), drop "
+                       "--satellite and use the free analytical view.")
+            click.echo("  Pass --confirm-cost (one-shot) or set "
+                       "PVESS_ALLOW_PAID_RENDERS=1 (session) to acknowledge "
+                       "and proceed.")
+            raise SystemExit(4)
+
+    click.echo(click.style(f"Resolving: {addr_str!r}", bold=True))
+
+    if satellite:
+        from .customer.roof_satellite import render_from_address as render_sat
+        from .lookup.providers.google_solar_data_layers import DataLayersError
+        try:
+            written = render_sat(addr_str, output,
+                                 urban_density=density, dpi=dpi)
+        except DataLayersError as exc:
+            click.echo(click.style(
+                f"✗ Satellite render failed: {exc}", fg="red"))
+            click.echo("  (Charge may still have been recorded; check "
+                       "Google Cloud billing if you see this often.)")
+            raise SystemExit(5)
+    else:
+        from .customer.roof_diagram import render_from_address as render_an
+        written = render_an(addr_str, output,
+                            urban_density=density)
+
+    if written is None:
+        click.echo(click.style(
+            "✗ Google Solar returned no roof_sections for this address.",
+            fg="red"))
+        click.echo(
+            "  Possible causes: address geocoded outside Solar API "
+            "coverage (rural / new construction); a multi-family / "
+            "commercial building closer to the lat/lng than the target. "
+            "Consider EagleView fallback.")
+        raise SystemExit(3)
+
+    mode = "satellite + analysis" if satellite else "analysis"
+    click.echo(click.style(
+        f"✓ wrote {written}   ({output.stat().st_size:,} B, "
+        f"{mode}, {dpi} dpi)", fg="green"))

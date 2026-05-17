@@ -1,0 +1,37 @@
+# API secrets — NEVER commit. Token storage for K.3b online providers
+# (Mapbox geocoding, NREL PVWatts). Loaded by pvess_calc.lookup.config.
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.venv/
+venv/
+
+# Project-generated artefacts
+projects/*/output/
+projects/*/*.qet
+projects/*/.wizard-state.json
+projects/*/scenarios/comparison.*
+
+# Documentation build output
+site/
+
+# OS / editor noise
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Lookup cache (24h TTL; safe to delete)
+.pvess/

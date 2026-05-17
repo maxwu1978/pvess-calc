@@ -1,0 +1,55 @@
+project:
+  id: "001-demo-austin"
+  name: "Smith Residence ESS"
+  location: "Austin, TX"
+  ahj: "City of Austin"
+  nec_edition: "2023"
+
+pv_array:
+  modules: 24
+  strings: 2
+  modules_per_string: 12
+  module:
+    brand: "Generic"
+    model: "MONO-420-144"
+    power_w: 420
+    voc_stc: 49.5
+    isc_stc: 13.8
+    # 优先用 datasheet 系数；空则 fallback 到 NEC Table 690.7
+    voc_temp_coeff_pct_per_c: -0.28
+    isc_temp_coeff_pct_per_c: 0.048
+  # ASHRAE 2% mean extreme min for Austin TX ≈ -5°C；优先于 temp_min_c
+  ashrae_2pct_min_c: -5.0
+  temp_min_c: -5.0
+  temp_max_c: 45.0
+
+battery:
+  brand: "Tesla"
+  model: "Powerwall 3"
+  quantity: 2
+  nominal_voltage: 48
+  capacity_kwh_each: 13.5
+
+inverter:
+  brand: "Tesla"
+  model: "Powerwall 3 Integrated"
+  ac_output_v: 240
+  ac_output_a: 30
+  # 是否每个 ESS 单元各带一个集成逆变器
+  per_unit: true
+
+service:
+  main_panel_a: 200
+  busbar_a: 200
+  # nameplate / measured — 705.12 必需
+  busbar_source: "nameplate"
+  voltage: "120/240 split-phase"
+  # 按优先级声明候选互联方法；引擎会校验每一种并推荐最优 PASS
+  interconnection_methods:
+    - "120%_rule"
+    - "sum_rule"
+    - "supply_side_tap"
+
+loads:
+  critical_subpanel_a: 100
+  whole_home_backup: true

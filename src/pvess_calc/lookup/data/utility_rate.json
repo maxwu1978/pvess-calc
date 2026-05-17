@@ -1,0 +1,48 @@
+{
+  "_README": "Average residential retail electricity rates (USD/kWh) by US city, 2026-Q1. Sourced from EIA Form 861 Annual Electric Power Industry Report (https://www.eia.gov/electricity/data/eia861/) + state PUC tariff sheets for IOUs. These are blended all-in averages — actual customer bills depend on the specific tariff (TOU, fixed, demand-charge) and seasonal blocks. K.4 customer-summary uses these for first-pass bill-savings estimates; the PDF labels every saving figure as 'estimated based on regional average rate' for honesty.",
+  "phoenix, az":     {"rate_usd_per_kwh": 0.131, "utility": "APS"},
+  "tucson, az":      {"rate_usd_per_kwh": 0.130, "utility": "TEP"},
+  "scottsdale, az":  {"rate_usd_per_kwh": 0.131, "utility": "APS"},
+  "mesa, az":        {"rate_usd_per_kwh": 0.127, "utility": "SRP"},
+
+  "los angeles, ca": {"rate_usd_per_kwh": 0.275, "utility": "LADWP"},
+  "san diego, ca":   {"rate_usd_per_kwh": 0.421, "utility": "SDG&E"},
+  "san francisco, ca": {"rate_usd_per_kwh": 0.398, "utility": "PG&E"},
+  "san jose, ca":    {"rate_usd_per_kwh": 0.398, "utility": "PG&E"},
+  "sacramento, ca":  {"rate_usd_per_kwh": 0.165, "utility": "SMUD"},
+
+  "denver, co":      {"rate_usd_per_kwh": 0.142, "utility": "Xcel"},
+  "colorado springs, co": {"rate_usd_per_kwh": 0.137, "utility": "Colorado Springs Util"},
+
+  "miami, fl":       {"rate_usd_per_kwh": 0.145, "utility": "FPL"},
+  "orlando, fl":     {"rate_usd_per_kwh": 0.132, "utility": "OUC"},
+  "tampa, fl":       {"rate_usd_per_kwh": 0.155, "utility": "TECO"},
+  "jacksonville, fl": {"rate_usd_per_kwh": 0.138, "utility": "JEA"},
+
+  "atlanta, ga":     {"rate_usd_per_kwh": 0.133, "utility": "Georgia Power"},
+  "honolulu, hi":    {"rate_usd_per_kwh": 0.396, "utility": "HECO",
+                      "note": "Highest residential rate in the US — drives fast PV+ESS payback."},
+
+  "chicago, il":     {"rate_usd_per_kwh": 0.157, "utility": "ComEd"},
+  "boston, ma":      {"rate_usd_per_kwh": 0.328, "utility": "Eversource"},
+  "detroit, mi":     {"rate_usd_per_kwh": 0.183, "utility": "DTE"},
+  "minneapolis, mn": {"rate_usd_per_kwh": 0.149, "utility": "Xcel"},
+
+  "new york, ny":    {"rate_usd_per_kwh": 0.270, "utility": "ConEd"},
+  "brooklyn, ny":    {"rate_usd_per_kwh": 0.270, "utility": "ConEd"},
+
+  "portland, or":    {"rate_usd_per_kwh": 0.135, "utility": "PGE"},
+  "philadelphia, pa": {"rate_usd_per_kwh": 0.179, "utility": "PECO"},
+  "pittsburgh, pa":  {"rate_usd_per_kwh": 0.169, "utility": "Duquesne"},
+
+  "austin, tx":      {"rate_usd_per_kwh": 0.115, "utility": "Austin Energy"},
+  "dallas, tx":      {"rate_usd_per_kwh": 0.142, "utility": "Oncor (TDU) + REP avg"},
+  "houston, tx":     {"rate_usd_per_kwh": 0.139, "utility": "CenterPoint (TDU) + REP avg"},
+  "san antonio, tx": {"rate_usd_per_kwh": 0.110, "utility": "CPS Energy"},
+  "fort worth, tx":  {"rate_usd_per_kwh": 0.142, "utility": "Oncor (TDU) + REP avg"},
+  "lewisville, tx":  {"rate_usd_per_kwh": 0.142, "utility": "Oncor (TDU) + REP avg"},
+
+  "salt lake city, ut": {"rate_usd_per_kwh": 0.117, "utility": "Rocky Mountain Power"},
+  "seattle, wa":     {"rate_usd_per_kwh": 0.114, "utility": "Seattle City Light"},
+  "spokane, wa":     {"rate_usd_per_kwh": 0.108, "utility": "Avista"}
+}

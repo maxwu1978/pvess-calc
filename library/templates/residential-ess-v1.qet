@@ -1,0 +1,337 @@
+<project title="Residential PV+ESS SLD" version="0.90">
+    <properties>
+        <property show="1" name="savedfilename">residential-ess-v1</property>
+    </properties>
+    <newdiagrams>
+        <border rowsize="80" rows="12" displaycols="true" cols="22" colsize="60" displayrows="true"/>
+        <inset displayAt="bottom" folio="%id/%total" indexrev="" plant="" date="null" filename="" author="" locmach="" title="" version="" auto_page_num=""/>
+        <conductors condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" conductor_section="" text_color="#000000" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" num="" type="multi"/>
+        <report label="%f-%l%c"/>
+        <xrefs>
+            <xref slave_label="(%f-%l%c)" displayhas="contacts" offset="0" delayprefix="" showpowerctc="false" snapto="bottom" powerprefix="" xrefpos="AlignBottom" type="coil" master_label="%f-%l%c" switchprefix=""/>
+            <xref slave_label="(%f-%l%c)" displayhas="contacts" offset="0" delayprefix="" showpowerctc="false" snapto="label" powerprefix="" xrefpos="AlignBottom" type="protection" master_label="%f-%l%c" switchprefix=""/>
+            <xref slave_label="(%f-%l%c)" displayhas="contacts" offset="0" delayprefix="" showpowerctc="false" snapto="label" powerprefix="" xrefpos="AlignBottom" type="commutator" master_label="%f-%l%c" switchprefix=""/>
+        </xrefs>
+        <conductors_autonums freeze_new_conductors="false" current_autonum=""/>
+        <folio_autonums/>
+        <element_autonums freeze_new_elements="false" current_autonum=""/>
+    </newdiagrams>
+    <diagram freezeNewElement="false" cols="22" folio="%id/%total" version="0.90" indexrev="" date="null" author="pvess-calc" height="960" freezeNewConductor="false" title="Residential PV+ESS SLD" auto_page_num="" displaycols="true" filename="residential-ess-v1" colsize="60" order="1" displayrows="true" locmach="" rows="12" plant="" rowsize="80" displayAt="bottom">
+        <defaultconductor condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" conductor_section="" text_color="#000000" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" num="" type="multi"/>
+        <elements>
+            <element x="1040" y="240" z="10" orientation="0" type="embed://import/msp.elmt" prefix="" freezeLabel="false" uuid="{0984becc-1c7e-4555-87d7-bb0eda2d00e0}">
+                <terminals>
+                    <terminal x="-21" y="0" orientation="3" id="0"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">{{MSP_LABEL}}</elementInformation>
+                    <elementInformation show="1" name="rating">{{MSP_RATING}}</elementInformation>
+                    <elementInformation show="1" name="bus">Bus: {{BUSBAR_RATING}}</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="30" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,10,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{4f261d82-475d-40c5-9a44-0232b1d5ca5f}" text_from="ElementInfo">
+                        <text>{{MSP_LABEL}}</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="47" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{5e38f121-788f-418b-adf1-68dd4e061c98}" text_from="ElementInfo">
+                        <text>{{MSP_RATING}}</text>
+                        <info_name>rating</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="63" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{e8584c30-6044-45e6-bdfa-aecd7769d5eb}" text_from="ElementInfo">
+                        <text>Bus: {{BUSBAR_RATING}}</text>
+                        <info_name>bus</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+            <element x="860" y="240" z="10" orientation="0" type="embed://import/ac_disconnect.elmt" prefix="" freezeLabel="false" uuid="{dd950c5d-ebfc-4601-9f4a-6b57eb7b837d}">
+                <terminals>
+                    <terminal x="-21" y="0" orientation="3" id="1"/>
+                <terminal x="21" y="0" orientation="1" id="2"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">{{AC_DISC_LABEL}}</elementInformation>
+                    <elementInformation show="1" name="ocpd">OCPD: {{AC_DISC_OCPD}}</elementInformation>
+                    <elementInformation show="1" name="cond">{{ESS_AC_CONDUCTOR}}</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="25" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,10,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{e6ed7846-a58a-4094-bb8e-985dadb37057}" text_from="ElementInfo">
+                        <text>{{AC_DISC_LABEL}}</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="42" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{8e64e229-08b9-40c9-92b9-171f16b2f860}" text_from="ElementInfo">
+                        <text>OCPD: {{AC_DISC_OCPD}}</text>
+                        <info_name>ocpd</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="58" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{1a5a3a77-d250-4735-970c-583131dcebe1}" text_from="ElementInfo">
+                        <text>{{ESS_AC_CONDUCTOR}}</text>
+                        <info_name>cond</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+            <element x="680" y="240" z="10" orientation="0" type="embed://import/hybrid_inverter.elmt" prefix="" freezeLabel="false" uuid="{c7e377af-8fb8-4837-ba7a-7a9f9b1c8f71}">
+                <terminals>
+                    <terminal x="-26" y="0" orientation="3" id="3"/>
+                <terminal x="26" y="0" orientation="1" id="4"/>
+                <terminal x="0" y="26" orientation="2" id="5"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">{{INVERTER_LABEL}}</elementInformation>
+                    <elementInformation show="1" name="model">{{INVERTER_MODEL}}</elementInformation>
+                    <elementInformation show="1" name="ac">{{INVERTER_AC}}</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-30" y="35" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,10,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{48246b25-da53-4cd4-adb6-12abcbe6ee42}" text_from="ElementInfo">
+                        <text>{{INVERTER_LABEL}}</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-30" y="52" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{9017fdde-c922-4b61-b7bd-0e4a0fbc96e4}" text_from="ElementInfo">
+                        <text>{{INVERTER_MODEL}}</text>
+                        <info_name>model</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-30" y="68" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{0a964c38-7614-4b35-9d92-c9f01019f581}" text_from="ElementInfo">
+                        <text>{{INVERTER_AC}}</text>
+                        <info_name>ac</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+            <element x="680" y="420" z="10" orientation="0" type="embed://import/ess_unit.elmt" prefix="" freezeLabel="false" uuid="{c22b50d4-e8d0-4678-994e-1e034f854ada}">
+                <terminals>
+                    <terminal x="0" y="-16" orientation="0" id="6"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">{{ESS_LABEL}}</elementInformation>
+                    <elementInformation show="1" name="model">{{ESS_MODEL}}</elementInformation>
+                    <elementInformation show="1" name="kwh">Qty {{ESS_QTY}} — {{ESS_KWH}}</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="25" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,10,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{b20900b0-a055-4cba-a907-9aa09cd1c0b2}" text_from="ElementInfo">
+                        <text>{{ESS_LABEL}}</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="42" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{73b120be-6bd9-41ce-828b-1d326d2dd044}" text_from="ElementInfo">
+                        <text>{{ESS_MODEL}}</text>
+                        <info_name>model</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="58" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{d5af2388-45ec-43b2-a24b-c3fb420eeadd}" text_from="ElementInfo">
+                        <text>Qty {{ESS_QTY}} — {{ESS_KWH}}</text>
+                        <info_name>kwh</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+            <element x="500" y="240" z="10" orientation="0" type="embed://import/rsd.elmt" prefix="" freezeLabel="false" uuid="{d567df52-6ae8-49f5-8e76-0c325e3e13f1}">
+                <terminals>
+                    <terminal x="-21" y="0" orientation="3" id="7"/>
+                <terminal x="21" y="0" orientation="1" id="8"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">{{RSD_LABEL}}</elementInformation>
+                    <elementInformation show="1" name="model">{{RSD_MODEL}}</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="25" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,10,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{6bba479d-73f9-4618-be86-28d7f97dc97e}" text_from="ElementInfo">
+                        <text>{{RSD_LABEL}}</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="42" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{d3b24730-6e22-4736-b336-c1b8c023fd36}" text_from="ElementInfo">
+                        <text>{{RSD_MODEL}}</text>
+                        <info_name>model</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+            <element x="320" y="240" z="10" orientation="0" type="embed://import/dc_combiner.elmt" prefix="" freezeLabel="false" uuid="{b007de76-64d2-4e5b-9f53-12ac98af027a}">
+                <terminals>
+                    <terminal x="-21" y="0" orientation="3" id="9"/>
+                <terminal x="21" y="0" orientation="1" id="10"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">{{DC_COMBINER_LABEL}}</elementInformation>
+                    <elementInformation show="1" name="ocpd">OCPD: {{PV_OCPD}}</elementInformation>
+                    <elementInformation show="1" name="cond">{{PV_CONDUCTOR}}</elementInformation>
+                    <elementInformation show="1" name="vd">VD: {{PV_VOLTAGE_DROP}}</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="25" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,10,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{9cb1362b-318f-4338-8cf1-fed6840c457c}" text_from="ElementInfo">
+                        <text>{{DC_COMBINER_LABEL}}</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="42" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{2d5eb59f-84f7-4502-95bd-113ff5e650b9}" text_from="ElementInfo">
+                        <text>OCPD: {{PV_OCPD}}</text>
+                        <info_name>ocpd</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="58" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{7245f2a8-6e95-4777-b8d7-9f25be4dca91}" text_from="ElementInfo">
+                        <text>{{PV_CONDUCTOR}}</text>
+                        <info_name>cond</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="74" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{154f6bdc-c402-493a-86bc-748d3223463d}" text_from="ElementInfo">
+                        <text>VD: {{PV_VOLTAGE_DROP}}</text>
+                        <info_name>vd</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+            <element x="140" y="240" z="10" orientation="0" type="embed://import/pv_array.elmt" prefix="" freezeLabel="false" uuid="{dc7ef2a1-66d4-4db4-b878-02aa35781321}">
+                <terminals>
+                    <terminal x="21" y="0" orientation="1" id="11"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">{{PV_LABEL}}</elementInformation>
+                    <elementInformation show="1" name="array">{{PV_STRINGS}}×{{PV_MODULES_PER_STRING}} = {{PV_MODULE_COUNT}}</elementInformation>
+                    <elementInformation show="1" name="voc">Voc(cold): {{PV_VOC_COLD}}</elementInformation>
+                    <elementInformation show="1" name="isc">Isc(max): {{PV_ISC_MAX}}</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="25" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,10,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{7aa11a23-e6c7-4f24-b449-92cc0359dada}" text_from="ElementInfo">
+                        <text>{{PV_LABEL}}</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="42" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{45820d03-36e9-4de2-88e4-2c040d939289}" text_from="ElementInfo">
+                        <text>{{PV_STRINGS}}×{{PV_MODULES_PER_STRING}} = {{PV_MODULE_COUNT}}</text>
+                        <info_name>array</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="58" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{40a32fd8-d17a-462a-9a24-dee4677bbb0e}" text_from="ElementInfo">
+                        <text>Voc(cold): {{PV_VOC_COLD}}</text>
+                        <info_name>voc</info_name>
+                    </dynamic_elmt_text>
+                    <dynamic_elmt_text x="-25" y="74" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{d2e8d191-9dd3-4ba3-b877-911bdf2fa66f}" text_from="ElementInfo">
+                        <text>Isc(max): {{PV_ISC_MAX}}</text>
+                        <info_name>isc</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+        </elements>
+        <conductors>
+            <conductor x="0" y="0" terminal1="11" terminal2="9" type="multi" condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" text_color="#000000" conductor_section="" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" freezeLabel="false" num="">
+                <sequentialNumbers/>
+            </conductor>
+            <conductor x="0" y="0" terminal1="10" terminal2="7" type="multi" condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" text_color="#000000" conductor_section="" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" freezeLabel="false" num="">
+                <sequentialNumbers/>
+            </conductor>
+            <conductor x="0" y="0" terminal1="8" terminal2="3" type="multi" condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" text_color="#000000" conductor_section="" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" freezeLabel="false" num="">
+                <sequentialNumbers/>
+            </conductor>
+            <conductor x="0" y="0" terminal1="4" terminal2="1" type="multi" condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" text_color="#000000" conductor_section="" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" freezeLabel="false" num="">
+                <sequentialNumbers/>
+            </conductor>
+            <conductor x="0" y="0" terminal1="2" terminal2="0" type="multi" condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" text_color="#000000" conductor_section="" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" freezeLabel="false" num="">
+                <sequentialNumbers/>
+            </conductor>
+            <conductor x="0" y="0" terminal1="6" terminal2="5" type="multi" condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" text_color="#000000" conductor_section="" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" freezeLabel="false" num="">
+                <sequentialNumbers/>
+            </conductor>
+        </conductors>
+        <inputs>
+            <input rotation="0" y="30" x="60" font="MS Shell Dlg 2,8,-1,5,50,0,0,0,0,0,Normal" text="&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&#10;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;&#10;p, li { white-space: pre-wrap; }&#10;&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt; font-weight:400; font-style:normal;&quot;&gt;&#10;&lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-family:'Sans Serif'; font-size:12pt;&quot;&gt;{{PROJECT_NAME}} — {{PROJECT_ID}} ({{NEC_EDITION}})&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;"/>
+            <input rotation="0" y="55" x="60" font="MS Shell Dlg 2,8,-1,5,50,0,0,0,0,0,Normal" text="&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&#10;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;&#10;p, li { white-space: pre-wrap; }&#10;&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt; font-weight:400; font-style:normal;&quot;&gt;&#10;&lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-family:'Sans Serif'; font-size:9pt;&quot;&gt;Location: {{PROJECT_LOCATION}}&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;"/>
+            <input rotation="0" y="75" x="60" font="MS Shell Dlg 2,8,-1,5,50,0,0,0,0,0,Normal" text="&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;&#10;&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;&#10;p, li { white-space: pre-wrap; }&#10;&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt; font-weight:400; font-style:normal;&quot;&gt;&#10;&lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-family:'Sans Serif'; font-size:9pt;&quot;&gt;Total backfeed: {{TOTAL_BACKFEED}} · Method: {{INTERCONNECT_METHOD}} · Status: {{INTERCONNECT_STATUS}}&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;"/>
+        </inputs>
+    </diagram>
+    <collection>
+        <category name="import">
+            <names>
+                <name lang="en">Imported elements</name>
+            </names>
+      <element name="pv_array.elmt">
+        <definition width="50" height="40" version="0.3" hotspot_x="25" hotspot_y="20" type="element">
+          <uuid uuid="{10669dad-5bc5-4b8b-bcdc-777a12858814}"/>
+          <names><name lang="en">PV Array</name></names>
+          <description>
+            <rect x="-25" y="-20" width="50" height="40" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <line x1="-25" y1="-20" x2="25" y2="20" style="line-style:normal;line-weight:normal;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none" antialias="false"/>
+            <line x1="25" y1="-20" x2="-25" y2="20" style="line-style:normal;line-weight:normal;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none" antialias="false"/>
+            <input x="-9" y="4" size="10" text="PV" tagg="none"/>
+            <terminal x="25" y="0" name="OUT" orientation="e"/>
+          </description>
+        </definition>
+      </element>
+      <element name="dc_combiner.elmt">
+        <definition width="50" height="40" version="0.3" hotspot_x="25" hotspot_y="20" type="element">
+          <uuid uuid="{da65e8b6-cb26-4663-8dbf-ac79ddd7744f}"/>
+          <names><name lang="en">DC Combiner / Disconnect</name></names>
+          <description>
+            <rect x="-25" y="-20" width="50" height="40" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <input x="-18" y="4" size="9" text="COMB" tagg="none"/>
+            <terminal x="-25" y="0" name="IN" orientation="w"/>
+            <terminal x="25" y="0" name="OUT" orientation="e"/>
+          </description>
+        </definition>
+      </element>
+      <element name="rsd.elmt">
+        <definition width="50" height="40" version="0.3" hotspot_x="25" hotspot_y="20" type="element">
+          <uuid uuid="{2fc5e581-6967-46d7-aaa1-10c91e56da62}"/>
+          <names><name lang="en">Rapid Shutdown Device</name></names>
+          <description>
+            <rect x="-25" y="-20" width="50" height="40" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <input x="-12" y="4" size="10" text="RSD" tagg="none"/>
+            <terminal x="-25" y="0" name="IN" orientation="w"/>
+            <terminal x="25" y="0" name="OUT" orientation="e"/>
+          </description>
+        </definition>
+      </element>
+      <element name="hybrid_inverter.elmt">
+        <definition width="60" height="60" version="0.3" hotspot_x="30" hotspot_y="30" type="element">
+          <uuid uuid="{7fc4b5fd-6fd3-40b1-bd78-b86db2645feb}"/>
+          <names><name lang="en">Hybrid Inverter</name></names>
+          <description>
+            <rect x="-30" y="-30" width="60" height="60" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <input x="-9" y="-6" size="11" text="INV" tagg="none"/>
+            <input x="-22" y="10" size="8" text="DC↔AC" tagg="none"/>
+            <terminal x="-30" y="0" name="DC_IN" orientation="w"/>
+            <terminal x="30" y="0" name="AC_OUT" orientation="e"/>
+            <terminal x="0" y="30" name="BATT" orientation="s"/>
+          </description>
+        </definition>
+      </element>
+      <element name="ac_disconnect.elmt">
+        <definition width="50" height="40" version="0.3" hotspot_x="25" hotspot_y="20" type="element">
+          <uuid uuid="{5e9be0a5-ae2c-4342-85aa-fe15cac793c7}"/>
+          <names><name lang="en">AC Disconnect</name></names>
+          <description>
+            <rect x="-25" y="-20" width="50" height="40" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <line x1="-12" y1="-5" x2="12" y2="-15" style="line-style:normal;line-weight:normal;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none" antialias="false"/>
+            <input x="-9" y="12" size="10" text="AC" tagg="none"/>
+            <terminal x="-25" y="0" name="IN" orientation="w"/>
+            <terminal x="25" y="0" name="OUT" orientation="e"/>
+          </description>
+        </definition>
+      </element>
+      <element name="msp.elmt">
+        <definition width="50" height="50" version="0.3" hotspot_x="25" hotspot_y="25" type="element">
+          <uuid uuid="{745d7c22-66f7-4a0f-b2f8-215a2f8a6d3d}"/>
+          <names><name lang="en">Main Service Panel</name></names>
+          <description>
+            <rect x="-25" y="-25" width="50" height="50" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <input x="-12" y="-3" size="10" text="MSP" tagg="none"/>
+            <line x1="-20" y1="8" x2="20" y2="8" style="line-style:normal;line-weight:normal;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none" antialias="false"/>
+            <line x1="-20" y1="14" x2="20" y2="14" style="line-style:normal;line-weight:normal;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none" antialias="false"/>
+            <terminal x="-25" y="0" name="IN" orientation="w"/>
+          </description>
+        </definition>
+      </element>
+      <element name="ess_unit.elmt">
+        <definition width="50" height="40" version="0.3" hotspot_x="25" hotspot_y="20" type="element">
+          <uuid uuid="{de5282d4-f6c5-4d45-b77b-c9281e0d5e90}"/>
+          <names><name lang="en">ESS Unit</name></names>
+          <description>
+            <rect x="-25" y="-20" width="50" height="40" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <input x="-9" y="-2" size="10" text="ESS" tagg="none"/>
+            <input x="-3" y="12" size="9" text="+" tagg="none"/>
+            <terminal x="0" y="-20" name="BATT" orientation="n"/>
+          </description>
+        </definition>
+      </element>
+        </category>
+    </collection>
+</project>

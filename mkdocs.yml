@@ -1,0 +1,88 @@
+site_name: pvess-calc
+site_description: >-
+  Parameter-driven NEC calculation + permit package generator for
+  residential PV + ESS designs (US market, NEC 2017 / 2020 / 2023).
+# site_url + repo_url + edit_uri all need to match your actual GitHub
+# org/repo before the first GH Pages deploy. The deployment workflow
+# at .github/workflows/docs.yml uses whatever the live site config
+# says — search-replace the three lines below in one go (e.g. via
+# `sed -i '' 's/your-org/REAL_ORG/g; s/pvess-calc/REAL_REPO/g' mkdocs.yml`).
+site_url: https://your-org.github.io/pvess-calc/
+repo_url: https://github.com/your-org/pvess-calc
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started: quickstart.md
+  - Workflow:
+      - Intake: workflow/intake.md
+      - Design: workflow/design.md
+      - Submit: workflow/submit.md
+      - Verify: workflow/verify.md
+  - Recipes:
+      - Add an AHJ profile: recipes/add-ahj-profile.md
+      - Add a NEC edition: recipes/add-nec-edition.md
+      - Add a lookup provider: recipes/add-lookup-provider.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Schema: reference/schema.md
+      - Doctor checks: reference/doctor-checks.md
+  - Changelog: changelog.md
+  - Internals:
+      - Design rationale: DESIGN.md
+      - Testing conventions: TESTING.md
+      - Deploying docs: deploying.md

@@ -1,0 +1,83 @@
+name: Deploy docs to GitHub Pages
+
+# Trigger on push to main (every merge auto-deploys) or manually via the
+# Actions tab. Pull requests build but don't deploy — keeps PR feedback
+# fast and prevents draft content reaching the live site.
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only run when docs-relevant files change. Avoids triggering on
+      # pure src/test changes that don't affect the rendered site.
+      - "docs/**"
+      - "mkdocs.yml"
+      - "README.md"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "README.md"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+# GitHub Pages official deployment requires these three permissions; the
+# repo-default `contents: read` would otherwise be insufficient.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, but don't cancel in-progress
+# runs — that would risk publishing a half-built site.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          # cache pip downloads keyed on pyproject.toml so re-runs are fast
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      - name: Install docs dependencies
+        # `.[docs]` adds mkdocs-material; the main package is needed so
+        # any docstring-driven content (if added later) imports cleanly.
+        run: |
+          pip install --upgrade pip
+          pip install -e ".[docs]"
+
+      - name: Build MkDocs site (strict mode)
+        # --strict turns broken internal links into build failures so
+        # we never silently publish a 404 mid-docs.
+        run: mkdocs build --strict
+
+      - name: Upload Pages artifact
+        # actions/deploy-pages reads this artifact — must be named
+        # "github-pages" and contain the built site root.
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    # Skip the deploy step for PRs — they still build (catches docs
+    # regressions early) but never reach the live site.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

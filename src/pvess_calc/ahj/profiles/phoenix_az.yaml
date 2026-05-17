@@ -1,0 +1,35 @@
+name: City of Phoenix, AZ
+region: Maricopa County, Arizona
+required_sheets:
+- cover
+- ee-1
+- ee-2
+- ee-3
+- ee-4
+- ee-5
+- pv-4
+- pv-5
+- pv-6
+- notes
+- labels
+label_set:
+- 690.13(B)
+- '690.14'
+- '690.53'
+- 690.56(C)
+- '705.10'
+- '705.11'
+- '706.7'
+- 690.31(D)
+inspector_checklist:
+- Roof setback per IFC 1204.3 (Phoenix amendment, 3' min to ridge)
+- "Conduit thermal expansion compensation (NEC 300.7(B)) \u2014 Phoenix attic >150\xB0\
+  F"
+- "ESS thermal management (NEC 706.10) \u2014 UL 9540 listing required"
+- Available fault current letter from APS on file
+form_blanks:
+- APS Solar Interconnection Application
+- City of Phoenix Electrical Permit
+notes: "APS net metering replaced by Resource Comparison Proxy (RCP) \u2014 verify\n\
+  current export rate before sizing system for grid export. Hot-attic conduit\nderating\
+  \ (NEC 310.15(B)) is critical in Phoenix; use 45-50 \xB0C ambient.\n"

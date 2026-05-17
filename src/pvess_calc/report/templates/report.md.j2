@@ -1,0 +1,150 @@
+# NEC 计算报告 — {{ inputs.project.name }}
+
+| 项目 | 值 |
+|------|-----|
+| 项目 ID | {{ inputs.project.id }} |
+| 地点 | {{ inputs.project.location }} |
+| AHJ | {{ inputs.project.ahj }} |
+| NEC 版本 | {{ inputs.project.nec_edition }} |
+
+{% if inputs.loads.annual_kwh is not none -%}
+## 0. 户用电量参考（K.2.5）
+
+| 项 | 值 |
+|----|----|
+| 年用电 | {{ "%.0f"|format(inputs.loads.annual_kwh) }} kWh |
+| 峰月用电 | {{ "%.0f"|format(inputs.loads.peak_month_kwh) }} kWh |
+| HVAC 类型 | {{ inputs.loads.hvac_type }} |
+| 现有 EV 充电桩 | {{ "是" if inputs.loads.has_ev else "否" }} |
+| 计划新增 EV | {{ "是" if inputs.loads.planned_ev else "否" }} |
+| 计划其他电气化（热泵 / IH / HPWH） | {{ "是" if inputs.loads.planned_electrification else "否" }} |
+
+> 仅供 sizing 参考，不影响 NEC 校核结果。
+
+{% endif -%}
+## 1. PV 源回路（NEC 690.7 / 690.8 / 690.9）
+
+| 项 | 值 | 条款 |
+|----|----|------|
+| 模块 | {{ inputs.pv_array.module.brand }} {{ inputs.pv_array.module.model }} ({{ inputs.pv_array.module.power_w }} W) | — |
+| 阵列 | {{ inputs.pv_array.strings }} 串 × {{ inputs.pv_array.modules_per_string }} 块 = {{ inputs.pv_array.modules }} 块 | — |
+| 设计低温 | {{ "%.1f"|format(inputs.pv_array.design_low_temp_c) }}°C | 690.7(A) |
+| Voc STC（单块） | {{ "%.2f"|format(pv_string.voc_stc_per_module) }} V | — |
+| Voc 冷修正（单块） | {{ "%.2f"|format(pv_string.voc_cold_per_module) }} V （×{{ "%.4f"|format(pv_string.voc_correction_factor) }}, 方法={{ pv_string.voc_correction_method }}） | 690.7(A) |
+| **串 Voc（冷）** | **{{ "%.1f"|format(pv_string.string_voc_cold) }} V** | 690.7 |
+| 是否超过 600V 住宅上限 | {{ "**是 ✗**" if pv_string.exceeds_max_system_voltage else "否 ✓" }} | 690.7 |
+| Isc STC | {{ "%.2f"|format(pv_string.isc_stc) }} A | — |
+| Isc × 1.25 | {{ "%.2f"|format(pv_string.isc_690_8_a) }} A | 690.8(A)(1) |
+| 导体最小 ampacity | {{ "%.2f"|format(pv_string.conductor_required_a) }} A | 690.8(B) |
+| OCPD 最小 | {{ "%.2f"|format(pv_string.ocpd_minimum_a) }} A | 690.9(B) |
+| **选定导线** | **{{ pv_conductor.size }} AWG（75°C，{{ pv_conductor.ampacity_a }} A 余量 {{ "%.1f"|format(pv_conductor.headroom_a) }} A）** | 310.16 |
+| **选定 OCPD** | **{{ pv_ocpd_a }} A**（标准档，240.6） | 690.9 / 240.6 |
+| 估算 DC 压降（{{ pv_voltage_drop.one_way_length_ft }} ft 单程） | {{ "%.2f"|format(pv_voltage_drop.drop_volts) }} V / {{ "%.2f"|format(pv_voltage_drop.drop_percent) }} % | 信息性 |
+
+## 2. ESS 互联（NEC 705.12 / 706.x）
+
+| 项 | 值 |
+|----|----|
+| ESS | {{ inputs.battery.quantity }} × {{ inputs.battery.brand }} {{ inputs.battery.model }} ({{ "%.1f"|format(ess.total_kwh) }} kWh 总） |
+| 逆变器 | {{ inputs.inverter.brand }} {{ inputs.inverter.model }}, {{ inputs.inverter.ac_output_a }} A AC{% if inverter_count > 1 %} × {{ inverter_count }} 台并联 = {{ "%.0f"|format(inputs.inverter.ac_output_a * inverter_count) }} A 总{% endif %} |
+| 总反馈电流（本系统新增） | {{ "%.1f"|format(interconnect.total_backfeed_a) }} A |
+{% if interconnect.existing_solar_a > 0 -%}
+| 既有 PV/ESS 反馈电流（在线母线已占用） | {{ "%.1f"|format(interconnect.existing_solar_a) }} A |
+| **合计反馈进入 705.12 校核** | **{{ "%.1f"|format(interconnect.combined_backfeed_a) }} A** |
+{% endif -%}
+| 主开关 | {{ "%.0f"|format(interconnect.main_breaker_a) }} A |
+| 母线（{{ inputs.service.busbar_source }}） | {{ "%.0f"|format(interconnect.busbar_a) }} A |
+| AC 隔离最小额定 | {{ "%.1f"|format(ess.ac_disconnect_min_a) }} A |
+| **AC 隔离 OCPD** | **{{ ess.ac_disconnect_ocpd_a }} A** |
+| **ESS AC 导线** | **{{ ess_conductor.size }} AWG（{{ ess_conductor.ampacity_a }} A）** |
+
+### 互联方法评估（705.12）
+
+| 方法 | 状态 | 公式 | 详情 |
+|------|------|------|------|
+{% for e in interconnect.evaluations -%}
+| `{{ e.method }}` | {% if e.status == "PASS" %}✓ PASS{% elif e.status == "FAIL" %}✗ FAIL{% else %}— N/A{% endif %} | {{ e.formula }} | {{ e.explanation }} |
+{% endfor %}
+
+**整体结果**：{% if interconnect.overall_status == "PASS" %}✓ 至少一种方法 PASS，**推荐使用：`{{ interconnect.recommended }}`**{% else %}✗ 所有候选方法均失败，需重新设计（增大母线、降低反馈、或换用 705.11 supply-side tap）{% endif %}
+
+{% if grounding.gec_comparison -%}
+### 接地系统合规（NEC 250 / K.5）
+
+| 项 | 值 | 状态 |
+|----|----|------|
+| 现有主 GEC | {% if grounding.gec_comparison.actual_size %}#{{ grounding.gec_comparison.actual_size }} AWG{% else %}—{% endif %} | {% if grounding.gec_comparison.status == "PASS" %}✓ PASS{% elif grounding.gec_comparison.status == "UNDERSIZED" %}✗ UNDERSIZED{% else %}⚠ UNKNOWN{% endif %} |
+| NEC 250.66 要求 | #{{ grounding.gec_comparison.required_size }} AWG | — |
+| 详情 | {{ grounding.gec_comparison.note }} | — |
+
+**实际接地电极系统**：
+{% for line in grounding.electrode_summary -%}
+- {{ line }}
+{% endfor %}
+
+{% endif -%}
+### ESS 安装位置合规（NEC 706.10 / IRC R328）
+
+**Install location**: `{{ ess_install.install_location }}` &nbsp;·&nbsp; **整体结果**：{% if ess_install.overall_status == "PASS" %}✓ PASS{% elif ess_install.overall_status == "FAIL" %}✗ FAIL{% else %}⚠ {{ ess_install.overall_status }}{% endif %}
+
+| 检查项 | 状态 | 条款 | 详情 |
+|--------|------|------|------|
+{% for c in ess_install.checks -%}
+| `{{ c.name }}` | {% if c.status == "PASS" %}✓ PASS{% elif c.status == "FAIL" %}✗ FAIL{% elif c.status == "WARN" %}⚠ WARN{% else %}— N/A{% endif %} | {{ c.code_ref }} | {{ c.detail }} |
+{% endfor %}
+
+## 3. 压降表（NEC 215.2 / 210.19 informational）
+
+| 段 | 类型 | 长度 (ft) | 电流 (A) | 电压 (V) | 导线 | Vd (V) | Vd% | 限值 | 状态 |
+|----|------|----------|---------|---------|------|--------|-----|------|------|
+{% for s in voltage_drop_analysis.segments -%}
+| {{ s.label }} | {{ s.kind }} | {{ "%.0f"|format(s.one_way_ft) }} | {{ "%.1f"|format(s.current_a) }} | {{ "%.0f"|format(s.voltage) }} | {{ s.conductor_size }} AWG | {{ "%.2f"|format(s.drop_v) }} | {{ "%.2f"|format(s.drop_pct) }} % | ≤{{ "%.0f"|format(s.limit_pct) }}% | {% if s.status == "PASS" %}✓{% elif s.status == "FAIL" %}✗ FAIL{% else %}— (默认 50ft){% endif %} |
+{% endfor %}
+
+**端到端**：DC {{ "%.2f"|format(voltage_drop_analysis.total_dc_pct) }} % + AC {{ "%.2f"|format(voltage_drop_analysis.total_ac_pct) }} % = **{{ "%.2f"|format(voltage_drop_analysis.total_end_to_end_pct) }} %**（限值 ≤5%；状态 **{{ voltage_drop_analysis.overall_status }}**）
+
+## 4. AIC 短路额定校验（NEC 110.24）
+
+| 项 | 值 |
+|----|----|
+| 变压器 | {{ "%.0f"|format(aic.transformer_kva) }} kVA · Z {{ "%.1f"|format(aic.transformer_z_pct) }}% · 二次侧 {{ "%.0f"|format(aic.secondary_voltage_v) }} V |
+| **可用短路电流** | **{{ "%.2f"|format(aic.available_fault_current_ka) }} kA** ({{ "%.0f"|format(aic.available_fault_current_a) }} A) |
+
+| OCPD | 额定 | 要求 AIC | 配备 AIC | 余量 | 状态 |
+|------|------|----------|----------|------|------|
+{% for c in aic.ocpd_checks -%}
+| {{ c.label }} | {{ c.ocpd_rating_a }} A | {{ "%.2f"|format(c.aic_required_ka) }} kA | {{ "%.1f"|format(c.aic_supplied_ka) }} kA | {{ "%.2f"|format(c.margin_ka) }} kA | {% if c.status == "PASS" %}✓{% else %}✗ FAIL{% endif %} |
+{% endfor %}
+
+**整体**：{% if aic.overall_status == "PASS" %}✓ 所有 OCPD AIC 充足{% else %}✗ 至少一个 OCPD AIC 不足，需升级断路器规格{% endif %}
+
+## 5. 温度 / 捆扎修正（NEC 310.15(B)）
+
+| 项 | 值 |
+|----|----|
+| 环境温度 | {{ "%.0f"|format(inputs.routing.ambient_temp_c) }} °C |
+| PV 导管内载流导体数 | {{ inputs.routing.pv_conduit_fill_count }} |
+| AC 导管内载流导体数 | {{ inputs.routing.ac_conduit_fill_count }} |
+| **PV 路径合并修正系数** | **× {{ "%.3f"|format(pv_derating_factor) }}** |
+| **AC 路径合并修正系数** | **× {{ "%.3f"|format(ac_derating_factor) }}** |
+
+注：上述修正系数已应用于导线选型——选定的导线 ampacity 已经是 *derated* 值（"实际可承载电流"），不是 NEC Table 310.16 的标称值。
+
+## 6. 简化项与待人工核查
+
+本报告为内部方案评估，以下项**未自动计算**，需人工或下一阶段处理：
+
+- 接地 / 键合（NEC 690.41–690.50；详见 EE-2 sheet）
+- 工作空间（NEC 110.26，≥36" 设备前空间）
+- NEC 标签实物文本与张贴位置（690.13 / 690.56 / 705.10；详见 labels.pdf）
+- BOM / 询价
+{% if voltage_drop_analysis.overall_status == "DEFAULT" -%}
+- 压降表使用 50ft 默认单程长度；inputs.yaml 加 `wire_lengths:` 块用真实长度重跑
+{%- endif %}
+{% if pv_string.voc_correction_method == "table_690_7" -%}
+- Voc 冷修正使用 NEC Table 690.7 简化系数，建议补全模块 datasheet 的 βVoc 系数后重跑
+{%- endif %}
+
+---
+
+*由 `pvess-calc` 生成；输入文件 `inputs.yaml` 哈希请见 `calculation.json`*

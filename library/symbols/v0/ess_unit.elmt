@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definition link_type="simple" hotspot_x="30" hotspot_y="40" version="0.8" type="element" width="60" height="80">
+  <names>
+    <name lang="en">ESS Unit</name>
+    <name lang="zh">储能单元</name>
+  </names>
+  <kindInformations>
+    <kindInformation name="type">ess_unit</kindInformation>
+  </kindInformations>
+  <elementInformations>
+    <elementInformation name="label" show="0">ESS-1</elementInformation>
+    <elementInformation name="model" show="0"></elementInformation>
+    <elementInformation name="qty" show="0"></elementInformation>
+    <elementInformation name="kwh" show="0"></elementInformation>
+  </elementInformations>
+  <description>
+    <rect x="-30" y="-40" width="60" height="80" antialias="false" style="line-style:normal;line-weight:normal;filling:none;color:black"/>
+    <text x="-15" y="-22" text="ESS" rotation="0" size="11" font="Sans Serif,11,-1,5,75,0,0,0,0,0"/>
+    <text x="-12" y="-5" text="+" rotation="0" size="10" font="Sans Serif,10,-1,5,75,0,0,0,0,0"/>
+    <text x="-12" y="10" text="−" rotation="0" size="12" font="Sans Serif,12,-1,5,75,0,0,0,0,0"/>
+    <terminal x="30" y="-20" orientation="e" name="BATT+" type="Generic"/>
+    <terminal x="30" y="0" orientation="e" name="BATT-" type="Generic"/>
+    <terminal x="30" y="20" orientation="e" name="COMMS" type="Generic"/>
+    <dynamic_text x="-30" y="42" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" frame="false" text_width="60" font="Sans Serif,9,-1,5,75,0,0,0,0,0" text_from="ElementInfo">
+      <info_name>label</info_name>
+    </dynamic_text>
+  </description>
+</definition>

@@ -1,0 +1,545 @@
+# pvess-calc Roadmap
+
+Forward-looking plan. `CHANGELOG.md` tracks past work in date order;
+this file tracks **next-N K-phases** with scope, closing standards,
+and rough estimates.
+
+When a K-phase ships:
+1. Move its section from "Planned" → "Done" with a date
+2. Bump the corresponding entry into `CHANGELOG.md` proper
+3. Re-evaluate priority of remaining planned phases
+
+---
+
+## Planned
+
+### K.4.6 — Equipment library + cost overrides + battery-optional + TX REP picker ✅ DONE 2026-05-17
+
+All 6 sub-tasks complete; 31/31 doctor; +37 tests landed across the
+milestone (461 total vs 425 at start). Frisco project quotes the
+real installer BOM ($26k post-ITC) at 7.9 yr payback with the
+3-tier upgrade table inline.
+
+
+**Why first**: Surfaced by the 2026-05-17 Frisco E2E test. Three
+overlapping gaps that compound into a single-day sales problem:
+
+1. **Battery is a required field** in the yaml — but the TX market
+   default (per `2026-05-17` discussion with the user) is PV-only.
+   Smart Meter Texas + a 1:1 REP buyback plan (Green Mountain
+   Renewable Rewards, TXU Home Solar Buyback) delivers full ROI
+   without storage. Battery is a backup decision, NOT an economics
+   decision. Quoting Tesla PW3 by default kills deals: payback
+   22 yr (with battery) vs 11 yr (PV-only on 1:1 REP).
+2. **Cost benchmark is Tesla-tier ($3.50/W + $950/kWh)** — overstates
+   the actual installer's stack (Megarevo / Growatt inverters +
+   in-house batteries) by 30-65 %. Customer PDF payback looks 50 %
+   worse than reality.
+3. **`export_tariff_model` enum is too coarse** — `1to1_nem` /
+   `ca_nem3` / `hi_self_consumption` don't capture the TX-specific
+   REP-by-REP buyback ratio (0.5× default vs 1.0× on the "good"
+   REP plans). $90/mo savings difference between same-PV + different
+   REP.
+
+**Business priority**: HIGHER than K.9 (the Aurora-grade visual
+upgrade). K.4.6 fixes how every quote is presented, which affects
+conversion rate directly. K.9 is craft polish.
+
+**Total estimate**: **4 working days**
+
+#### K.4.6.1 — Battery-optional schema (0.5 day) ✅ DONE 2026-05-17
+
+- `Battery.install: bool = True` field; when False, downstream fields
+  (brand / model / quantity / capacity) become optional via
+  `model_validator(mode='after')`
+- Or simpler: keep current schema, just allow `quantity: 0` cleanly
+  (already mostly works per the 2026-05-17 Frisco PV-only run, but
+  needs explicit doctor + customer PDF support for the "no backup"
+  state)
+- Customer PDF: when battery.quantity = 0, replace the backup-hours
+  block with a "PV-only — grid-tied, no outage backup" notice
+- 3 new tests + update existing tests that assumed quantity ≥ 1
+
+#### K.4.6.2 — Equipment library expansion (0.5 day) ✅ DONE 2026-05-17
+
+New `devices/` entries matching the installer's actual product line:
+
+```python
+# devices/inverters.py
+"megarevo_r8klna":   { brand: "Megarevo", model: "R8KLNA",
+                       ac_w: 8000, ac_v: 240,
+                       cost_usd: 1600, n_mppt: 2, max_dc_v: 600 }
+"megarevo_r11klna":  { brand: "Megarevo", model: "R11KLNA",
+                       ac_w: 11000, ac_v: 240,
+                       cost_usd: 2000, n_mppt: 2, max_dc_v: 600 }
+"growatt_min11000":  { brand: "Growatt", model: "MIN 11000TL-X",
+                       ac_w: 11000, ac_v: 240,
+                       cost_usd: 2500, n_mppt: 2, max_dc_v: 600 }
+"hoymiles_hys11k":   { brand: "Hoymiles", model: "HYS-LV-11K",
+                       ac_w: 11000, ac_v: 240,
+                       cost_usd: 2200, n_mppt: 2, max_dc_v: 600 }
+
+# devices/batteries.py
+"inhouse_16kwh_hv":  { brand: "InHouse", model: "HV-16",
+                       kwh: 16.0, v_nom: 400.0,
+                       cost_usd: 6000, chemistry: "LFP" }
+"growatt_apx_20kwh": { brand: "Growatt", model: "APX HV",
+                       kwh: 20.0, v_nom: 400.0,
+                       cost_usd: 10000, chemistry: "LFP" }
+```
+
+#### K.4.6.3 — Cost-override schema (0.5 day) ✅ DONE 2026-05-17
+
+```yaml
+project:
+  installer_cost_overrides:        # NEW K.4.6 schema block
+    pv_turnkey_usd_per_w: 2.40    # modules+racking+labor+permit, no inverter/battery
+    # If absent, falls back to NREL benchmark $3.50/W.
+    # Inverter / battery costs pulled from devices/* library when
+    # `inverter.ref` / `battery.ref` set; explicit `cost_usd` here
+    # overrides the library value.
+```
+
+Wire through `customer/economics.py` so the PDF cost number reflects
+the real quote, not the NREL benchmark.
+
+#### K.4.6.4 — TX REP buyback model (0.5 day) ✅ DONE 2026-05-17
+
+```yaml
+loads:
+  rep_buyback_ratio: 1.00         # NEW: 0..1, fraction of retail
+                                  # paid back for exported kWh
+  rep_plan_name: "Green Mountain Renewable Rewards"   # informational
+```
+
+Preset alias for common TX REP plans (so users don't need to
+remember the 0.50 / 0.65 / 1.00 numbers):
+
+```python
+TX_REP_PRESETS = {
+    "default_oncor":       0.50,
+    "txu_solar_buyback":   1.00,
+    "green_mountain_rr":   1.00,
+    "reliant_sun":         0.95,
+    "rhythm_pure_energy":  0.70,
+}
+```
+
+`economics.py` computes effective rate using `rep_buyback_ratio`
+when present; `export_tariff_model` stays for non-TX projects.
+
+#### K.4.6.5 — Customer PDF: 3-tier quote table (1 day) ✅ DONE 2026-05-17
+
+When `battery.install = False` (or quantity = 0), the customer PDF
+auto-generates a side-by-side table:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Your options                                            │
+│  ┌────────────┬──────────────┬──────────────┐            │
+│  │ PV-only    │ +16 kWh      │ +20 kWh      │            │
+│  │            │ inhouse      │ Growatt HV   │            │
+│  ├────────────┼──────────────┼──────────────┤            │
+│  │ $25,105    │ $29,305      │ $32,455      │            │
+│  │ post-ITC   │ post-ITC     │ post-ITC     │            │
+│  ├────────────┼──────────────┼──────────────┤            │
+│  │ $257/mo    │ $257/mo      │ $257/mo      │            │
+│  │ 8.2 yr     │ 9.5 yr       │ 10.5 yr      │            │
+│  ├────────────┼──────────────┼──────────────┤            │
+│  │ no backup  │ ~14 hr crit  │ ~18 hr crit  │            │
+│  └────────────┴──────────────┴──────────────┘            │
+│                                                          │
+│  Picking a battery is a backup-vs-cost decision, not     │
+│  a savings decision. All three options earn the same     │
+│  monthly savings.                                        │
+└──────────────────────────────────────────────────────────┘
+```
+
+Generated from yaml's installer_cost_overrides + 2-3 named battery
+options (defined in `loads.backup_options[]` list).
+
+#### K.4.6.6 — Doctor + tests + docs (1 day) ✅ DONE 2026-05-17
+
+- New doctor check `tx_rep_buyback_is_set_explicitly` — if state =
+  TX and `rep_buyback_ratio` is at default (0.50 inferred from
+  `default_oncor`), surface as WARN with "switching REP plan adds
+  $90/mo" hint
+- 8 new tests covering: battery=0 path, REP presets, cost overrides
+  end-to-end, 3-tier table render
+- Update CHANGELOG + this ROADMAP
+
+#### K.4.6 master closing standards
+
+```
+✅ Tests:          426 → ≥ 440 (+14 new)
+✅ Doctor:         29 → 30 (+1 TX REP-plan WARN check)
+✅ Frisco PV-only PDF: matches the manual calculation of
+                       $25k post-ITC / $257/mo / 8.2 yr payback
+✅ Frisco backup option PDF: 3-tier table renders cleanly
+✅ Backward compat: every existing yaml validates unchanged
+                    (defaults preserve current behavior)
+```
+
+---
+
+### K.9 — Per-module layout + PV-4 v2 (Aurora-grade attachment plan) ✅ DONE 2026-05-17
+
+K.9.1 + .2 + .3 + .5 landed; +27 tests; doctor 32 → 33. K.9.4 (equipment
+callout auto-routing) deferred — the existing PV-4 equipment labels work
+fine for now; auto-routing can be a polish phase when sales feedback
+demands it.
+
+---
+
+### K.12 — Industry-standard PV-1 cover page (Wyssling-style) ✅ DONE 2026-05-17
+
+Triggered by user's 2026-05-17 side-by-side comparison to a real
+Wyssling Consulting permit. 12-block layout: title strip, aerial +
+vicinity maps, sheet index, scope of work, governing codes (NEC + 8
+ICC family), design criteria (wind/snow/ASCE/exposure/occupancy/
+construction/sprinklers), roof info, interconnection, arrays table,
+meter info (incl. Oncor ESID), revision history, PE stamp.
+
+K.12.1 + .2 + .3 + .4 + .5 all landed; +22 tests; doctor 33 → 34.
+Aerial via Google Solar dataLayers (K.3c+ reuse), vicinity via Mapbox
+Static Images API. Both opt-in via env keys; cover renders with
+placeholders when keys missing.
+
+
+**Why**: Current PV-4 renders modules as **square cells** at a heuristic
+grid spacing — the visual approximation served us through Phases F + J
+when the system was "show the AHJ the modules exist." With K.3c +
+K.8 now resolving per-face geometry from address alone, the bottleneck
+is the PV-4 sheet itself: an Aurora / OpenSolar permit drawing shows
+**each module's true rectangle at its real (x, y, rotation)** plus
+auto-routed equipment callouts. K.9 closes that gap.
+
+**Reference**: the 2026-05-17 review image (Talesun 415W / Megarevo
+R8KLNA / Tigo TS4-A-O / Frisco Texas) — that's the visual benchmark.
+
+**Scope boundaries (NOT in K.9)**:
+- 3D roof model — stays 2D top-down (Aurora's 3D is 5-engineer-year work)
+- Drone / Scanifly import — Google Solar K.3c is the geometry path
+- Real-time wire trunk routing — equipment callouts get arrows, but
+  the trunk lives in DXF EE-1, not PV-4
+- Animations / web preview — PDF / DXF stays the deliverable
+
+**Total estimate**: **5 working days** (1 engineer, focused)
+
+#### K.9.1 — Module placement algorithm (1.5 days)
+
+New module: `src/pvess_calc/calc/module_placement.py`
+
+```python
+@dataclass
+class ModuleInstance:
+    face_name: str          # which roof_section
+    x_ft: float             # local coord (eave-left origin)
+    y_ft: float             # +y toward ridge
+    width_ft: float         # module physical W (after orientation)
+    height_ft: float        # module physical H (after orientation)
+    rotation_deg: float     # 0 = portrait (long edge ⟂ eave),
+                            # 90 = landscape (long edge ∥ eave)
+    string_index: Optional[int] = None   # K.9.3+: which string
+
+def place_modules(
+    section: RoofSection,
+    *,
+    module_w_in: float, module_h_in: float,
+    target_count: int,
+    inter_module_gap_in: float = 0.5,    # rail spacing
+    inter_row_gap_in: float = 6.0,       # walking path
+) -> list[ModuleInstance]:
+    """Try portrait + landscape, return whichever fits ≥ target_count
+    with the cleanest layout (preferring fewer rows, then fewer cols).
+    Respects edge_setbacks + obstructions[] with halo + polygon shape.
+    Caller decides what to do if neither orientation fits — typically
+    truncate target_count down."""
+```
+
+**Algorithm**: for each candidate orientation:
+1. Inset polygon by max(edge_setback, default_setback) per edge
+2. Subtract every obstruction halo (Minkowski sum on obstruction rect
+   inflated by `obs.setback_ft` from each side)
+3. Compute usable bounding box `(bbox_x_min, bbox_y_min, bbox_w, bbox_h)`
+4. Compute rows = `floor(bbox_h / (module_h + inter_row_gap))`
+5. Compute cols = `floor(bbox_w / (module_w + inter_module_gap))`
+6. Emit `rows × cols` candidate centers; filter those that fall
+   inside the inset polygon AND outside every obstruction halo
+7. Truncate to `target_count` (top-left first — predictable for
+   reviewers comparing yaml vs drawing)
+
+**Closing standards**:
+- ✅ ≥ 8 unit tests (`tests/test_module_placement.py`)
+  - rect / tri / polygon shapes
+  - portrait vs landscape orientation choice
+  - obstacle avoidance (halo correctly carves out region)
+  - target_count > capacity → returns max-capacity, doesn't raise
+  - target_count = 0 → returns empty list
+  - degenerate (zero area) section → returns empty
+  - polygon with concave bite → no module straddles bite
+- ✅ Conservation: every emitted (x, y) is inside the inset polygon
+  AND outside every obstruction halo (assertion test)
+- ✅ Deterministic: same input → same output, byte-identical
+
+#### K.9.2 — Engine integration (0.5 day)
+
+- Add `CalculationResult.module_placements: dict[str, list[ModuleInstance]]`
+  keyed by face_name
+- `engine.run()` calls `place_modules` per section after the K.8.1
+  auto-distribute determines per-face module counts
+- Tri faces now get modules (current PV-4 skips them)
+- 3 integration tests:
+  - Phoenix S+W (2 face manual distribution) → 2 keys in dict
+  - Frisco 13-face auto-distribute → 13 keys, each with right count
+  - Austin demo (no roof_sections) → empty dict
+
+#### K.9.3 — PV-4 sheet renderer upgrade (1.5 days)
+
+Rewrite `src/pvess_calc/permit/structural.py::_draw_section_plan` to:
+
+- For each `ModuleInstance` in `result.module_placements[face_name]`:
+  - Draw rectangle at `(x_ft, y_ft, width_ft, height_ft)` rotated
+    `rotation_deg` (use reportlab `c.saveState` / `c.translate` /
+    `c.rotate`)
+  - Fill `#E8F0FF` (matching current style)
+  - Edge `#1F5BD7` 0.3 pt
+  - At ~10 % of max module dimension, draw a small module ID number
+    (1 .. N) in the top-left corner — lets the reviewer match the
+    schedule
+
+Add a **module dimension callout** in the bottom-right of every PV-4
+sheet (matches the reference image's `67.80"  ·  44.65"` block):
+
+```
+                ┌──────────┐
+                │          │ 44.65"
+                │  module  │
+                │          │
+                └──────────┘
+                  67.80"
+            TALESUN TP7G54M 415
+```
+
+Pulled from `inputs.pv_array.module` (existing schema field).
+
+**Closing standards**:
+- ✅ ≥ 4 PV-4 visual contract tests
+  - count of drawn module rectangles matches `Σ module_count`
+  - module bounding boxes don't intersect any obstruction halo
+    bounding box (PDF byte-level check by parsing reportlab output)
+  - module dimension callout present (text match for module model)
+  - Frisco fixture renders without error (snapshot file size > 50 KB)
+
+#### K.9.4 — Equipment callout engine (1 day)
+
+New module: `src/pvess_calc/dxf/equipment_callouts.py` (lives in `dxf/`
+because the same engine drives EE-1 + EE-2; PV-4 imports it via the
+permit/PDF layer)
+
+```python
+@dataclass
+class EquipmentMarker:
+    label: str              # "(N) MAIN SERVICE PANEL"
+    x_ft: float             # location on the site plan
+    y_ft: float
+    side: Literal["bottom", "right", "left", "top"]
+    # which side of the building the equipment lives on
+```
+
+Function: `render_callouts(c, markers, *, bbox)` — draws each
+marker's text outside the bbox, with an arrow pointing back to its
+(x_ft, y_ft) coordinate. Auto-routing: stack labels vertically on
+the chosen side, route arrows so they don't cross.
+
+Equipment markers come from a new schema block:
+
+```yaml
+service:
+  equipment_locations:    # NEW K.9 schema addition
+    msp:
+      x_ft: 40, y_ft: 2, side: "bottom"
+    inverter_1:
+      x_ft: 38, y_ft: 1, side: "bottom"
+    sub_panel_1:
+      x_ft: 42, y_ft: 2, side: "bottom"
+    # ...
+```
+
+Defaults: when the block is absent (every pre-K.9 yaml), no callouts
+render — PV-4 looks like K.9.3 alone, no regression.
+
+**Closing standards**:
+- ✅ 3 callout layout tests
+  - 5 markers on "bottom" → labels stacked vertically below bbox
+  - 2 markers on "right" → labels stacked to right
+  - mixed → arrows don't cross each other (intersection-free check)
+
+#### K.9.5 — Closing standards + docs (0.5 day)
+
+- New doctor check: `pv4_module_count_matches_yaml`
+  - Verify `Σ len(module_placements.values()) == pv_array.modules`
+  - Verify every face's placement count == that face's module_count
+    (after K.8.1 distribution)
+- 2 regression-bait tests for the doctor check
+- Update `CLAUDE.md` "阶段总览" — mark K.9 done with date
+- Move K.9 entry to `CHANGELOG.md` proper
+- Bump doctor count: 29 → 30 in CLAUDE.md
+
+#### K.9 master closing standards
+
+```
+✅ Total tests:        425 → ≥ 445 (+20 new)
+✅ pytest:             all green
+✅ pvess-doctor:       Phoenix + Austin 30/30 PASS
+✅ Frisco PV-4:        renders all 13 faces with real module rectangles
+✅ NO regression:      Austin (single-orientation legacy) PV-4 still works
+✅ Visual benchmark:   side-by-side w/ 2026-05-17 reference → 70%+ visual parity
+✅ Documentation:      ROADMAP K.9 → CHANGELOG; CLAUDE.md updated
+```
+
+---
+
+## Backlog (no committed timing)
+
+### K.8.2 — Value-weighted orientation derate (TX afternoon-peak / TOU) (2 days) ✅ DONE 2026-05-17
+
+**Why**: K.8's Sandia derate table measures **annual kWh** — south =
+100%, west = 86%. Mathematically correct for "total electrons over
+the year" but the wrong yardstick for the TX market reality
+(2026-05-17 SW-quadrant correction):
+
+  * **PV-only + default REP** (~0.5× buyback): a kWh self-consumed
+    during the 2-8 PM AC peak is worth ~$0.165 (full retail). A kWh
+    exported at 11 AM is worth ~$0.083 (half retail). **West-facing
+    kWh ≈ 2× the value of east-facing kWh** even though the Sandia
+    derate ranks them equal.
+  * **PV-only + 1:1 REP** (TXU / GME): annual kWh count is equal-valued,
+    BUT west still wins on the qualitative "my roof produces when I'm
+    using power" homeowner experience.
+  * **CA NEM 3.0**: extreme version of the same logic — ACC tariff
+    pays ~0.27× retail mid-day vs ~0.80× retail peak. SW-quadrant
+    advantage is even larger there.
+
+For Frisco specifically, the current workaround is to **manually
+drop East faces from yaml** even though their Sandia derate (~80%)
+looks "good enough." K.8.2 should automate this — when the algorithm
+picks the highest-value faces, it should weight by time-of-day value
+not just annual kWh.
+
+**Scope**:
+
+#### K.8.2.1 — Hourly production model per face (0.5 day)
+
+Replace single-number `orientation_derate` with hourly production
+profile per face:
+
+```python
+def hourly_production_profile(azimuth_deg, pitch_deg, lat) -> list[float]:
+    """Returns 8760-length list (hours per year) or 24-length avg-day
+    list, normalized to 1.0 = south-facing latitude-tilt at solar noon.
+    Used to weight by hourly export price OR self-consumption value."""
+```
+
+Implementation: clear-sky model with diffuse + direct components, lat-
+adjusted; simpler than full PVWatts but captures the AM-vs-PM tilt
+that the Sandia annual table flattens.
+
+#### K.8.2.2 — Hourly value model (TOU + REP buyback) (0.5 day)
+
+```python
+def hourly_value_factor(rep_buyback_ratio, self_consumption_pattern) -> list[float]:
+    """Hourly multiplier on production. Self-consumed kWh = 1.0; exported
+    kWh = rep_buyback_ratio. Returns 24 floats (avg weekday DFW pattern).
+    Future: per-hour TOU tariff lookup for CA EV2-A, EV-A rates."""
+```
+
+DFW typical weekday self-consumption pattern: high 2-9 PM (AC + cooking),
+medium 6-9 AM (morning routine), low overnight + midday-empty-house.
+
+#### K.8.2.3 — Value-weighted face score (0.5 day)
+
+```python
+class FaceProduction:
+    annual_production_kwh: float        # K.8 (existing, total energy)
+    annual_value_usd: float              # K.8.2 (NEW, $-weighted)
+    value_weighted_derate: float         # K.8.2 (NEW, vs ideal face)
+```
+
+K.8.1 LRM auto-distribute switches from area-proportional to
+`value_weighted_derate × area` proportional. K.4.6.5 3-tier table
+unchanged (PV array still identical across tiers).
+
+#### K.8.2.4 — Doctor `face_value_score_distinguishes_east_west` (0.5 day)
+
+New check that catches the "annual-kWh-only" regression: synthesize
+a 14-face roof with equal areas; if East and West faces score
+identically under K.8.2's value weighting, the hourly model is broken
+(should be ~30 % spread). 4 new tests + CHANGELOG.
+
+**Closing standards**: 460 → ≥ 470 tests; doctor 30 → 31; Frisco
+re-runs without manual yaml face-drop; East faces auto-fall to the
+bottom of the priority list when REP buyback ≤ 0.7.
+
+---
+
+### K.10 — String-level layout + EE-1 string overlay (3 days)
+- Group `ModuleInstance` into strings (per inverter MPPT)
+- Color-code each string in PV-4 + EE-1
+- Wire to NEC 690.7 Voc-cold check per-string (already in calc engine)
+- String balance heuristic: keep strings within ±2 modules
+
+### K.11 — Wire trunk auto-routing ✅ DONE 2026-05-17
+
+Replaced the manual `wire_lengths` yaml block (6 hand-typed numbers,
+50 ft default) with computed lengths from real 2D site geometry.
+
+Schema: 3 additive blocks (`RoofSection.site_anchor`,
+`RoofSection.roof_penetration`, `Site.equipment_locations`). Algorithm:
+Manhattan distance for the 5 segments (A·PV source, B·DC home run,
+C·INV→AC disc, D·AC disc→MSP via sub-panel chain, E·ESS→INV).
+EE-4 overlay: orange dashed conduit polyline + equipment dots with
+labels when routing active. Doctor: `auto_routed_lengths_sane`
+catches frame/unit mismatches (>200 ft envelope).
+
++23 tests (20 unit + 3 doctor). Tests 553 → 576. Doctor 37 → 38.
+Legacy yamls bit-identical to pre-K.11 (routed=False keeps manual
+`wire_lengths`).
+
+K.11+ future scope (NOT in this phase):
+  * True L-shaped / convex-hull routing optimiser (current Manhattan
+    over-estimates by 5-10 %)
+  * Multi-attic-drop installs (current code uses one drop point)
+  * Per-string trunk separation (current code lumps all strings into
+    one B-segment average)
+
+### Phase H — NEC 690.11 DC AFCI + SPD + Conduit fill (already in CLAUDE.md)
+- DC arc-fault detector inclusion at inverter
+- 230.67 SPD requirement (CA / FL effective 2020+)
+- Chapter 9 Table 1 conduit fill (40 % multi-conductor)
+- Annex C conduit diameter lookup
+- Connects to K.11 trunk routing
+
+### Phase I — Real regional rules (already in CLAUDE.md)
+- CA Title 24 Part 6 2022 cycle (large-eave setback, ESS disclosure)
+- HI Rule 14H + CSS / Smart Export
+- TX Oncor SOP rebate workflow (auto-fill application from yaml)
+- NYC LL97 / FDNY indoor ESS corridor
+
+### K-future — UX surface (no estimate)
+- Web preview server (`pvess serve` → FastAPI + static front-end)
+- VS Code extension (yaml schema validation + inline preview)
+- Real wizard CLI replacing yaml hand-edit (Aurora-style flow)
+- Multi-language: lift `nec/` to `code/` to support IEC + metric
+
+---
+
+## Done
+
+Past K-phases live in `CHANGELOG.md`. Latest:
+
+- **2026-05-16**: K.3c + K.8 + K.8.1 + roof-vis (analytical + satellite)
+- **2026-05-15**: K.8 per-face derate
+- **2026-05-14**: K.7 unified CLI + 3-version NEC dispatch
+- **2026-05-13**: K.6 visual polish
+- See `CHANGELOG.md` for the full history.

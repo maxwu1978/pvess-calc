@@ -1,0 +1,37 @@
+name: City of Austin, TX
+region: Travis County, Texas
+required_sheets:
+- cover
+- ee-1
+- ee-2
+- ee-3
+- ee-4
+- ee-5
+- pv-4
+- pv-5
+- pv-6
+- notes
+- labels
+label_set:
+- 690.13(B)
+- '690.14'
+- '690.53'
+- 690.56(C)
+- '705.10'
+- '705.11'
+- '706.7'
+- 690.31(D)
+inspector_checklist:
+- Roof attachment per IRC 802.10 (Austin amendment)
+- "PV system access \u2014 18\" setback from ridge & eaves (IFC 1204.3.1)"
+- AC disconnect within sight of MSP
+- ESS disconnect within 3 ft of ESS unit (NEC 706.7)
+- GEC continuous from MSP to ground rod
+form_blanks:
+- Austin Energy PV Interconnection Application
+- City of Austin Building Permit PR-1234
+notes: 'Austin Energy requires a separate interconnection application alongside the
+
+  building permit. Net metering is value-of-solar credit, not 1:1 retail.
+
+  '

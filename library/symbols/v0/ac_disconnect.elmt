@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definition link_type="simple" hotspot_x="25" hotspot_y="25" version="0.8" type="element" width="50" height="50">
+  <names>
+    <name lang="en">AC Disconnect</name>
+    <name lang="zh">AC 隔离开关</name>
+  </names>
+  <kindInformations>
+    <kindInformation name="type">ac_disconnect</kindInformation>
+  </kindInformations>
+  <elementInformations>
+    <elementInformation name="label" show="0">AC-DISC-1</elementInformation>
+    <elementInformation name="rating_a" show="0"></elementInformation>
+  </elementInformations>
+  <description>
+    <rect x="-25" y="-25" width="50" height="50" antialias="false" style="line-style:normal;line-weight:thin;filling:none;color:black"/>
+    <line x1="-15" y1="-5" x2="15" y2="-15" antialias="false" style="line-style:normal;line-weight:thin;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none"/>
+    <text x="-12" y="12" text="AC" rotation="0" size="9" font="Sans Serif,9,-1,5,75,0,0,0,0,0"/>
+    <terminal x="-25" y="-10" orientation="w" name="IN" type="Generic"/>
+    <terminal x="25" y="-10" orientation="e" name="OUT" type="Generic"/>
+    <terminal x="0" y="25" orientation="s" name="GND" type="Generic"/>
+    <dynamic_text x="-25" y="27" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" frame="false" text_width="50" font="Sans Serif,9,-1,5,75,0,0,0,0,0" text_from="ElementInfo">
+      <info_name>label</info_name>
+    </dynamic_text>
+  </description>
+</definition>

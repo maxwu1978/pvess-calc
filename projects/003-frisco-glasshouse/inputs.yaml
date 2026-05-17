@@ -1,0 +1,238 @@
+project:
+  id: "003-frisco-glasshouse"
+  name: "15 kW PV-only Residence (Megarevo 11 kW + GME 1:1)"
+  location: "Frisco, TX"
+  ahj: "City of Frisco Building Inspection"
+  nec_edition: "2020"
+  client_name: "Glasshouse Walk Residence"
+  site_address: "7652 Glasshouse Walk, Frisco TX 75035"
+  coordinates: "33.141418, -96.801258"
+  apn: "TODO: Collin CAD lookup (collincad.org)"
+  utility: "Oncor Electric Delivery"
+  drawn_by: "WQX"
+  revision: "B"
+  initial_design_date: "2026-05-17"
+  # K.4.6.3: real installer BOM costs (DFW Chinese-installer stack).
+  # Replaces the NREL Q1-2026 benchmark ($3.50/W + $950/kWh) which
+  # overstates this project's actual cost by ~30%. With this block
+  # the customer-PDF payback reflects the real quote.
+  installer_cost_overrides:
+    pv_turnkey_usd_per_w: 2.40       # modules + racking + labor + permit + soft, NO inverter
+    inverter_ref: "megarevo_r11klna" # $2,000 wholesale × 1 inverter = $2,000
+    # battery_ref omitted — PV-only project (no battery cost added)
+
+design_engineer:
+  firm: "pvess-calc internal review"
+  address: "TX"
+  contact_email: "design@example.com"
+  contact_phone: "(469) 555-0100"
+  firm_number: "TX-PE-PLACEHOLDER"
+
+installer:
+  company: "TBD"
+  address: "DFW, TX"
+
+# 2026-05-17 v2 sales config: 14.9 kW PV-only on Green Mountain 1:1 buyback REP.
+# 36 modules × 415 W = 14.94 kW DC. Schema enforces balanced strings:
+#   4 strings × 9 modules = 36
+# NEC 690.7(A) cold-Voc:
+#   Voc_cold = 49.8 × (1 + 0.0027 × (25 - (-7))) = 54.1 V / module
+#   9 × 54.1 = 487 V < 600 V residential limit ✓ (190 V margin)
+# DC/AC ratio: 14.94 kW / 11 kW = 1.36 (Megarevo R11KLNA max overload ~1.5)
+# Skipped 5 north-facing roof faces (derate 30-49%) — see site.roof_sections.
+pv_array:
+  modules: 36
+  strings: 4
+  modules_per_string: 9
+  module:
+    brand: "Talesun"
+    model: "TP7G54M 415"
+    power_w: 415
+    voc_stc: 49.8
+    isc_stc: 10.65
+    voc_temp_coeff_pct_per_c: -0.27
+    isc_temp_coeff_pct_per_c: 0.040
+  ashrae_2pct_min_c: -7.0
+  temp_min_c: -7.0
+  temp_max_c: 38.0
+
+# PV-only — no battery (TX market default: backup is a separate decision from
+# energy economics; Smart Meter Texas + GME 1:1 REP plan delivers full ROI
+# without storage). All battery fields kept for schema validity but
+# quantity=0 zeros out the ESS branch end-to-end (backup hours, install
+# checks, ESS OCPD, GES bonding — all degrade gracefully).
+#
+# To add backup: bump quantity to 1 (16 kWh in-house ≈ +$4,200 post-ITC ≈
+# +$35/mo over 10 yr → 9.5 yr payback vs 8.2 yr PV-only).
+battery:
+  brand: "—"
+  model: "(no battery — grid-tied PV-only)"
+  quantity: 0
+  nominal_voltage: 400.0
+  capacity_kwh_each: 0.0
+  install_location: "unknown"
+
+# Single Megarevo R11KLNA 11 kW hybrid inverter. DC/AC ratio 14.1/11 = 1.28
+# (industry sweet-spot 1.1-1.3). 11 kW continuous AC = 45.8 A @ 240 V split.
+# When a battery is added later, this same inverter handles HV battery on
+# the DC bus alongside the PV strings — no second AC-coupled inverter needed.
+inverter:
+  brand: "Megarevo"
+  model: "R11KLNA"
+  ac_output_v: 240
+  ac_output_a: 45.8
+  quantity: 1
+  per_unit: false
+
+optimizer:
+  ref: "tigo_ts4_a_o"
+
+service:
+  main_panel_a: 200
+  busbar_a: 200
+  busbar_source: "nameplate"
+  voltage: "120/240 split-phase"
+  interconnection_methods:
+    - "120%_rule"
+    - "supply_side_tap"
+  # K.2.5: MSP slot accounting (Frisco subdivision typical 30 slots,
+  # ~26 used by existing breakers).
+  msp_available_slots: 30
+  msp_used_slots: 26
+  existing_solar_breaker_a_msp: 0
+  sub_panels:
+    - name: "Critical Loads Sub"
+      role: "critical_loads"
+      rating_a: 125
+      busbar_a: 125
+      location: "Garage (downstream of PW3 backup gateway)"
+      backfeed_breaker_a: 100
+      available_slots: 24
+      used_slots: 12
+      service_rated: false
+      enclosure_rating: "NEMA 1"
+      distance_to_msp_ft: 12.0
+  # K.5: GES — typical Frisco 2003-build, 2 rods + Ufer.
+  grounding_electrode_system:
+    rods:
+      - length_ft: 8
+        diameter_in: 0.625
+        material: "copper_clad_steel"
+        location: "SE corner near MSP"
+      - length_ft: 8
+        location: "6 ft NW of rod #1"
+    ufer:
+      length_ft: 20
+      conductor: "rebar"
+      conductor_size: "1/2 in rebar"
+      location: "south foundation"
+    gec_main_size_awg: "4"
+    bonded_to_neutral_at_service: "yes"
+
+loads:
+  critical_subpanel_a: 100
+  whole_home_backup: false
+  # Smart Meter Texas 12-month export (placeholder pattern; real data
+  # would come from the homeowner's CSV download).
+  monthly_kwh: [1100, 1000, 950, 1050, 1400, 1850,
+                2100, 2150, 1900, 1300, 1000, 1050]
+  hvac_type: "heat_pump"
+  has_ev: false
+  planned_ev: true
+  planned_electrification: false
+  # 2026-05-17 v4 (K.4.6.6 SMT semantics): customer is on Green Mountain
+  # Renewable Rewards — TRUE 1:1 buyback. With Smart Meter Texas net
+  # metering, every kWh produced offsets the bill, regardless of timing
+  # (daytime export = nighttime credit). The `self_consumption_fraction`
+  # field is mathematically irrelevant on 1:1 plans (effective_rate
+  # collapses to retail × 1.0). Set to 0.30 here just to document the
+  # passive baseline — it's NOT what the savings number actually uses.
+  #
+  # IMPORTANT for the sales conversation: if this homeowner ever
+  # switches to a default Oncor-area REP (~0.5× buyback), payback
+  # nearly doubles. doctor check `tx_rep_plan_explicitly_chosen` will
+  # flag any TX project still on generic `1to1_nem`. To model a
+  # plan not in our preset list, use `rep_buyback_ratio: 0.85` +
+  # `rep_plan_name: "Custom REP"`.
+  export_tariff_model: "tx_green_mountain"
+  self_consumption_fraction: 0.30
+  rep_plan_name: "Green Mountain Renewable Rewards (1:1 retail, SMT NEM)"
+
+  # K.4.6.5 — 3-tier quote table. Renders in the customer PDF
+  # alongside the base PV-only config. All three tiers share the
+  # 15 kW array (same monthly savings); the upgrade is a backup
+  # decision (none → 14h critical → 24h whole-home), not a savings
+  # decision. Sales narrative: "battery is backup cost, not savings."
+  backup_options:
+    - name: "+ 16 kWh in-house battery"
+      battery_ref: "inhouse_16kwh_hv"
+      quantity: 1
+    - name: "+ 20 kWh Growatt HV stack"
+      battery_ref: "growatt_apx_20kwh"
+      quantity: 1
+
+  # K.8.2: opt-in value-weighted module distribution. On the GME 1:1
+  # plan this flag is mathematically a no-op (value derate collapses
+  # to Sandia annual derate → same distribution as K.8.1 area-only).
+  # BUT setting it documents the design intent + future-proofs the
+  # project: if the homeowner ever switches to a sub-1:1 REP, the
+  # algorithm auto-shifts modules from East-facing faces to West/SW
+  # without yaml manual face-pruning.
+  use_value_weighted_distribution: true
+
+site:
+  urban_density: "suburban"
+  roof_pitch_deg: 35
+  array_azimuth_deg: 180
+  # K.3c: roof_sections injected from Google Solar buildingInsights for
+  # 33.141418, -96.801258 (Frisco, Collin Cty TX). Imagery 2024-02-06 HIGH
+  # confidence.
+  #
+  # 2026-05-17 v3 installation strategy update — concentrate on SW quadrant:
+  # Sandia annual-kWh derate ranks South (100%) > West (86%) > East (86%).
+  # BUT the TX market reality (PV-only + REP buyback variability) makes
+  # WEST-facing kWh worth more than EAST-facing kWh of equal annual count:
+  #   * West produces 2-6 PM peak (AC running, self-consumed at 1.0× retail)
+  #   * East produces AM (no load, exported at 0.5× retail on default REP)
+  # → For this installer's TX market: prefer South + West (SW quadrant),
+  # skip East faces even though annual derate looks similar.
+  # 2026-05-17 v2 (superseded): kept East faces, blended 86.1%
+  # 2026-05-17 v3 (current):    drop East, blended ~91% AND $-per-kWh better
+  #
+  # 13-face → 5-face concentrated layout: 3 South + 2 West.
+  # Future K-phase: implement value-weighted derate so the algorithm does
+  # this S+W-preference automatically; for now distribution is yaml-pinned.
+  roof_sections:
+    - {name: "South Roof",     roof_type: "Comp Shingle", pitch_deg: 44.3, azimuth_deg: 178.6, width_ft: 25.5, height_ft: 25.5, module_count: 0, shape: "rect"}
+    - {name: "South Roof #2",  roof_type: "Comp Shingle", pitch_deg: 34.5, azimuth_deg: 179.7, width_ft: 20.3, height_ft: 20.3, module_count: 0, shape: "rect"}
+    - {name: "West Roof",      roof_type: "Comp Shingle", pitch_deg: 33.0, azimuth_deg: 268.1, width_ft: 19.7, height_ft: 19.7, module_count: 0, shape: "rect"}
+    - {name: "West Roof #2",   roof_type: "Comp Shingle", pitch_deg: 36.7, azimuth_deg: 272.1, width_ft: 13.2, height_ft: 13.2, module_count: 0, shape: "rect"}
+    - {name: "South Roof #3",  roof_type: "Comp Shingle", pitch_deg: 54.9, azimuth_deg: 182.0, width_ft: 12.3, height_ft: 12.3, module_count: 0, shape: "rect"}
+  # Dropped faces (off-quadrant — not worth rack cost OR value-weighted bad):
+  #   North Roof (50%)   · North Roof #2 (51%) · North Roof #3 (31%)
+  #   North Roof #4 (40%) · Northwest Roof (67%, borderline)
+  #   East Roof (81%)    · East Roof #2 (77%)  · East Roof #3 (75%)
+  #   → East faces dropped for VALUE-weighted reasons even though Sandia
+  #   annual derate ≥70%; AM production is mostly exported at 0.5× retail
+  #   on default REP plans, while West kWh self-consume the afternoon AC
+  #   load at 1.0× retail.
+  mounting:
+    rail_system: "IronRidge XR100"
+    flashing: "IronRidge FlashFoot 2"
+    max_x_spacing_in: 48
+    max_y_spacing_in: 32
+    max_cantilever_in: 18
+    fastener: "5/16\" lag screw, 3\" embedment"
+
+wire_lengths:
+  pv_string_one_way_ft: 70
+  pv_to_combiner_ft: 20
+  combiner_to_inverter_ft: 25
+  inverter_to_ac_disc_ft: 8
+  ac_disc_to_msp_ft: 15
+  ess_to_inverter_ft: 5
+
+routing:
+  ambient_temp_c: 50               # DFW attic summer max
+  pv_conduit_fill_count: 8
+  ac_conduit_fill_count: 4

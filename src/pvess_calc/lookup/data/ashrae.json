@@ -1,0 +1,47 @@
+{
+  "_README": "ASHRAE Handbook of Fundamentals Chapter 14 — 2% extreme min/max design temperatures (°C) for residential PV cold-Voc / hot-attic sizing. Hand-curated subset; expand as new project sites surface. Keys are 'City, ST' lowercase exact match.",
+  "phoenix, az":     {"min_c": -2.0, "max_c": 43.5, "city_official": "Phoenix"},
+  "tucson, az":      {"min_c": -1.0, "max_c": 41.0, "city_official": "Tucson"},
+  "scottsdale, az":  {"min_c": -2.0, "max_c": 43.0, "city_official": "Scottsdale"},
+  "mesa, az":        {"min_c": -2.0, "max_c": 43.0, "city_official": "Mesa"},
+
+  "los angeles, ca": {"min_c":  4.0, "max_c": 34.0, "city_official": "Los Angeles"},
+  "san diego, ca":   {"min_c":  6.0, "max_c": 30.0, "city_official": "San Diego"},
+  "san francisco, ca": {"min_c": 4.0, "max_c": 28.0, "city_official": "San Francisco"},
+  "san jose, ca":    {"min_c":  3.0, "max_c": 34.0, "city_official": "San Jose"},
+  "sacramento, ca":  {"min_c":  1.0, "max_c": 38.0, "city_official": "Sacramento"},
+
+  "denver, co":      {"min_c":-19.0, "max_c": 35.0, "city_official": "Denver"},
+  "colorado springs, co": {"min_c":-18.0, "max_c": 33.0, "city_official": "Colorado Springs"},
+
+  "miami, fl":       {"min_c":  7.0, "max_c": 34.0, "city_official": "Miami"},
+  "orlando, fl":     {"min_c":  3.0, "max_c": 34.0, "city_official": "Orlando"},
+  "tampa, fl":       {"min_c":  5.0, "max_c": 34.0, "city_official": "Tampa"},
+  "jacksonville, fl": {"min_c": 1.0, "max_c": 34.0, "city_official": "Jacksonville"},
+
+  "atlanta, ga":     {"min_c": -7.0, "max_c": 34.0, "city_official": "Atlanta"},
+  "honolulu, hi":    {"min_c": 17.0, "max_c": 32.0, "city_official": "Honolulu"},
+
+  "chicago, il":     {"min_c":-19.0, "max_c": 33.0, "city_official": "Chicago"},
+  "boston, ma":      {"min_c":-14.0, "max_c": 32.0, "city_official": "Boston"},
+  "detroit, mi":     {"min_c":-19.0, "max_c": 32.0, "city_official": "Detroit"},
+  "minneapolis, mn": {"min_c":-26.0, "max_c": 32.0, "city_official": "Minneapolis"},
+
+  "new york, ny":    {"min_c":-12.0, "max_c": 33.0, "city_official": "New York"},
+  "brooklyn, ny":    {"min_c":-12.0, "max_c": 33.0, "city_official": "Brooklyn"},
+
+  "portland, or":    {"min_c": -6.0, "max_c": 33.0, "city_official": "Portland"},
+  "philadelphia, pa": {"min_c":-12.0, "max_c": 33.0, "city_official": "Philadelphia"},
+  "pittsburgh, pa":  {"min_c":-16.0, "max_c": 31.0, "city_official": "Pittsburgh"},
+
+  "austin, tx":      {"min_c": -6.0, "max_c": 38.0, "city_official": "Austin"},
+  "dallas, tx":      {"min_c": -8.0, "max_c": 38.0, "city_official": "Dallas"},
+  "houston, tx":     {"min_c": -3.0, "max_c": 36.0, "city_official": "Houston"},
+  "san antonio, tx": {"min_c": -3.0, "max_c": 38.0, "city_official": "San Antonio"},
+  "fort worth, tx":  {"min_c": -8.0, "max_c": 38.0, "city_official": "Fort Worth"},
+  "lewisville, tx":  {"min_c": -8.0, "max_c": 38.0, "city_official": "Lewisville"},
+
+  "salt lake city, ut": {"min_c":-17.0, "max_c": 36.0, "city_official": "Salt Lake City"},
+  "seattle, wa":     {"min_c": -7.0, "max_c": 31.0, "city_official": "Seattle"},
+  "spokane, wa":     {"min_c":-19.0, "max_c": 34.0, "city_official": "Spokane"}
+}

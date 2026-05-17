@@ -1,0 +1,100 @@
+<project title="Phase 1 Element Demo" version="0.90">
+    <properties>
+        <property show="1" name="savedfilename">demo-elements</property>
+    </properties>
+    <newdiagrams>
+        <border rowsize="80" rows="10" displaycols="true" cols="20" colsize="60" displayrows="true"/>
+        <inset displayAt="bottom" folio="%id/%total" indexrev="" plant="" date="null" filename="" author="" locmach="" title="" version="" auto_page_num=""/>
+        <conductors condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" conductor_section="" text_color="#000000" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" num="" type="multi"/>
+        <report label="%f-%l%c"/>
+        <xrefs>
+            <xref slave_label="(%f-%l%c)" displayhas="contacts" offset="0" delayprefix="" showpowerctc="false" snapto="bottom" powerprefix="" xrefpos="AlignBottom" type="coil" master_label="%f-%l%c" switchprefix=""/>
+            <xref slave_label="(%f-%l%c)" displayhas="contacts" offset="0" delayprefix="" showpowerctc="false" snapto="label" powerprefix="" xrefpos="AlignBottom" type="protection" master_label="%f-%l%c" switchprefix=""/>
+            <xref slave_label="(%f-%l%c)" displayhas="contacts" offset="0" delayprefix="" showpowerctc="false" snapto="label" powerprefix="" xrefpos="AlignBottom" type="commutator" master_label="%f-%l%c" switchprefix=""/>
+        </xrefs>
+        <conductors_autonums freeze_new_conductors="false" current_autonum=""/>
+        <folio_autonums/>
+        <element_autonums freeze_new_elements="false" current_autonum=""/>
+    </newdiagrams>
+    <diagram freezeNewElement="false" cols="20" folio="%id/%total" version="0.80" indexrev="" date="null" author="pvess-calc" height="800" freezeNewConductor="false" title="Element Spike" auto_page_num="" displaycols="true" filename="demo-elements" colsize="60" order="1" displayrows="true" locmach="" rows="10" plant="" rowsize="80" displayAt="bottom">
+        <defaultconductor condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" conductor_section="" text_color="#000000" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" num="" type="multi"/>
+        <elements>
+            <element x="400" y="200" z="10" orientation="0" type="embed://import/inverter.elmt" prefix="" freezeLabel="false" uuid="{ddbf7247-5f5f-46c9-85ef-e14359f643bc}">
+                <terminals>
+                    <terminal x="-21" y="-10" orientation="3" id="0"/>
+                <terminal x="-21" y="10" orientation="3" id="1"/>
+                <terminal x="21" y="0" orientation="1" id="2"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">INV-1</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="30" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{d04a294d-f0a4-448a-a74f-5b8b20aaa3bd}" text_from="ElementInfo">
+                        <text>INV-1</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+            <element x="200" y="200" z="10" orientation="0" type="embed://import/pv_array.elmt" prefix="" freezeLabel="false" uuid="{b6432496-fb89-4193-8a72-106f84b547fb}">
+                <terminals>
+                    <terminal x="21" y="-10" orientation="1" id="3"/>
+                <terminal x="21" y="10" orientation="1" id="4"/>
+                </terminals>
+                <inputs/>
+                <elementInformations>
+                    <elementInformation show="1" name="label">PV-1</elementInformation>
+                </elementInformations>
+                <dynamic_texts>
+                    <dynamic_elmt_text x="-25" y="30" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" font="MS Shell Dlg 2,9,-1,5,75,0,0,0,0,0,Normal" text_width="-1" keep_visual_rotation="true" frame="false" uuid="{a2bd98b4-8e25-4e59-a377-a65f8af078bd}" text_from="ElementInfo">
+                        <text>PV-1</text>
+                        <info_name>label</info_name>
+                    </dynamic_elmt_text>
+                </dynamic_texts>
+                <texts_groups/>
+            </element>
+        </elements>
+        <conductors>
+            <conductor x="0" y="0" terminal1="3" terminal2="0" type="multi" condsize="1" cable="" onetextperfolio="0" vertical-alignment="AlignRight" horizrotatetext="0" bicolor="false" bus="" dash-size="1" numsize="9" horizontal-alignment="AlignBottom" function="" conductor_color="" text_color="#000000" conductor_section="" color2="#000000" tension_protocol="" displaytext="0" formula="" vertirotatetext="0" freezeLabel="false" num="">
+                <sequentialNumbers/>
+            </conductor>
+        </conductors>
+    </diagram>
+    <collection>
+        <category name="import">
+            <names>
+                <name lang="en">Imported elements</name>
+            </names>
+      <element name="pv_array.elmt">
+        <definition width="50" height="50" version="0.3" hotspot_x="25" hotspot_y="25" type="element">
+          <uuid uuid="{e827824f-4197-4e14-86c9-b648979a4af6}"/>
+          <names><name lang="en">PV Array</name></names>
+          <description>
+            <rect x="-25" y="-25" width="50" height="50" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <line x1="-25" y1="-25" x2="25" y2="25" style="line-style:normal;line-weight:normal;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none" antialias="false"/>
+            <line x1="25" y1="-25" x2="-25" y2="25" style="line-style:normal;line-weight:normal;filling:none;color:black" length1="1.5" length2="1.5" end1="none" end2="none" antialias="false"/>
+            <input x="-9" y="-3" size="10" text="PV" tagg="none"/>
+            <input x="-25" y="30" size="9" text="_" tagg="label"/>
+            <terminal x="25" y="-10" name="DC+" orientation="e"/>
+            <terminal x="25" y="10" name="DC-" orientation="e"/>
+          </description>
+        </definition>
+      </element>
+      <element name="inverter.elmt">
+        <definition width="50" height="50" version="0.3" hotspot_x="25" hotspot_y="25" type="element">
+          <uuid uuid="{f8ddcca2-28f5-493a-9d87-9b4047fd8e41}"/>
+          <names><name lang="en">Inverter</name></names>
+          <description>
+            <rect x="-25" y="-25" width="50" height="50" style="line-style:normal;line-weight:normal;filling:none;color:black" antialias="false"/>
+            <input x="-12" y="-3" size="10" text="INV" tagg="none"/>
+            <input x="-25" y="30" size="9" text="_" tagg="label"/>
+            <terminal x="-25" y="-10" name="DC_IN+" orientation="w"/>
+            <terminal x="-25" y="10" name="DC_IN-" orientation="w"/>
+            <terminal x="25" y="0" name="AC_OUT" orientation="e"/>
+          </description>
+        </definition>
+      </element>
+        </category>
+    </collection>
+</project>

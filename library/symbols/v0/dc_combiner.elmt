@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definition link_type="simple" hotspot_x="30" hotspot_y="30" version="0.8" type="element" width="60" height="60">
+  <names>
+    <name lang="en">DC Combiner / Disconnect</name>
+    <name lang="zh">DC 组合器/隔离</name>
+  </names>
+  <kindInformations>
+    <kindInformation name="type">dc_combiner</kindInformation>
+  </kindInformations>
+  <elementInformations>
+    <elementInformation name="label" show="0">DC-COMB-1</elementInformation>
+    <elementInformation name="ocpd_rating" show="0"></elementInformation>
+  </elementInformations>
+  <description>
+    <rect x="-30" y="-30" width="60" height="60" antialias="false" style="line-style:normal;line-weight:thin;filling:none;color:black"/>
+    <text x="-22" y="-8" text="DC COMB" rotation="0" size="8" font="Sans Serif,8,-1,5,75,0,0,0,0,0"/>
+    <terminal x="-30" y="-15" orientation="w" name="IN+" type="Generic"/>
+    <terminal x="-30" y="15" orientation="w" name="IN-" type="Generic"/>
+    <terminal x="30" y="-15" orientation="e" name="OUT+" type="Generic"/>
+    <terminal x="30" y="15" orientation="e" name="OUT-" type="Generic"/>
+    <terminal x="0" y="30" orientation="s" name="GND" type="Generic"/>
+    <dynamic_text x="-30" y="32" rotation="0" Halignment="AlignLeft" Valignment="AlignTop" frame="false" text_width="60" font="Sans Serif,9,-1,5,75,0,0,0,0,0" text_from="ElementInfo">
+      <info_name>label</info_name>
+    </dynamic_text>
+  </description>
+</definition>

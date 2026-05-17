@@ -1,0 +1,277 @@
+"""Site survey checklist PDF builder.
+
+Renders the printable form that a field technician carries to the
+property. Layout:
+
+    Page 1 — Cover (project meta + instructions overview)
+    Page 2+ — One block per section (admin / electrical / roof /
+              routing / climate), each row is a label + blank fill
+              line + explanation + where-to-find + yaml_path tag.
+
+The data list `SITE_FIELDS` is the single source of truth — see
+`field_specs.py`. Adding a new field auto-adds a row here.
+"""
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import (
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+
+from .field_specs import (
+    SECTION_TITLES,
+    SITE_FIELDS,
+    FieldSpec,
+    fields_for_section,
+)
+
+
+# ─── Type scale (pt) ─────────────────────────────────────────────────────────
+PT_PAGE_TITLE  = 22
+PT_SUBTITLE    = 13
+PT_SECTION     = 14
+PT_LABEL       = 11
+PT_HINT        = 9
+PT_PATH        = 6.0  # yaml_path tag (Courier; column 2.30" fits ≤45-char paths)
+PT_INSTRUCTION = 10
+
+
+def render_checklist(out_path: Path) -> None:
+    """Build the checklist PDF and save it to `out_path`."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    doc = SimpleDocTemplate(
+        str(out_path),
+        pagesize=letter,
+        topMargin=0.5 * inch,
+        bottomMargin=0.5 * inch,
+        leftMargin=0.5 * inch,
+        rightMargin=0.5 * inch,
+        title="PV+ESS Site Survey Checklist",
+    )
+    doc.build(_build_story())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Story builders
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _build_story() -> list:
+    styles = _make_styles()
+    story: list = []
+
+    # ─── Cover page ─────────────────────────────────────────────────────────
+    story.append(Paragraph("PV + ESS · SITE SURVEY CHECKLIST", styles["page_title"]))
+    story.append(Spacer(1, 0.10 * inch))
+    story.append(Paragraph(
+        "Field-technician form for capturing every on-site measurement "
+        "the design engine needs to size conductors, OCPD, and "
+        "interconnection per NEC 2023.",
+        styles["subtitle"],
+    ))
+    story.append(Spacer(1, 0.35 * inch))
+
+    # Cover metadata block — blanks for the technician to fill at the
+    # very top so the resulting paperwork is self-identifying.
+    cover_data = [
+        ["Project ID:", "_" * 40],
+        ["Client name:", "_" * 40],
+        ["Site address:", "_" * 40],
+        ["Survey date:", "_" * 40 + f"   (default: {date.today():%Y-%m-%d})"],
+        ["Technician:", "_" * 40],
+    ]
+    cover_tbl = Table(cover_data, colWidths=[1.6 * inch, 5.0 * inch])
+    cover_tbl.setStyle(TableStyle([
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), PT_LABEL),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+    ]))
+    story.append(cover_tbl)
+    story.append(Spacer(1, 0.30 * inch))
+
+    # Brief instructions
+    instructions = [
+        "<b>1.</b> Fill in every blank you can determine on-site. Skip a "
+        "field only if you've confirmed it's not applicable.",
+        "<b>2.</b> Take photos of the MSP nameplate, sub-panels, roof faces, "
+        "and any equipment-placement walls. Reference photo numbers in "
+        "the margin.",
+        "<b>3.</b> Each row has a small <i>yaml_path</i> tag at the right — "
+        "the engineer transcribes your value into the project's "
+        "<tt>inputs.yaml</tt> at that path.",
+        "<b>4.</b> If a measurement is uncertain, write the value and add "
+        "\"<i>est.</i>\" — better than a blank.",
+    ]
+    for line in instructions:
+        story.append(Paragraph(line, styles["instruction"]))
+        story.append(Spacer(1, 0.06 * inch))
+    story.append(PageBreak())
+
+    # ─── Sections ───────────────────────────────────────────────────────────
+    # Render in the order SECTION_TITLES iterates. Each section opens with a
+    # banner; rows are stacked vertically.
+    for section_key, section_title in SECTION_TITLES.items():
+        story.extend(_section_block(section_key, section_title, styles))
+        # Hard pagebreak only when we're going from electrical → roof
+        # (gives the roof section its own page so the per-face rows have
+        # space for sketching).
+        if section_key == "electrical":
+            story.append(PageBreak())
+        elif section_key == "roof":
+            story.append(PageBreak())
+        else:
+            story.append(Spacer(1, 0.18 * inch))
+
+    # Footer note
+    story.append(Spacer(1, 0.30 * inch))
+    story.append(Paragraph(
+        "<i>Generated by pvess-site-checklist. Bring this form back to the "
+        "engineer; values get transcribed into projects/&lt;id&gt;/inputs.yaml.</i>",
+        styles["instruction"],
+    ))
+    return story
+
+
+def _section_block(
+    section_key: str, section_title: str, styles: dict[str, ParagraphStyle]
+) -> list:
+    items: list = []
+    # Section banner
+    banner = Table(
+        [[section_title]],
+        colWidths=[7.5 * inch],
+    )
+    banner.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1F5BD7")),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), PT_SECTION),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    items.append(banner)
+    items.append(Spacer(1, 0.10 * inch))
+
+    # Rows
+    for spec in fields_for_section(section_key):
+        items.append(_field_row(spec, styles))
+        items.append(Spacer(1, 0.08 * inch))
+    return items
+
+
+def _field_row(spec: FieldSpec, styles: dict[str, ParagraphStyle]) -> Table:
+    """One field row: label + fill blank + helper text + yaml_path."""
+    # Build the fill-blank cell content. Counts tuned so the underscore
+    # row doesn't wrap inside the 3.6" middle column at 11pt Helvetica
+    # (underscore ≈ 5.5 pt → ~65 chars fit; we leave headroom):
+    if spec.field_type == "choice":
+        fill_cell = "   ".join(f"☐ {c}" for c in spec.choices)
+    elif spec.field_type == "text":
+        fill_cell = "_" * 42        # ~3.1" of line
+    else:  # number
+        unit = f"  {spec.unit}" if spec.unit else ""
+        fill_cell = "_" * 16 + unit  # ~1.2" of line + unit suffix
+
+    # Helper text — merge explanation + where_to_find
+    hints = []
+    if spec.explanation:
+        hints.append(spec.explanation)
+    if spec.where_to_find:
+        hints.append(f"<i>Where:</i> {spec.where_to_find}")
+    hint_para = (
+        Paragraph(" · ".join(hints), styles["hint"]) if hints else Paragraph("", styles["hint"])
+    )
+
+    # Adaptive font size for the yaml_path tag. Each tier keeps the
+    # path on ONE line in the 2.30" column (Courier ≈ 0.6 × pt-size per
+    # char). The K.5 GES paths (`service.grounding_electrode_system.…`
+    # up to 60 chars) need the 4.0 pt tier — readable on print at 100%
+    # and crisp under any zoom. One-line is critical: doctor + tests
+    # grep for the path as a contiguous substring; reportlab mid-word
+    # wrap would break the contract.
+    path_len = len(spec.yaml_path)
+    if path_len <= 38:
+        path_pt = PT_PATH        # 6.0 pt — standard
+    elif path_len <= 50:
+        path_pt = 4.8            # K.2.5 sub_panels longer paths
+    else:
+        path_pt = 4.0            # K.5 GES very-long paths (up to ~62 chars)
+    yaml_tag = Paragraph(
+        f'<font face="Courier" size="{path_pt}">{spec.yaml_path}</font>',
+        styles["yaml_path"],
+    )
+
+    data = [
+        [Paragraph(f"<b>{spec.label}</b>", styles["label"]),
+         Paragraph(fill_cell, styles["fill"]),
+         yaml_tag],
+        ["", hint_para, ""],
+    ]
+    # Column widths (sum to 7.5" = page minus 0.5"+0.5" margins):
+    # yaml_path column needs ≥2.30" to hold the widest path
+    # "service.sub_panels[].existing_solar_breaker_a" (45 chars, K.2.5)
+    # at 6pt Courier (0.6 × 6 = 3.6 pt/char → 45 × 3.6 = 162 pt = 2.25")
+    # without mid-word wrap; fill+hint shrinks to compensate.
+    tbl = Table(data, colWidths=[2.10 * inch, 3.10 * inch, 2.30 * inch])
+    tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("SPAN", (0, 0), (0, 1)),   # label spans both rows
+        ("SPAN", (2, 0), (2, 1)),   # yaml_path tag spans both rows
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    return tbl
+
+
+def _make_styles() -> dict[str, ParagraphStyle]:
+    base = getSampleStyleSheet()
+    return {
+        "page_title": ParagraphStyle(
+            "page_title", parent=base["Title"],
+            fontSize=PT_PAGE_TITLE, leading=PT_PAGE_TITLE * 1.1,
+            alignment=1,  # center
+        ),
+        "subtitle": ParagraphStyle(
+            "subtitle", parent=base["Normal"],
+            fontSize=PT_SUBTITLE, leading=PT_SUBTITLE * 1.25,
+            alignment=1, textColor=colors.HexColor("#555"),
+        ),
+        "instruction": ParagraphStyle(
+            "instruction", parent=base["Normal"],
+            fontSize=PT_INSTRUCTION, leading=PT_INSTRUCTION * 1.35,
+        ),
+        "label": ParagraphStyle(
+            "label", parent=base["Normal"],
+            fontSize=PT_LABEL, leading=PT_LABEL * 1.25,
+        ),
+        "fill": ParagraphStyle(
+            "fill", parent=base["Normal"],
+            fontSize=PT_LABEL, leading=PT_LABEL * 1.25,
+            fontName="Helvetica",
+        ),
+        "hint": ParagraphStyle(
+            "hint", parent=base["Normal"],
+            fontSize=PT_HINT, leading=PT_HINT * 1.3,
+            textColor=colors.HexColor("#555"),
+        ),
+        "yaml_path": ParagraphStyle(
+            "yaml_path", parent=base["Normal"],
+            fontSize=PT_PATH, leading=PT_PATH * 1.2,
+            textColor=colors.HexColor("#888"),
+            alignment=2,  # right
+        ),
+    }

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pvess-calc"
+version = "0.1.0"
+description = "Parameter-driven NEC calculation + QET single-line-diagram injector for residential PV+ESS designs"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5",
+    "pyyaml>=6.0",
+    "lxml>=5.0",
+    "jinja2>=3.1",
+    "click>=8.1",
+    "reportlab>=4.0",
+    "ezdxf>=1.3",
+    "pypdf>=4.0",
+    "matplotlib>=3.8",
+    # K.3b: HTTP for online lookup providers (Mapbox geocoding, NREL PVWatts).
+    # Optional features — no API key means online providers gracefully miss.
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    # K.3b: mock HTTP responses in lookup provider tests.
+    "responses>=0.25",
+]
+docs = [
+    # Documentation site (Material for MkDocs). Same stack used by
+    # Pydantic / FastAPI / ezdxf. `mkdocs serve` for local preview;
+    # `mkdocs build` outputs site/ which a GitHub Action can deploy.
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+]
+
+[project.scripts]
+pvess-calc = "pvess_calc.cli:calc_cmd"
+pvess-render = "pvess_calc.cli:render_cmd"
+pvess-labels = "pvess_calc.cli:labels_cmd"
+pvess-dxf = "pvess_calc.cli:dxf_cmd"
+pvess-compare = "pvess_calc.cli:compare_cmd"
+pvess-permit = "pvess_calc.cli:permit_cmd"
+pvess-doctor = "pvess_calc.doctor:doctor_cmd"
+pvess-symbols-preview = "pvess_calc.cli:symbols_preview_cmd"
+pvess-site-checklist = "pvess_calc.cli:site_checklist_cmd"
+pvess-init = "pvess_calc.cli:init_cmd"
+pvess-lookup-check = "pvess_calc.cli:lookup_check_cmd"
+pvess-customer-summary = "pvess_calc.cli:customer_summary_cmd"
+# K.3c sidekick: address-only rooftop visualization.
+pvess-roof-vis = "pvess_calc.cli:roof_vis_cmd"
+# K.7: unified root CLI — `pvess <subcommand>` covers all the
+# legacy `pvess-*` commands plus 3 pipeline shortcuts. Old commands
+# remain registered above for backward compatibility.
+pvess = "pvess_calc.cli_root:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pvess_calc = ["report/templates/*.md.j2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+# Non-ASCII paths break editable .pth files on some Python builds; resolve src/
+# explicitly so pytest works regardless of where the project lives.
+pythonpath = ["src"]

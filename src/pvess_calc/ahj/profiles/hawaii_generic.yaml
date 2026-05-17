@@ -1,0 +1,37 @@
+name: Hawaii (Rule 14H)
+region: Hawaiian Electric Companies service territory
+required_sheets:
+- cover
+- ee-1
+- ee-2
+- ee-3
+- ee-4
+- ee-5
+- pv-4
+- pv-5
+- pv-6
+- notes
+- labels
+label_set:
+- 690.13(B)
+- '690.14'
+- '690.53'
+- 690.56(C)
+- '705.10'
+- '705.11'
+- '706.7'
+inspector_checklist:
+- HECO Rule 14H interconnection screening passed
+- Smart inverter Rule 14H Schedule M compliance (Volt/VAR, Volt/Watt)
+- "Salt-air corrosion protection \u2014 IP65 / NEMA 4X minimum at coast"
+- Battery storage CSS (Customer Self-Supply) eligibility check
+form_blanks:
+- HECO Rule 14H Interconnection Application
+- County of Honolulu Electrical Permit
+notes: 'Hawaii has the highest PV penetration in the US. New systems must use
+
+  smart inverters with Rule 14H Schedule M ride-through + grid-support
+
+  modes. CSS programs allow no-export ESS with simpler approval.
+
+  '

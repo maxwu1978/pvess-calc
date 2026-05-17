@@ -1,0 +1,34 @@
+name: California (Generic AHJ)
+region: California (CSI-eligible cities)
+required_sheets:
+- cover
+- ee-1
+- ee-2
+- ee-3
+- ee-4
+- ee-5
+- pv-4
+- pv-5
+- pv-6
+- notes
+- labels
+label_set:
+- 690.13(B)
+- '690.14'
+- '690.53'
+- 690.56(C)
+- '705.10'
+- '705.11'
+- '706.7'
+inspector_checklist:
+- Title 24 / CalGreen PV mandate compliance (residential new construction)
+- Battery storage-ready provisioning (CalGreen A4.106.8.3)
+- 'CA Fire Marshal pathways: 36" clear access at ridge (CFC 605)'
+- PV/ESS UL 9540A flammability listing (CA SB-100)
+form_blanks:
+- Utility Net Energy Metering 3.0 (NEM 3.0) application
+- Building Department Plan Check (PV+ESS combined)
+notes: "California Title 24 requires PV on new residential construction; battery\n\
+  storage is encouraged but not mandated. NEM 3.0 (post-2023) dramatically\nreduced\
+  \ export credit value \u2014 system sizing should now prioritize\nself-consumption\
+  \ with battery rather than maximizing export.\n"

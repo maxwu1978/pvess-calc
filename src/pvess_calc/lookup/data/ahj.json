@@ -1,0 +1,53 @@
+{
+  "_README": "Authority Having Jurisdiction (AHJ) — the agency that issues electrical permits for the project. Keyed by 'city, ST' lowercase. Default rule: city building dept inside city limits, county building dept for unincorporated areas. For projects with an unusual AHJ structure (e.g., HOA + city + state architectural board), the wizard still asks the user to confirm — this data set just pre-fills the most likely answer.",
+  "phoenix, az":     {"ahj_name": "City of Phoenix Planning & Development Dept",
+                      "permit_portal": "https://www.phoenix.gov/pdd"},
+  "tucson, az":      {"ahj_name": "City of Tucson Permits & Code Services Section",
+                      "permit_portal": "https://www.tucsonaz.gov/pdsd"},
+  "scottsdale, az":  {"ahj_name": "City of Scottsdale Planning & Development Services"},
+  "mesa, az":        {"ahj_name": "City of Mesa Development Services"},
+
+  "los angeles, ca": {"ahj_name": "Los Angeles Dept of Building & Safety (LADBS)",
+                      "permit_portal": "https://www.ladbs.org/services/online-services"},
+  "san diego, ca":   {"ahj_name": "City of San Diego Development Services Dept"},
+  "san francisco, ca": {"ahj_name": "San Francisco Dept of Building Inspection (SFDBI)"},
+  "san jose, ca":    {"ahj_name": "City of San Jose Building Division"},
+  "sacramento, ca":  {"ahj_name": "City of Sacramento Community Development Dept"},
+
+  "denver, co":      {"ahj_name": "Denver Community Planning & Development"},
+  "colorado springs, co": {"ahj_name": "Pikes Peak Regional Building Dept"},
+
+  "miami, fl":       {"ahj_name": "City of Miami Building Dept"},
+  "orlando, fl":     {"ahj_name": "City of Orlando Permitting Services"},
+  "tampa, fl":       {"ahj_name": "City of Tampa Construction Services Center"},
+  "jacksonville, fl": {"ahj_name": "City of Jacksonville Building Inspection Division"},
+
+  "atlanta, ga":     {"ahj_name": "City of Atlanta Office of Buildings"},
+  "honolulu, hi":    {"ahj_name": "City & County of Honolulu Dept of Planning & Permitting (DPP)",
+                      "note": "Special: Hawaii also has state-level energy review (Rule 14H solar applications routed through utility, not AHJ)."},
+
+  "chicago, il":     {"ahj_name": "City of Chicago Dept of Buildings"},
+  "boston, ma":      {"ahj_name": "City of Boston Inspectional Services Dept (ISD)"},
+  "detroit, mi":     {"ahj_name": "City of Detroit Buildings Safety Engineering & Environmental Dept"},
+  "minneapolis, mn": {"ahj_name": "City of Minneapolis Community Planning & Economic Development"},
+
+  "new york, ny":    {"ahj_name": "NYC Dept of Buildings (DOB)",
+                      "note": "Solar PV requires DOB filing + ConEd interconnection. Filing usually via NYC DOB NOW."},
+  "brooklyn, ny":    {"ahj_name": "NYC Dept of Buildings (DOB)"},
+
+  "portland, or":    {"ahj_name": "City of Portland Bureau of Development Services (BDS)"},
+  "philadelphia, pa": {"ahj_name": "Philadelphia Dept of Licenses & Inspections (L&I)"},
+  "pittsburgh, pa":  {"ahj_name": "City of Pittsburgh Dept of Permits Licenses & Inspections"},
+
+  "austin, tx":      {"ahj_name": "City of Austin Development Services Dept",
+                      "permit_portal": "https://abc.austintexas.gov"},
+  "dallas, tx":      {"ahj_name": "City of Dallas Building Inspection"},
+  "houston, tx":     {"ahj_name": "City of Houston Permitting Center"},
+  "san antonio, tx": {"ahj_name": "City of San Antonio Development Services Dept"},
+  "fort worth, tx":  {"ahj_name": "City of Fort Worth Development Services"},
+  "lewisville, tx":  {"ahj_name": "City of Lewisville Building Inspections"},
+
+  "salt lake city, ut": {"ahj_name": "Salt Lake City Building Services"},
+  "seattle, wa":     {"ahj_name": "Seattle Dept of Construction & Inspections (SDCI)"},
+  "spokane, wa":     {"ahj_name": "City of Spokane Development Services Center"}
+}
