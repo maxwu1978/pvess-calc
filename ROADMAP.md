@@ -513,6 +513,48 @@ K.11+ future scope (NOT in this phase):
   * Per-string trunk separation (current code lumps all strings into
     one B-segment average)
 
+### K.13 — EE-4 site-focused restructure ✅ DONE 2026-05-17
+
+Triggered by user feedback that the Frisco EE-4 looked "very
+unsuccessful": the legacy abstract PV-grid path was painting a tiny
+yellow placeholder on a 94 %-empty lot.
+
+Shipped in 4 staged passes:
+
+- **A** — Hand-edit Frisco yaml with `equipment_locations` + 5 face
+  `site_anchor` blocks → K.11 routed path activates
+- **B** — `calc/site_layout.py::auto_anchor_sections()` auto-derives
+  anchors from `azimuth_deg` for any yaml with `roof_sections`. 17
+  tests; Phoenix EE-4 multi-face for free with no yaml edits
+- **C** — 5 visual polish items: aerial 35 m, address 0.50", property
+  line bottom-right, array caption bottom margin, NOTE warning strip.
+  8 tests
+- **D** — Delete `_pick_module_grid` + legacy `if not routed and not
+  has_face_anchors` painter, enlarge aerial 3.0×2.6", new doctor
+  check `ee4_focuses_on_site_geometry` (38 → 39). 12 tests + 2 test
+  rewrites
+
+Tests 585 → 622. Doctor 38 → 39.
+
+### K.13.1 — EE-4 visual-collision polish ✅ DONE 2026-05-17
+
+All 4 P-level fixes landed:
+
+- **P0** — Optimizer leader endpoint moved inside lot top-right
+  (was outside-right overlapping SITE INFORMATION)
+- **P1** — PV ARRAY caption moved to top banner; conduit legend
+  right-anchored on same banner (was bottom margin competing with
+  leader callouts)
+- **P2** — `auto_anchor_sections` cursor starts inset by
+  perpendicular orientation's max H, with half-wall fallback.
+  Phoenix's South face moves x=15 → 39, eliminating SW-corner
+  overlap with West face
+- **P3** — PROPERTY LINE label moved to top-left outside the lot
+  (was bottom-right competing with rightmost leader callout)
+
++13 tests in `tests/test_ee4_k131_polish.py`. Tests 622 → 635.
+Doctor 39 (unchanged — pure visual polish).
+
 ### Phase H — NEC 690.11 DC AFCI + SPD + Conduit fill (already in CLAUDE.md)
 - DC arc-fault detector inclusion at inverter
 - 230.67 SPD requirement (CA / FL effective 2020+)
@@ -538,6 +580,9 @@ K.11+ future scope (NOT in this phase):
 
 Past K-phases live in `CHANGELOG.md`. Latest:
 
+- **2026-05-17**: K.13.1 EE-4 visual-collision polish; K.13 EE-4
+  site-focused restructure (Stages A–D); K.4.6 + K.8.2 + K.9 +
+  K.10 + K.11 + K.12 (single-day landings)
 - **2026-05-16**: K.3c + K.8 + K.8.1 + roof-vis (analytical + satellite)
 - **2026-05-15**: K.8 per-face derate
 - **2026-05-14**: K.7 unified CLI + 3-version NEC dispatch

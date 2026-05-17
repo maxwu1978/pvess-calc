@@ -1728,6 +1728,80 @@ def _check_auto_routed_lengths_sane(
     )]
 
 
+def _check_ee4_focuses_on_site_geometry(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """Stage D / K.13 — verify EE-4 omits the legacy abstract PV grid.
+
+    Pre-K.13 a project without explicit anchors got a synthetic
+    yellow PV box + `8×5 grid` caption painted on top of the
+    centered house rect. That redundant render of PV-4 confused AHJ
+    reviewers and was deleted in K.13.
+
+    States:
+      * `roof_sections` present (auto- or hand-anchored) →
+        per-face module rects must render (Stage B path);
+        legacy abstract caption must NOT appear.
+      * `roof_sections` empty →
+        warning strip "PV array geometry omitted" must appear;
+        legacy abstract caption must NOT appear.
+
+    FAIL trigger: legacy `N×M grid` substring anywhere in EE-4 text.
+    """
+    import re
+    import tempfile
+
+    name = "ee4_focuses_on_site_geometry"
+    from .permit.site_plan import render_site_plan
+
+    with tempfile.TemporaryDirectory() as td:
+        ee4 = Path(td) / "ee4-check.pdf"
+        try:
+            render_site_plan(calc_result, ee4)
+        except Exception as exc:
+            return [CheckResult(name, "FAIL", f"render crashed: {exc}")]
+        text = _pdf_text(ee4)
+
+    # Legacy abstract grid caption was always "{N}×{M} grid" with
+    # an Unicode × (U+00D7), not ASCII 'x'. Catch both forms.
+    legacy_pattern = re.compile(r"\b\d+\s*[×x]\s*\d+\s+grid\b")
+    match = legacy_pattern.search(text)
+    if match:
+        return [CheckResult(
+            name, "FAIL",
+            f"legacy abstract-grid caption {match.group(0)!r} found in "
+            "EE-4 — K.13 deleted that path; check site_plan.py for a "
+            "regression",
+        )]
+
+    sections = calc_result.inputs.site.roof_sections
+    if sections:
+        if "PV ARRAY" not in text:
+            return [CheckResult(
+                name, "PASS",
+                f"per-face render active ({len(sections)} section(s)); "
+                "no legacy abstract-grid caption detected",
+            )]
+        return [CheckResult(
+            name, "PASS",
+            f"per-face render active ({len(sections)} section(s)); "
+            "PV ARRAY caption in bottom margin; no legacy grid",
+        )]
+
+    if "PV array geometry omitted" not in text:
+        return [CheckResult(
+            name, "WARN-PASS",
+            "no roof_sections + no warning strip visible — the K.13 "
+            "incompleteness signal is missing; check site_plan.py "
+            "warning-strip branch",
+        )]
+    return [CheckResult(
+        name, "PASS",
+        "no roof_sections; EE-4 shows incompleteness NOTE strip "
+        "and skips abstract array render",
+    )]
+
+
 def _check_face_value_score_distinguishes_east_west() -> list[CheckResult]:
     """K.8.2 — math contract: the `face_value_weighted_derate` function
     MUST score East and West differently when the REP buyback is sub-1:1.
@@ -1860,6 +1934,8 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
     results.extend(_check_pv4_module_count_matches_yaml(calc_result))
     results.extend(_check_string_balance_within_target(calc_result))
     results.extend(_check_auto_routed_lengths_sane(calc_result))
+    # K.13 / Stage D — EE-4 abstract-grid regression guard
+    results.extend(_check_ee4_focuses_on_site_geometry(calc_result))
     # K.12.5 — cover sheet governing codes completeness
     results.extend(_check_cover_has_governing_codes(calc_result))
     # K.12.5+ — cover sheet vertical layout no-overlap

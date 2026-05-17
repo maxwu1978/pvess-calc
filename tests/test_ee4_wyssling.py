@@ -115,13 +115,24 @@ def test_real_modules_drawn_in_routed_mode(tmp_path: Path):
     assert "25.20" in text   # kW DC
 
 
-def test_legacy_yaml_keeps_abstract_grid(tmp_path: Path):
-    """Pre-K.11 yaml without equipment_locations stays on the
-    legacy abstract-grid path (zero visual regression)."""
-    inputs = Inputs.from_yaml(PHOENIX)
+def test_legacy_yaml_has_no_abstract_grid_after_k13(tmp_path: Path):
+    """Stage D / K.13 deleted the legacy abstract PV-grid path.
+    A yaml without roof_sections must NOT render `N×M grid` text
+    anywhere on EE-4 — and SHOULD render the K.13 warning strip
+    explaining where the array layout actually lives (PV-4).
+    """
+    import re
+    inputs = Inputs.from_yaml(PHOENIX).model_copy(deep=True)
+    inputs.site.roof_sections = []   # strip → forces legacy fallback
     text = _ee4_text(tmp_path, inputs)
-    # Legacy mode: abstract-grid caption is present
-    assert "10×6 grid" in text or "grid" in text.lower()
+    # Legacy abstract-grid caption must NOT appear post-K.13
+    legacy_pattern = re.compile(r"\b\d+\s*[×x]\s*\d+\s+grid\b")
+    assert legacy_pattern.search(text) is None, (
+        f"legacy 'N×M grid' caption leaked into EE-4: "
+        f"{legacy_pattern.search(text).group(0)}"
+    )
+    # And the K.13 warning strip SHOULD be visible
+    assert "PV array geometry omitted" in text
 
 
 # ─── C — fire-offset hatch + label ─────────────────────────────────

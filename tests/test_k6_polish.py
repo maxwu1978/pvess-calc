@@ -82,9 +82,23 @@ def test_ee4_site_plan_has_scale_bar(phoenix_pdfs):
     assert "SCALE" in text
 
 
-def test_ee4_site_plan_has_equipment_route_legend(phoenix_pdfs):
-    """K.6 (A): orange dashed MSP→AC-DISC→ESS route + its legend chip."""
-    text = _pdf_text(phoenix_pdfs["site"])
+def test_ee4_site_plan_legacy_has_equipment_route_legend(tmp_path: Path):
+    """K.6 (A) — preserved through K.13 cleanup: the legacy
+    east-wall MSP→AC-DISC→ESS chip stack + orange dashed connector +
+    legend chip still renders when neither auto-anchored sections nor
+    explicit equipment_locations are present. This is the ONLY
+    equipment visualization for true single-orientation projects.
+
+    Stage D / K.13 only deleted the abstract PV-grid box; the K.6
+    east-wall column was kept because deleting it would leave EE-4
+    with no equipment at all for legacy yamls.
+    """
+    from pvess_calc.permit.site_plan import render_site_plan
+    inputs = Inputs.from_yaml(PHOENIX_INPUTS).model_copy(deep=True)
+    inputs.site.roof_sections = []
+    out = tmp_path / "site-legacy.pdf"
+    render_site_plan(run(inputs), out)
+    text = _pdf_text(out)
     assert "equipment route" in text
 
 

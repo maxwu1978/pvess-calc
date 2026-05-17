@@ -10,6 +10,253 @@ Tracked work that's merged but not yet bundled into a tagged release.
 
 ---
 
+## 2026-05-17 — K.13.1: EE-4 visual-collision polish
+
+Follow-up to K.13. Post-K.13 visual review of Frisco's EE-4
+surfaced 4 specific text-on-text collisions that didn't trip any
+doctor check (visual not structural). K.13.1 closes them.
+
+### P0 — Optimizer leader callout moved inside the lot
+
+Pre-K.13.1 the leader endpoint was at
+`lot_x + lot_w_pt + 0.20 * inch` — exactly where the SITE
+INFORMATION column begins. The "(N) PV MODULE EQUIPPED W/ ..."
+text overprinted the right-column "Lot dimensions / Residence
+footprint" rows.
+
+Fix: endpoint relocated to inside the lot top-right
+(`lot_x + lot_w_pt - 1.70 * inch`, ~0.45" below lot top). Leader
+now goes vertical-first (target module → up → bend → horizontal
+to text) to keep the line from crossing other module rows.
+
+### P1 — PV ARRAY caption moved from bottom margin to top banner
+
+Pre-K.13.1 the caption sat at `lot_y - 0.48 * inch` (Stage C
+placement). When the leader-callout column stacked horizontally
+below the lot (3+ equipment chips), the caption and labels
+competed for the same horizontal band.
+
+Fix: caption relocated to `lot_y + lot_h_pt + 0.22 * inch` (top
+banner above the lot), left-anchored. The conduit-routed legend
+chip moved to right-anchored on the same banner — caption left
++ legend right, no overlap.
+
+### P2 — auto-anchor corner inset
+
+Pre-K.13.1 `auto_anchor_sections()` placed every cursor flush
+against its wall's starting corner. For Phoenix-style 2-face
+yamls (South + West, both 38×24 ft on a 50×35 ft house) the SW
+corner was double-claimed and the two face footprints
+geometrically overlapped.
+
+Fix: each cursor's starting position is inset by the
+perpendicular orientation's max H. `_inset_or_zero()` falls
+back to flush when the inset would consume more than half the
+wall (data over-packed signal — overlap is the right visual cue).
+
+Phoenix outcome: South cursor moves 15 → 39, leaving West's
+24 ft eastward inset free of conflict.
+
+### P3 — PROPERTY LINE label moved off bottom-right
+
+Pre-K.13.1 the label sat at bottom-right outside the lot
+(`lot_y - 0.14 * inch`). When the leader-callout column went
+stacked_below, the label crowded the rightmost callout.
+
+Fix: label relocated to top-left outside the lot
+(`lot_y + lot_h_pt + 0.06 * inch`), in the corner where the
+rotated address column ends. Cleanly separated from all the
+bottom-margin content (leader callouts, setback dims, scale bar).
+
+### Tests
+
+- **13 new tests** in `tests/test_ee4_k131_polish.py`:
+  - P0: source-string check + Frisco end-to-end PDF text check
+  - P1: caption banner placement + conduit right-anchor + content
+  - P2: Phoenix inset numerical contract + single-orientation
+    pass-through + half-wall fallback threshold + engine
+    integration
+  - P3: source-string check + content preservation
+  - Cross-cutting: all 3 projects render + doctor still passes
+- **Total: 635 passing (was 622). 39 doctor checks (unchanged —
+  K.13.1 is pure visual polish, no new structural invariants).**
+
+### Visual benchmark (Frisco EE-4 220 DPI)
+
+| Collision | Pre-K.13.1 | Post-K.13.1 |
+|---|---|---|
+| Optimizer leader vs SITE INFORMATION | text overprinted "Lot dimensions" row | Leader inside lot top-right; SITE INFORMATION fully readable |
+| PV ARRAY caption vs leader callouts | both at bottom margin, same band | Caption on top banner; callouts at bottom unobstructed |
+| Phoenix South + West auto-anchor | SW corner double-claimed, footprints overlap | South inset to x=39; faces clearly separated |
+| PROPERTY LINE vs rightmost leader | 0.05" horizontal gap to "(N) INV-1 ..." | Label at lot top-left; clean separation |
+
+### Known limits (not in K.13.1 scope)
+
+- **Frisco's explicit anchors** keep the SW corner overlap between
+  South #1 and West #1 — it's a designer-encoded yaml decision,
+  not an auto-anchor artefact. Changing it requires yaml edit
+  (e.g. shift West anchors to NW corner). Out of scope.
+- **Phoenix South face overflows east** by ~12 ft after the inset
+  (38 ft face + 24 ft inset starts past the 50 ft east wall).
+  The overflow IS the correct visual signal that the yaml's
+  roof_sections don't fit the declared house dimensions.
+
+---
+
+## 2026-05-17 — K.13: EE-4 site-focused restructure (Stages A → D)
+
+Closes the EE-4 "looks like a placeholder" gap surfaced when the user
+spot-checked the Frisco permit package. Pre-K.13 a project without
+explicit per-face `site_anchor` data fell back to a painted yellow
+PV ARRAY rectangle + synthetic N×M module grid on top of the centred
+house rect — visually redundant with PV-4 and consistently confusing
+to AHJ reviewers. K.13 deletes that path entirely; every project
+either gets real per-face module geometry (auto-anchored when not
+hand-anchored) or a clear "see PV-4" warning strip.
+
+Landed in 4 staged passes:
+
+### Stage A — Frisco yaml: explicit K.11 site geometry
+
+- Added `site.lot/house` dimensions + `equipment_locations` block
+  (MSP, AC-DISC, Inverter, attic drop) to the Frisco yaml
+- Added `site_anchor_x_ft / _y_ft / _azimuth_deg` to each of the
+  5 roof_sections (3 South stacked along south edge, 2 West along
+  west edge)
+- Frisco EE-4 immediately upgraded from blank lot → real modules +
+  orange Manhattan conduit polyline + leader callouts
+- Doctor `auto_routed_lengths_sane` PASS with longest segment 48 ft
+
+### Stage B — Auto-anchor for any yaml with `roof_sections`
+
+- New module **`src/pvess_calc/calc/site_layout.py`**:
+  - `auto_anchor_sections(site)` — by-azimuth quadrant classifier
+    (S/E/N/W) + per-wall head-to-tail stacking with 1 ft gap
+  - `apply_auto_anchors(site, anchors)` — pure: returns deep-copy
+    with anchors patched; never mutates input
+  - `house_bbox(site)` — uses polygon outline when present, else
+    centred rect from `house_width_ft × house_depth_ft`
+- Hooked into [`engine.run()`](src/pvess_calc/calc/engine.py) at
+  entry so all downstream code (wire_routing, EE-4 renderer,
+  doctor) sees fully-anchored sections without behaviour changes
+- Phoenix (2 faces, no explicit anchors) now renders multi-face
+  geometry on EE-4 with zero yaml edits
+- **17 new tests** in `tests/test_site_layout.py` covering single-
+  face per-orientation, multi-face stacking, mixed orientations,
+  explicit-anchor pass-through, determinism, engine integration
+
+### Stage C — Visual density polish
+
+5 layout adjustments to fix overlap + missing-data signalling:
+
+1. **Aerial inset radius 25 m → 35 m** in
+   [`_draw_aerial_inset`](src/pvess_calc/permit/site_plan.py) — at
+   25 m, suburban ≥80 ft lots cropped past the neighbour buildings
+2. **Rotated address offset 0.30" → 0.50"** off the lot's left
+   property line (was visually pressed against the lot dashed line)
+3. **`PROPERTY LINE` label moved top-left → bottom-right** outside
+   the lot to clear the rotated address + the routed-mode legend
+   strip above the lot
+4. **PV ARRAY caption relocated to bottom margin** between the lot
+   frame and the scale bar. Pre-Stage C the caption sat at
+   `bb_y_bot - 0.16"` which for arrays anchored on the south wall
+   pushed the text BELOW the lot frame, colliding with the scale bar
+5. **`NOTE — Array shown schematically` warning strip** at the top
+   of EE-4 when neither `routed` nor `has_face_anchors` is active
+   (Stage D revised wording to "PV array geometry omitted from EE-4")
+
+**8 new tests** in `tests/test_site_plan_polish.py`.
+
+### Stage D — EE-4 K.13 restructure
+
+The closing pass. Surgical deletes + structural cleanup:
+
+- **Deleted the legacy abstract PV-grid block** in `site_plan.py`
+  (lines 175-218 of the pre-K.13 code): the yellow `_PV_COLOR`
+  rectangle + `_pick_module_grid()`-driven N×M cell layout +
+  "PV ARRAY · ... · 6×4 grid · see PV-4" caption — all gone
+- **`_pick_module_grid()` deleted as dead code** (47 lines)
+- **Aerial inset enlarged 2.5×2.2" → 3.0×2.6"** to use the right
+  column space freed by the deleted abstract render. SITE
+  INFORMATION column anchor pushed `W - 3.2"` → `W - 3.4"` to keep
+  the wider inset inside the page frame
+- **Warning strip wording revised** from "Array shown
+  schematically..." to "PV array geometry omitted from EE-4 (no
+  site.roof_sections in yaml). See PV-4 for module attachment plan.
+  EE-4 shows lot + setbacks + equipment." — explicit + actionable
+
+#### Three EE-4 render modes (Stage D contract)
+
+| Trigger | Renders |
+|---|---|
+| `wire_routing.routed=True` | Real K.9.1 modules + fire-offset hatch + Manhattan conduit polyline + leader-line equipment callouts |
+| `has_face_anchors=True` only | Real modules + fire-offset hatch (no conduit, no leaders — no equipment_locations available) |
+| neither (no roof_sections) | Lot + house outline + setbacks + K.6 east-wall equipment chips + NOTE warning strip |
+
+#### New doctor check
+
+**`ee4_focuses_on_site_geometry`** — renders EE-4 to a temp PDF +
+greps for the legacy `\b\d+\s*[×x]\s*\d+\s+grid\b` regex pattern.
+FAILS if any `N×M grid` substring leaks back into EE-4. Positive
+states report `per-face render active (N section(s))` or
+`incompleteness NOTE strip` depending on yaml shape. **Doctor list
+38 → 39.**
+
+#### Tests
+
+- **12 new tests** in `tests/test_ee4_k13.py`: abstract-grid
+  absence on all 3 sample projects, `_pick_module_grid` dead-code
+  removal, doctor check positive cases (Austin / Phoenix / Frisco),
+  per-mode contracts (routed / anchor-only / pure-legacy), aerial
+  inset size locks, info-column width lock
+- **Updated 2 existing tests**:
+  - `test_legacy_yaml_keeps_abstract_grid` →
+    `test_legacy_yaml_has_no_abstract_grid_after_k13` (assertion
+    inverted — must NOT find grid pattern)
+  - `test_ee4_site_plan_has_equipment_route_legend` — re-narrated
+    to make the K.13 carve-out explicit (K.6 east-wall column
+    kept; abstract PV grid deleted)
+- **Total: 622 passing (was 585). 39 doctor checks (was 38).**
+
+### Visual benchmark
+
+Frisco EE-4 before / after K.13:
+
+| Element | Pre-K.13 | Post-K.13 |
+|---|---|---|
+| Lot area | Mostly empty (~94% blank) | Dense — real footprints + conduit + setbacks |
+| PV array | 24×16 ft yellow box, 8×5 abstract grid | 5 real face footprints with 34 K.9.1-placed modules |
+| Equipment | 3 floating chips on east wall (synthetic) | 4 leader-line callouts at real (x,y) on east wall |
+| Conduit | None | Manhattan polyline (orange dashed) for 4 segments |
+| Aerial | 2.5×2.2" street-view radius 25 m | 3.0×2.6" Google Solar dataLayers radius 35 m |
+| Fire offset | None on EE-4 | Orange hatch bands per face + "18\" FIRE OFFSET" callout |
+
+Phoenix EE-4 went from "yellow placeholder box" → "2 real face
+footprints with auto-anchored modules" with zero yaml edits.
+
+Austin EE-4 (true legacy — no roof_sections at all) went from
+"yellow box + 6×4 abstract grid" → "clean lot + setbacks + warning
+strip pointing to PV-4".
+
+### Known limits (not in K.13 scope)
+
+Surfaced during the post-K.13 visual review of Frisco's EE-4; will
+be picked up in K.13.1 visual-polish:
+
+- **Optimizer leader callout overlaps SITE INFORMATION column** —
+  end_x of the leader is too close to the right column anchor
+- **PV ARRAY bottom-margin caption + leader-callout column compete
+  for the same horizontal band** in routed mode when labels stack
+  below the lot
+- **5-face anchor stacking shares corners** — South #1 + West #1
+  geometrically overlap at the SW corner because the auto-stacker
+  packs faces tight against the wall starting point
+- **PROPERTY LINE label sits 0.05" from the rightmost leader
+  callout** — needs a horizontal nudge or a move to lot-top in
+  routed mode
+
+---
+
 ## 2026-05-17 — K.11: wire trunk auto-routing
 
 Closes the loop between K.9.1 module placement, K.10 string assignment,

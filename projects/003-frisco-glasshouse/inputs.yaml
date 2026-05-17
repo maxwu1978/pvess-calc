@@ -184,6 +184,14 @@ site:
   urban_density: "suburban"
   roof_pitch_deg: 35
   array_azimuth_deg: 180
+  # K.11 site geometry — Frisco TX typical residential lot.
+  # Lot 90×125 ft; house centered with 35 ft front setback, 48 ft rear,
+  # 15 ft side. Origin = lot front-left corner, +x = east, +y = north
+  # (away from street, toward back of property).
+  lot_width_ft: 90
+  lot_depth_ft: 125
+  house_width_ft: 60
+  house_depth_ft: 42
   # K.3c: roof_sections injected from Google Solar buildingInsights for
   # 33.141418, -96.801258 (Frisco, Collin Cty TX). Imagery 2024-02-06 HIGH
   # confidence.
@@ -202,12 +210,27 @@ site:
   # 13-face → 5-face concentrated layout: 3 South + 2 West.
   # Future K-phase: implement value-weighted derate so the algorithm does
   # this S+W-preference automatically; for now distribution is yaml-pinned.
+  # K.11 site_anchor convention:
+  #   * azimuth_deg = 0   → eave runs east, ridge to north (South face)
+  #   * azimuth_deg = 270 → eave runs south, ridge to east  (West face)
+  # Anchors place the roof-local origin (eave-left corner) on the
+  # house perimeter; per-face footprint then projects inward.
   roof_sections:
-    - {name: "South Roof",     roof_type: "Comp Shingle", pitch_deg: 44.3, azimuth_deg: 178.6, width_ft: 25.5, height_ft: 25.5, module_count: 0, shape: "rect"}
-    - {name: "South Roof #2",  roof_type: "Comp Shingle", pitch_deg: 34.5, azimuth_deg: 179.7, width_ft: 20.3, height_ft: 20.3, module_count: 0, shape: "rect"}
-    - {name: "West Roof",      roof_type: "Comp Shingle", pitch_deg: 33.0, azimuth_deg: 268.1, width_ft: 19.7, height_ft: 19.7, module_count: 0, shape: "rect"}
-    - {name: "West Roof #2",   roof_type: "Comp Shingle", pitch_deg: 36.7, azimuth_deg: 272.1, width_ft: 13.2, height_ft: 13.2, module_count: 0, shape: "rect"}
-    - {name: "South Roof #3",  roof_type: "Comp Shingle", pitch_deg: 54.9, azimuth_deg: 182.0, width_ft: 12.3, height_ft: 12.3, module_count: 0, shape: "rect"}
+    - {name: "South Roof",     roof_type: "Comp Shingle", pitch_deg: 44.3, azimuth_deg: 178.6, width_ft: 25.5, height_ft: 25.5, module_count: 0, shape: "rect", site_anchor_x_ft: 15.0,  site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
+    - {name: "South Roof #2",  roof_type: "Comp Shingle", pitch_deg: 34.5, azimuth_deg: 179.7, width_ft: 20.3, height_ft: 20.3, module_count: 0, shape: "rect", site_anchor_x_ft: 40.5, site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
+    - {name: "West Roof",      roof_type: "Comp Shingle", pitch_deg: 33.0, azimuth_deg: 268.1, width_ft: 19.7, height_ft: 19.7, module_count: 0, shape: "rect", site_anchor_x_ft: 15.0, site_anchor_y_ft: 77.0, site_anchor_azimuth_deg: 270.0}
+    - {name: "West Roof #2",   roof_type: "Comp Shingle", pitch_deg: 36.7, azimuth_deg: 272.1, width_ft: 13.2, height_ft: 13.2, module_count: 0, shape: "rect", site_anchor_x_ft: 34.7, site_anchor_y_ft: 77.0, site_anchor_azimuth_deg: 270.0}
+    - {name: "South Roof #3",  roof_type: "Comp Shingle", pitch_deg: 54.9, azimuth_deg: 182.0, width_ft: 12.3, height_ft: 12.3, module_count: 0, shape: "rect", site_anchor_x_ft: 61.0, site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
+  # K.11 equipment locations — east wall of garage (Oncor meter side),
+  # vertically stacked MSP / AC-DISC / Inverter. PV-only (no ESS units).
+  equipment_locations:
+    msp:           {label: "MSP",           x_ft: 75.0, y_ft: 50.0}
+    ac_disconnect: {label: "AC DISCONNECT", x_ft: 75.0, y_ft: 55.0}
+    inverters:
+      - {label: "INV-1 · MEGAREVO R11KLNA", x_ft: 75.0, y_ft: 60.0}
+    attic_drop_x_ft: 74.0
+    attic_drop_y_ft: 62.0
+    attic_to_eq_height_ft: 9.0
   # Dropped faces (off-quadrant — not worth rack cost OR value-weighted bad):
   #   North Roof (50%)   · North Roof #2 (51%) · North Roof #3 (31%)
   #   North Roof #4 (40%) · Northwest Roof (67%, borderline)

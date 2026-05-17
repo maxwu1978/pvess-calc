@@ -16,6 +16,7 @@ from .interconnect import InterconnectResult, compute_interconnection
 from .ocpd import select_ocpd
 from .pv_string import PvStringResult, compute_pv_string
 from .roof_layout import RoofLayoutResult, compute_roof_layout
+from .site_layout import apply_auto_anchors, auto_anchor_sections
 from .voltage_drop import VoltageDropAnalysis, compute_voltage_drop
 from .wire_routing import WireRoutingResult, compute_wire_routing
 
@@ -122,6 +123,15 @@ def _try_parse_lat(coordinates: str) -> Optional[float]:
 
 
 def run(inputs: Inputs) -> CalculationResult:
+    # Stage B — auto-anchor any RoofSection without explicit
+    # `site_anchor_x_ft`. Patches `inputs.site.roof_sections` in a
+    # fresh copy; downstream code (wire_routing, EE-4 renderer, doctor)
+    # sees consistent anchor state regardless of yaml verbosity.
+    auto_anchors = auto_anchor_sections(inputs.site)
+    if auto_anchors:
+        patched_site = apply_auto_anchors(inputs.site, auto_anchors)
+        inputs = inputs.model_copy(update={"site": patched_site})
+
     # NEC 310.15(B)(2)(a) + (3)(a)(1) derating from project routing context.
     routing = inputs.routing
     temp_factor = temperature_correction_75c(routing.ambient_temp_c)

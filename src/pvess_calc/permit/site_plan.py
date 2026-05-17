@@ -82,27 +82,30 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
     c.setDash(8, 4)
     c.rect(lot_x, lot_y, lot_w_pt, lot_h_pt)
     c.setDash()  # reset
-    # K.11.7 — explicit "PROPERTY LINE" label so AHJ doesn't have to
-    # infer it from the dashed style alone. Placed at the TOP-LEFT
-    # corner OUTSIDE the lot so it doesn't collide with the legend
-    # strip immediately below it.
+    # K.13.1 P3 — PROPERTY LINE label on the LEFT side of the lot's
+    # top frame, inset slightly to the right of the rotated address
+    # column. The rotated address is centred vertically on the LEFT
+    # property line (so the top-left CORNER of the lot is clear);
+    # the routed legend banner at +0.22" above the lot lives at the
+    # right side. This top-left placement avoids the bottom-margin
+    # zone where leader callouts + setback dim lines compete.
     c.setFont("Helvetica-Oblique", 7)
     c.setFillColor(colors.HexColor("#475569"))
-    c.drawString(lot_x - 0.08 * inch, lot_y + lot_h_pt + 0.04 * inch,
+    c.drawString(lot_x + 0.04 * inch,
+                 lot_y + lot_h_pt + 0.06 * inch,
                  "PROPERTY LINE (dashed)")
     c.setFillColor(colors.black)
 
     # K.11.7f — rotated address along the LEFT property line (90° CCW).
     # Matches the Wyssling reference image style: street name vertical
-    # outside the lot's street-facing edge. We treat the lot's
-    # +y direction (toward back of property) as "street → house",
-    # so the address sits on the lot's LEFT edge reading bottom-to-top.
+    # outside the lot's street-facing edge. Stage C bumps the offset
+    # from 0.30" to 0.50" so the label clears any drawing-area
+    # rendering (was visually pressed against the lot line).
     if i.project.site_address:
         c.saveState()
         c.setFillColor(colors.HexColor("#1F2937"))
         c.setFont("Helvetica-Bold", 11)
-        # Anchor: just outside lot's left edge, centered vertically
-        addr_x = lot_x - 0.30 * inch
+        addr_x = lot_x - 0.50 * inch
         addr_y = lot_y + lot_h_pt / 2
         c.translate(addr_x, addr_y)
         c.rotate(90)
@@ -145,13 +148,44 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
         house_y = lot_y + (lot_h_pt - house_h_pt) / 2
         c.rect(house_x, house_y, house_w_pt, house_h_pt, fill=1)
 
-    # K.11.7e — decide visual mode for K.11 overlay only. The PV array
-    # box itself is now ALWAYS drawn as a single stylized rectangle
-    # centered on the house (industry-standard site-plan convention).
-    # Per-module / per-string detail belongs on PV-4 (attachment plan),
-    # NOT on the site plan. Putting both detail levels in one drawing
-    # leaks PV-4's content into EE-4 and makes the site-plan unreadable.
+    # K.11.7e + Stage B — three visual states:
+    #   * `routed`           : full K.11 wire-trunk routing active
+    #                           → real modules + conduit + leader callouts
+    #   * `has_face_anchors` : anchors set (explicit or auto-derived),
+    #                           but no equipment_locations
+    #                           → real modules + per-face setbacks only
+    #   * neither            : legacy abstract grid path
     routed = result.wire_routing is not None and result.wire_routing.routed
+    has_face_anchors = any(
+        s.site_anchor_x_ft is not None for s in i.site.roof_sections
+    )
+
+    # Stage D — incompleteness warning for pure-legacy mode. The
+    # K.13 cleanup deleted the synthetic abstract-grid render, so
+    # this strip is now the ONLY signal that EE-4 has no array data
+    # for this project. Wording is explicit: EE-4 doesn't draw PV
+    # geometry here; PV-4 does.
+    if not routed and not has_face_anchors:
+        c.saveState()
+        c.setFillColor(colors.HexColor("#FFFBEB"))
+        c.setStrokeColor(colors.HexColor("#F59E0B"))
+        c.setLineWidth(0.5)
+        strip_h = 0.22 * inch
+        strip_y = H - 1.18 * inch
+        strip_x = 0.6 * inch
+        strip_w = W - 1.2 * inch
+        c.rect(strip_x, strip_y, strip_w, strip_h, fill=1, stroke=1)
+        c.setFillColor(colors.HexColor("#92400E"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(
+            W / 2, strip_y + 0.07 * inch,
+            "NOTE — PV array geometry omitted from EE-4 (no "
+            "site.roof_sections in yaml). See PV-4 for module "
+            "attachment plan. EE-4 shows lot + setbacks + equipment.",
+        )
+        c.setFillColor(colors.black)
+        c.setStrokeColor(colors.black)
+        c.restoreState()
 
     # RESIDENCE label — always present (centered in house body)
     c.setFillColor(colors.black)
@@ -159,64 +193,20 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
     c.drawCentredString(house_x + house_w_pt / 2,
                         house_y + house_h_pt * 0.30, "RESIDENCE")
 
-    # K.11.7f — PV array rendering split path:
-    #   * `routed=True` (full site geometry): draw REAL K.9.1 modules
-    #     at site-plan scale via site_anchor transforms. Single light-
-    #     blue outline per module (no K.10 string colors — that's PV-4).
-    #     Per-roof-section setback bands + fire-offset hatching are
-    #     drawn first as background, then modules on top. This matches
-    #     the Wyssling-style residential site-plan convention.
-    #   * `routed=False` (legacy yamls without site_anchor): keep the
-    #     stylized PV ARRAY box + abstract module-count grid centered
-    #     on the house roof (no real coordinates to use).
-    pv = i.pv_array
-    kw_dc = pv.modules * pv.module.power_w / 1000.0
-
-    if not routed:
-        # Legacy abstract grid (count-accurate but not at real coords)
-        ax_w = ft_to_pt(site.array_width_ft)
-        ax_h = ft_to_pt(site.array_depth_ft)
-        array_x = house_x + (house_w_pt - ax_w) / 2
-        array_y = house_y + house_h_pt - ax_h - 1 * px_per_ft
-        c.setFillColor(_PV_COLOR)
-        c.setStrokeColor(colors.HexColor("#1F5BD7"))
-        c.setLineWidth(1.0)
-        c.rect(array_x, array_y, ax_w, ax_h, fill=1, stroke=1)
-        box_aspect = (ax_w / ax_h) if ax_h > 0 else 1.0
-        n_cols, n_rows = _pick_module_grid(pv.modules, box_aspect)
-        cell_w_pt = ax_w / n_cols
-        cell_h_pt = ax_h / n_rows
-        gap_pt = min(cell_w_pt, cell_h_pt) * 0.10
-        c.setFillColor(colors.HexColor("#FCE96A"))
-        c.setStrokeColor(colors.HexColor("#94B0E0"))
-        c.setLineWidth(0.3)
-        drawn = 0
-        for r in range(n_rows):
-            y = array_y + (n_rows - 1 - r) * cell_h_pt + gap_pt / 2
-            for k in range(n_cols):
-                if drawn >= pv.modules:
-                    break
-                x = array_x + k * cell_w_pt + gap_pt / 2
-                c.rect(x, y, cell_w_pt - gap_pt, cell_h_pt - gap_pt,
-                       fill=1, stroke=1)
-                drawn += 1
-        c.setFillColor(colors.HexColor("#1F2937"))
-        c.setFont("Helvetica-Bold", 9)
-        c.drawCentredString(
-            array_x + ax_w / 2, array_y - 0.18 * inch,
-            f"PV ARRAY · {pv.modules} MODULES · {kw_dc:.2f} kW DC",
-        )
-        c.setFont("Helvetica-Oblique", 6.5)
-        c.setFillColor(colors.HexColor("#475569"))
-        c.drawCentredString(
-            array_x + ax_w / 2, array_y - 0.30 * inch,
-            f"{site.array_width_ft:.0f}' × {site.array_depth_ft:.0f}' · "
-            f"{n_cols}×{n_rows} grid · see PV-4 for string assignment",
-        )
-        c.setFillColor(colors.black)
-        c.setStrokeColor(colors.black)
-    # Routed mode: real modules + fire-offset hatching are drawn by
-    # _draw_conduit_overlay() below.
+    # Stage D / K.13 — EE-4 is now a SITE plan, not a PV-array plan.
+    #
+    # The pre-K.13 code had a "legacy abstract grid" path here that
+    # painted a yellow PV ARRAY rectangle + a synthetic N×M module
+    # grid on top of the house when no per-face geometry was
+    # available. That was redundant with PV-4 (the canonical
+    # attachment plan) and consistently confused AHJ reviewers
+    # because the grid wasn't at real coordinates.
+    #
+    # In K.13 we delete that path entirely:
+    #   * routed / has_face_anchors → real K.9.1 modules drawn at
+    #     site coords by `_draw_conduit_overlay` below
+    #   * neither                   → no PV drawn on EE-4; the warning
+    #     strip already routes users to PV-4 for array geometry
 
     # ── K.6 setback dimensioning ─────────────────────────────────────────
     # Front yard (top of lot → top of house)
@@ -251,10 +241,11 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
     )
 
     # ── K.6 equipment markers + dashed route along east wall ─────────────
-    # ONLY drawn in legacy mode — when K.11 is active the real equipment
-    # dots + auto-routed conduit overlay take over (see _draw_conduit_overlay
-    # at the bottom of render_site_plan).
-    if not routed:
+    # ONLY drawn in pure-legacy mode (no auto/explicit anchors AND no
+    # routing). When anchors exist the per-face geometry overlay shows
+    # the real layout; when fully routed the conduit polyline + leader
+    # callouts in _draw_conduit_overlay take over.
+    if not routed and not has_face_anchors:
         eq_x = house_x + house_w_pt + 0.18 * inch
         eq_y_base = house_y + house_h_pt - 0.30 * inch
         equipment = [
@@ -319,7 +310,7 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
     _draw_scale_bar(c, bar_x, bar_y, px_per_ft)
 
     # Right column: site stats (unchanged from pre-K.6 baseline)
-    info_x = W - 3.2 * inch
+    info_x = W - 3.4 * inch
     info_y = H - 1.5 * inch
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 12)
@@ -350,13 +341,17 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
         c.drawString(info_x + 1.6 * inch, yy, v)
         yy -= 0.19 * inch
 
-    # K.11.7 — aerial roof inset below SITE INFORMATION (right column).
-    # Uses Google Solar dataLayers when PVESS_GOOGLE_SOLAR_KEY is set;
-    # otherwise renders a "no aerial available" placeholder.
+    # K.11.7 + Stage D — aerial roof inset below SITE INFORMATION.
+    # K.13 bumps the size 2.5×2.2 → 3.0×2.6 because EE-4 no longer
+    # draws the legacy abstract PV box; the right column has extra
+    # space below the SITE INFORMATION table. The aerial is the
+    # single most informative drawing on EE-4 (real photo of the
+    # actual roof), so giving it more room matches the Wyssling
+    # reference layout.
     _draw_aerial_inset(
         c, result,
-        x=info_x, y=yy - 2.40 * inch,
-        w=2.5 * inch, h=2.2 * inch,
+        x=info_x, y=yy - 2.80 * inch,
+        w=3.0 * inch, h=2.6 * inch,
     )
 
     # K.11 — conduit overlay: when site.equipment_locations is populated
@@ -391,25 +386,32 @@ def _draw_conduit_overlay(
     page_w: float,
     px_per_ft: float,
 ) -> None:
-    """K.11 + K.11.7 — overlay real K.9.1 module rectangles + auto-
-    routed conduit polyline + equipment chips on the EE-4 site plan.
-    No-op when wire_routing.routed=False (legacy yamls keep the K.6
-    painted PV-box + east-wall column drawn earlier in render_site_plan).
+    """K.11 + K.11.7 + Stage B — overlay per-face roof geometry, real
+    K.9.1 modules, and (when wire routing is active) the auto-routed
+    conduit polyline + equipment leader callouts.
 
-    Three layers (z-order from bottom up):
-      1. Per-face roof outline (light fill) at its site_anchor position
-      2. Each K.9.1 ModuleInstance as a tiny rect colored by string
-         (K.10 palette — same as PV-4)
-      3. True-Manhattan conduit polyline (orange dashed, orthogonal
-         dog-legs) connecting roof penetration → attic drop →
-         equipment chain → MSP
-      4. Equipment chips (filled rounded rectangles with the label)
+    Two activation gates:
+      * `has_face_anchors` (any site_anchor set) →
+        fire-offset hatch + real module rects + array caption.
+        Available whenever the engine successfully auto-anchored OR
+        the yaml provides explicit anchors.
+      * `routed` (wire_routing.routed=True) →
+        conduit polyline + equipment leader-line callouts + legend
+        strip + optimizer annotation. Requires equipment_locations
+        in the yaml.
+
+    Returns early (no-op) when neither gate is open — legacy yamls
+    keep the K.6 painted PV-box + east-wall column drawn earlier.
     """
     wr = result.wire_routing
-    if wr is None or not wr.routed:
+    sections = result.inputs.site.roof_sections
+    has_face_anchors = any(
+        s.site_anchor_x_ft is not None for s in sections
+    )
+    routed = wr is not None and wr.routed
+    if not has_face_anchors and not routed:
         return
     el = result.inputs.site.equipment_locations
-    sections = result.inputs.site.roof_sections
 
     def ft_to_pt(xy: tuple[float, float]) -> tuple[float, float]:
         return (lot_x + xy[0] * px_per_ft, lot_y + xy[1] * px_per_ft)
@@ -543,49 +545,52 @@ def _draw_conduit_overlay(
     c.setFillColor(colors.black)
     c.setStrokeColor(colors.black)
 
-    # ── Layer 2: PV array caption (under the array bbox) ─────────────
+    # ── Layer 2: PV array caption (banner above the lot) ─────────────
+    # K.13.1 P1 — moved from bottom margin to TOP banner. Pre-K.13.1
+    # the caption sat at `lot_y - 0.48"` and collided with the leader-
+    # callout column when stacked_below=True (3+ equipment chips
+    # stack horizontally below the lot). The top banner area shares
+    # space only with the conduit legend chip (when routed), and
+    # those are arranged left-vs-right to avoid overlap.
     if module_corners_all:
-        all_xs = [c_[0] for c_ in module_corners_all] + [c_[2] for c_ in module_corners_all]
-        all_ys = [c_[1] for c_ in module_corners_all] + [c_[3] for c_ in module_corners_all]
-        bb_cx = (min(all_xs) + max(all_xs)) / 2
-        bb_y_bot = min(all_ys)
-        c.setFont("Helvetica-Bold", 8)
+        n_mods = result.inputs.pv_array.modules
+        kw_dc = n_mods * result.inputs.pv_array.module.power_w / 1000.0
+        caption_text = f"PV ARRAY · {n_mods} MODULES · {kw_dc:.2f} kW DC"
+        # Banner y just above the lot frame
+        caption_y = lot_y + lot_h_pt + 0.22 * inch
+        # Anchor on the left side of the banner; conduit legend
+        # (Layer 4 below) renders centred / right of this when routed.
+        caption_x = lot_x + 0.10 * inch
+        c.setFont("Helvetica-Bold", 9)
         c.setFillColor(colors.HexColor("#1F2937"))
-        c.drawCentredString(bb_cx, bb_y_bot - 0.16 * inch,
-                            f"PV ARRAY · {result.inputs.pv_array.modules} "
-                            f"MODULES · "
-                            f"{result.inputs.pv_array.modules * result.inputs.pv_array.module.power_w / 1000:.2f} "
-                            f"kW DC")
-        c.setFont("Helvetica-Oblique", 6.5)
-        c.setFillColor(colors.HexColor("#475569"))
-        c.drawCentredString(bb_cx, bb_y_bot - 0.27 * inch,
-                            "see PV-4 for per-module string assignment")
+        c.drawString(caption_x, caption_y - 2, caption_text)
         c.setFillColor(colors.black)
 
-    # ── Layer 3: true-Manhattan conduit polyline ─────────────────────
+    # ── Layer 3: true-Manhattan conduit polyline (routed only) ───────
     # The wire_routing waypoints are KEY POINTS, not orthogonal
     # decomposition — at this layer we insert an L-shaped dog-leg
     # between each consecutive pair (horizontal-first heuristic, so
     # the run hugs the eave/wall before turning toward equipment).
-    c.setStrokeColor(colors.HexColor("#EA580C"))   # ROUTE_COLOR
-    c.setLineWidth(1.6)
-    c.setDash(5, 3)
-    for seg in wr.segments:
-        if len(seg.waypoints_ft) < 2:
-            continue
-        if seg.label.startswith("A "):    # on-roof segment, skip
-            continue
-        manhattan_pts = _decompose_manhattan(seg.waypoints_ft)
-        path = c.beginPath()
-        x0, y0 = ft_to_pt(manhattan_pts[0])
-        path.moveTo(x0, y0)
-        for sp in manhattan_pts[1:]:
-            xx, yy = ft_to_pt(sp)
-            path.lineTo(xx, yy)
-        c.drawPath(path, stroke=1, fill=0)
-    c.setDash()
-    c.setLineWidth(1.0)
-    c.setStrokeColor(colors.black)
+    if routed:
+        c.setStrokeColor(colors.HexColor("#EA580C"))   # ROUTE_COLOR
+        c.setLineWidth(1.6)
+        c.setDash(5, 3)
+        for seg in wr.segments:
+            if len(seg.waypoints_ft) < 2:
+                continue
+            if seg.label.startswith("A "):    # on-roof segment, skip
+                continue
+            manhattan_pts = _decompose_manhattan(seg.waypoints_ft)
+            path = c.beginPath()
+            x0, y0 = ft_to_pt(manhattan_pts[0])
+            path.moveTo(x0, y0)
+            for sp in manhattan_pts[1:]:
+                xx, yy = ft_to_pt(sp)
+                path.lineTo(xx, yy)
+            c.drawPath(path, stroke=1, fill=0)
+        c.setDash()
+        c.setLineWidth(1.0)
+        c.setStrokeColor(colors.black)
 
     # ── Layer 4: Wyssling-style equipment leader-line callouts ───────
     # Industry-standard residential PV site plan convention:
@@ -604,22 +609,23 @@ def _draw_conduit_overlay(
     # Collect the equipment items in physical-position order (south →
     # north along the wall) for clean leader stacking.
     eq_items = []   # list of (label, x_ft, y_ft, ne_marker)
-    if el.msp is not None:
+    if routed and el.msp is not None:
         eq_items.append((el.msp.label or "MAIN SERVICE PANEL",
                          el.msp.x_ft, el.msp.y_ft, "(N)"))
-    if el.ac_disconnect is not None:
+    if routed and el.ac_disconnect is not None:
         eq_items.append((el.ac_disconnect.label or "AC DISCONNECT",
                          el.ac_disconnect.x_ft,
                          el.ac_disconnect.y_ft, "(N)"))
-    for idx, inv in enumerate(el.inverters, 1):
-        lbl = inv.label or f"INVERTER #{idx}"
-        eq_items.append((lbl, inv.x_ft, inv.y_ft, "(N)"))
-    for idx, sp in enumerate(el.sub_panels, 1):
-        lbl = sp.label or f"SUB PANEL #{idx}"
-        eq_items.append((lbl, sp.x_ft, sp.y_ft, "(N)"))
-    for idx, ess in enumerate(el.ess_units, 1):
-        lbl = ess.label or f"ESS #{idx}"
-        eq_items.append((lbl, ess.x_ft, ess.y_ft, "(N)"))
+    if routed:
+        for idx, inv in enumerate(el.inverters, 1):
+            lbl = inv.label or f"INVERTER #{idx}"
+            eq_items.append((lbl, inv.x_ft, inv.y_ft, "(N)"))
+        for idx, sp in enumerate(el.sub_panels, 1):
+            lbl = sp.label or f"SUB PANEL #{idx}"
+            eq_items.append((lbl, sp.x_ft, sp.y_ft, "(N)"))
+        for idx, ess in enumerate(el.ess_units, 1):
+            lbl = ess.label or f"ESS #{idx}"
+            eq_items.append((lbl, ess.x_ft, ess.y_ft, "(N)"))
 
     if eq_items:
         # Tiny wall-mounted box per equipment, in site coords
@@ -682,60 +688,61 @@ def _draw_conduit_overlay(
     c.setFillColor(colors.black)
     c.setStrokeColor(colors.black)
 
-    # ── Legend strip (ABOVE the lot, under the title) ────────────────
-    # K.11.7e — single conduit item now (no per-module legend; modules
-    # aren't drawn on EE-4 anymore). Right-anchored against the SITE
-    # INFORMATION column to guarantee no horizontal overlap.
-    legend_y = lot_y + lot_h_pt + 0.22 * inch
-    info_x_pt = page_w - 3.2 * inch
-    legend_left  = lot_x + 0.10 * inch
-    legend_right = info_x_pt - 0.20 * inch
-    conduit_label = "conduit (auto-routed, Manhattan)"
-    c.setFont("Helvetica", 7)
-    conduit_text_w = c.stringWidth(conduit_label, "Helvetica", 7)
-    total_w = 0.30 * inch + conduit_text_w
-    row_left = legend_left + (legend_right - legend_left - total_w) / 2
-    if row_left < legend_left:
-        row_left = legend_left
-    c.setStrokeColor(colors.HexColor("#EA580C"))
-    c.setLineWidth(1.4)
-    c.setDash(5, 3)
-    c.line(row_left, legend_y, row_left + 0.24 * inch, legend_y)
-    c.setDash()
-    c.setStrokeColor(colors.black)
-    c.drawString(row_left + 0.30 * inch, legend_y - 2, conduit_label)
+    # ── Legend strip (RIGHT side of top banner) ──────────────────────
+    # K.13.1 P1 — right-anchored. Pre-K.13.1 the conduit legend was
+    # centered across the top banner; with the PV ARRAY caption now
+    # also on this banner (left-anchored), the legend moved right.
+    # Only rendered when routing is active (the legend describes the
+    # orange conduit line which only exists in routed mode).
+    if routed:
+        legend_y = lot_y + lot_h_pt + 0.22 * inch
+        info_x_pt = page_w - 3.4 * inch
+        legend_right = info_x_pt - 0.20 * inch
+        conduit_label = "conduit (auto-routed, Manhattan)"
+        c.setFont("Helvetica", 7)
+        conduit_text_w = c.stringWidth(conduit_label, "Helvetica", 7)
+        total_w = 0.30 * inch + conduit_text_w
+        row_left = legend_right - total_w
+        c.setStrokeColor(colors.HexColor("#EA580C"))
+        c.setLineWidth(1.4)
+        c.setDash(5, 3)
+        c.line(row_left, legend_y, row_left + 0.24 * inch, legend_y)
+        c.setDash()
+        c.setStrokeColor(colors.black)
+        c.drawString(row_left + 0.30 * inch, legend_y - 2, conduit_label)
 
     # ── Layer 5: optimizer annotation ────────────────────────────────
-    # When inputs.optimizer is configured, annotate a single module
-    # with a leader line out to "(N) PV MODULE EQUIPPED W/ (N)
-    # OPTIMIZERS PER (N) MODULES" — matches the Wyssling reference.
-    # Skipped when optimizer brand is empty (the schema default).
+    # K.13.1 P0 — relocated INSIDE the lot's upper-right (back-yard)
+    # area, away from the SITE INFORMATION column. Pre-K.13.1 the
+    # endpoint was at `lot_x + lot_w_pt + 0.20 inch` which sat
+    # exactly on top of the right-column "Lot dimensions" row.
+    #
+    # New placement: above the array bbox, inside the lot. Lots are
+    # always tall enough (back-yard area > 30 ft) to accommodate the
+    # 2-line label without overlapping the modules below.
     optimizer = result.inputs.optimizer
     if (optimizer is not None and optimizer.brand
             and module_corners_all):
-        # Pick a target module — top-right of the array bbox so the
-        # leader can reach the upper-right margin without crossing
-        # the conduit polyline.
-        # module_corners_all entries are (x0, y0, x1, y1)
         target = max(module_corners_all,
                      key=lambda c_: c_[0] + (c_[3] - c_[1]))
         tx_pt = (target[0] + target[2]) / 2
         ty_pt = (target[1] + target[3]) / 2
 
-        # Leader endpoint: top-right area outside the lot
-        end_x = lot_x + lot_w_pt + 0.20 * inch
-        end_y = lot_y + lot_h_pt - 0.30 * inch
+        # Endpoint: top-right inside the lot.
+        # Width budget: "(N) PV MODULE EQUIPPED W/" ≈ 1.5" at 7pt.
+        # Reserve 1.7" from the right lot edge for the text + leader bend.
+        end_x = lot_x + lot_w_pt - 1.70 * inch
+        end_y = lot_y + lot_h_pt - 0.45 * inch
 
         c.setStrokeColor(colors.HexColor("#1F2937"))
         c.setLineWidth(0.5)
-        # Two-segment leader: module → horizontal exit → end
-        bend_x = end_x - 0.15 * inch
-        c.line(tx_pt, ty_pt, bend_x, ty_pt)
-        c.line(bend_x, ty_pt, end_x - 0.04 * inch, end_y - 2)
+        # Two-segment leader: target module → vertical exit upward
+        # → horizontal to text. Vertical-first keeps the leader from
+        # crossing other module rows in the array.
+        c.line(tx_pt, ty_pt, tx_pt, end_y)
+        c.line(tx_pt, end_y, end_x - 0.04 * inch, end_y)
         c.setFont("Helvetica", 7)
         c.setFillColor(colors.HexColor("#1F2937"))
-        # Optimizer count math: "1 per module" is the most common
-        # K.10.1 install path. Use `effective_count` for accuracy.
         n_opt = optimizer.effective_count(
             result.inputs.pv_array.modules,
             result.inputs.pv_array.strings,
@@ -748,54 +755,6 @@ def _draw_conduit_overlay(
         c.drawString(end_x, end_y - 11, ratio.upper())
         c.setFillColor(colors.black)
         c.setStrokeColor(colors.black)
-
-
-def _pick_module_grid(
-    n_mods: int, box_aspect: float,
-) -> tuple[int, int]:
-    """Pick (n_cols, n_rows) such that `n_cols × n_rows ≥ n_mods` and
-    the grid aspect ratio is as close to `box_aspect` as possible.
-
-    Strategy:
-      1. Compute a target n_cols from `sqrt(n_mods × box_aspect)` —
-         this gives a square-ish grid scaled to box aspect.
-      2. Sweep ±3 around the target; for each candidate compute
-         `n_rows = ceil(n_mods / n_cols)`.
-      3. Prefer EXACT-fit grids (no empty cells); among exact, pick
-         the one with aspect closest to box_aspect. Fall back to the
-         non-exact closest-aspect candidate otherwise.
-
-    Examples (box_aspect = 1.5 — typical "wider than tall" array):
-      * 60 mods → (10, 6) exact
-      * 36 mods → (8, 5) non-exact (40 cells, 4 empty bottom-right)
-      * 34 mods → (8, 5) non-exact (40 cells, 6 empty)
-      * 24 mods → (6, 4) exact
-    """
-    if n_mods <= 0:
-        return 1, 1
-    import math
-    target = math.sqrt(n_mods * max(box_aspect, 0.1))
-    candidates: list[tuple[int, int]] = []
-    lo = max(1, int(target) - 3)
-    hi = max(lo + 1, int(target) + 4)
-    for nc in range(lo, hi + 1):
-        nr = math.ceil(n_mods / nc)
-        if nc * nr < n_mods or nr < 1:
-            continue
-        candidates.append((nc, nr))
-    if not candidates:
-        # Defensive fallback — shouldn't trip in practice
-        return n_mods, 1
-
-    def score(nc_nr: tuple[int, int]) -> float:
-        nc, nr = nc_nr
-        grid_aspect = nc / nr
-        return abs(grid_aspect - box_aspect) / max(box_aspect, 0.1)
-
-    exact = [(nc, nr) for nc, nr in candidates if nc * nr == n_mods]
-    if exact:
-        return min(exact, key=score)
-    return min(candidates, key=score)
 
 
 def _draw_aerial_inset(
@@ -836,7 +795,10 @@ def _draw_aerial_inset(
     png_bytes: Optional[bytes] = None
     if lat_lng is not None:
         try:
-            png_bytes = fetch_aerial_map_png(*lat_lng, radius_m=25.0)
+            # Stage C: bump radius 25 → 35 m so the neighbour-lot
+            # context shows up alongside the subject building.
+            # 25 m crops too tight on suburban lots ≥ 80 ft wide.
+            png_bytes = fetch_aerial_map_png(*lat_lng, radius_m=35.0)
         except Exception:
             png_bytes = None
 
