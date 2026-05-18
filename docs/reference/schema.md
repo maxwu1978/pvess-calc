@@ -357,6 +357,8 @@ routing:
   ambient_temp_c: 45                 # NEC 310.15(B)(2)(a)
   pv_conduit_fill_count: 6           # NEC 310.15(B)(3)(a)(1)
   ac_conduit_fill_count: 3
+  pv_raceway_type: "EMT"             # EMT | PVC40 | PVC80 | RMC | FMC
+  ac_raceway_type: "EMT"             # inverter AC + supply tap raceways
 ```
 
 ## Validation

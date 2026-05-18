@@ -3,7 +3,7 @@
 - **NEC 690.11**: DC arc-fault protection — verify inverter integrates AFCI.
 - **NEC 690.12 / 285**: Surge protection device selection.
 - **NEC 250.53(A)(2)**: Ground rod resistance — ≤ 25Ω single, else paralleled.
-- **NEC Chapter 9, Table 4/5**: Conduit fill — select minimum EMT size.
+- **NEC Chapter 9, Table 4/5**: Conduit fill — select minimum raceway size.
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import re
 from typing import Literal
 
-from ..schema import Inputs
+from ..schema import Inputs, RacewayType
 from .wire_routing import WireRoutingResult
 
 
@@ -242,24 +242,78 @@ THWN2_AREA_IN2: dict[str, float] = {
     "4/0": 0.3237,
 }
 
-# 40%-fill internal area capacities for EMT (NEC Chapter 9 Table 4, EMT).
-EMT_FILL_40PCT_IN2: list[tuple[str, float]] = [
-    ('1/2"',     0.122),
-    ('3/4"',     0.213),
-    ('1"',       0.346),
-    ('1-1/4"',   0.598),
-    ('1-1/2"',   0.814),
-    ('2"',       1.342),
-    ('2-1/2"',   2.343),
-    ('3"',       3.538),
-    ('3-1/2"',   4.618),
-    ('4"',       5.901),
-]
+# 40%-fill internal area capacities (in²) for common residential raceways.
+# These are preliminary-design rows from NEC Chapter 9 Table 4; final plans
+# still need AHJ / engineer verification against the adopted code edition.
+RACEWAY_FILL_40PCT_IN2: dict[RacewayType, list[tuple[str, float]]] = {
+    "EMT": [
+        ('1/2"',     0.122),
+        ('3/4"',     0.213),
+        ('1"',       0.346),
+        ('1-1/4"',   0.598),
+        ('1-1/2"',   0.814),
+        ('2"',       1.342),
+        ('2-1/2"',   2.343),
+        ('3"',       3.538),
+        ('3-1/2"',   4.618),
+        ('4"',       5.901),
+    ],
+    "PVC40": [
+        ('1/2"',     0.114),
+        ('3/4"',     0.203),
+        ('1"',       0.333),
+        ('1-1/4"',   0.581),
+        ('1-1/2"',   0.794),
+        ('2"',       1.316),
+        ('2-1/2"',   1.878),
+        ('3"',       2.907),
+        ('3-1/2"',   3.895),
+        ('4"',       5.022),
+    ],
+    "PVC80": [
+        ('1/2"',     0.068),
+        ('3/4"',     0.119),
+        ('1"',       0.198),
+        ('1-1/4"',   0.341),
+        ('1-1/2"',   0.467),
+        ('2"',       0.762),
+        ('2-1/2"',   1.319),
+        ('3"',       1.998),
+        ('3-1/2"',   2.669),
+        ('4"',       3.435),
+    ],
+    "RMC": [
+        ('1/2"',     0.126),
+        ('3/4"',     0.220),
+        ('1"',       0.355),
+        ('1-1/4"',   0.610),
+        ('1-1/2"',   0.828),
+        ('2"',       1.363),
+        ('2-1/2"',   1.946),
+        ('3"',       3.000),
+        ('3-1/2"',   4.004),
+        ('4"',       5.153),
+    ],
+    "FMC": [
+        ('3/8"',     0.046),
+        ('1/2"',     0.127),
+        ('3/4"',     0.213),
+        ('1"',       0.327),
+        ('1-1/4"',   0.511),
+        ('1-1/2"',   0.743),
+        ('2"',       1.308),
+        ('2-1/2"',   1.964),
+        ('3"',       2.828),
+        ('3-1/2"',   3.848),
+        ('4"',       5.026),
+    ],
+}
 
 
 @dataclass
 class ConduitFillResult:
     total_conductor_area_in2: float
+    raceway_type: RacewayType
     selected_conduit: str
     fill_capacity_in2: float
     headroom_in2: float
@@ -274,15 +328,19 @@ class RacewaySegmentResult:
     length_ft: float
     wires: str
     conductor_sizes: list[str]
-    raceway_type: Literal["FREE AIR", "EMT"]
+    raceway_type: Literal["FREE AIR"] | RacewayType
     selected_raceway: str
     fill: ConduitFillResult | None
     provenance: Literal["routed", "manual", "default", "not_applicable"]
     note: str = ""
 
 
-def select_conduit(conductor_sizes: list[str]) -> ConduitFillResult:
-    """Pick the smallest EMT that can hold the given THWN-2 conductors at
+def select_conduit(
+    conductor_sizes: list[str],
+    *,
+    raceway_type: RacewayType = "EMT",
+) -> ConduitFillResult:
+    """Pick the smallest raceway that can hold the given THWN-2 conductors at
     NEC's 40% fill limit (Chapter 9 Table 1)."""
     unknown = [s for s in conductor_sizes if s not in THWN2_AREA_IN2]
     if unknown:
@@ -291,11 +349,13 @@ def select_conduit(conductor_sizes: list[str]) -> ConduitFillResult:
             + ", ".join(sorted(set(unknown)))
         )
 
+    table = RACEWAY_FILL_40PCT_IN2[raceway_type]
     total = sum(THWN2_AREA_IN2[s] for s in conductor_sizes)
-    for size, capacity in EMT_FILL_40PCT_IN2:
+    for size, capacity in table:
         if capacity >= total:
             return ConduitFillResult(
                 total_conductor_area_in2=total,
+                raceway_type=raceway_type,
                 selected_conduit=size,
                 fill_capacity_in2=capacity,
                 headroom_in2=capacity - total,
@@ -303,10 +363,11 @@ def select_conduit(conductor_sizes: list[str]) -> ConduitFillResult:
             )
     return ConduitFillResult(
         total_conductor_area_in2=total,
-        selected_conduit=EMT_FILL_40PCT_IN2[-1][0] + "+",
-        fill_capacity_in2=EMT_FILL_40PCT_IN2[-1][1],
-        headroom_in2=EMT_FILL_40PCT_IN2[-1][1] - total,
-        fill_pct=total / EMT_FILL_40PCT_IN2[-1][1] * 100,
+        raceway_type=raceway_type,
+        selected_conduit=table[-1][0] + "+",
+        fill_capacity_in2=table[-1][1],
+        headroom_in2=table[-1][1] - total,
+        fill_pct=total / table[-1][1] * 100,
     )
 
 
@@ -343,7 +404,7 @@ def _raceway_segment(
     length_ft: float,
     wires: str,
     conductor_sizes: list[str],
-    raceway_type: Literal["FREE AIR", "EMT"],
+    raceway_type: Literal["FREE AIR"] | RacewayType,
     provenance: Literal["routed", "manual", "default", "not_applicable"],
     note: str = "",
 ) -> RacewaySegmentResult:
@@ -361,7 +422,7 @@ def _raceway_segment(
             provenance=provenance,
             note=note,
         )
-    fill = select_conduit(conductor_sizes)
+    fill = select_conduit(conductor_sizes, raceway_type=raceway_type)
     return RacewaySegmentResult(
         tag=tag,
         circuit=circuit,
@@ -389,6 +450,8 @@ def build_raceway_segments(
     wire_routing: WireRoutingResult | None = None,
 ) -> list[RacewaySegmentResult]:
     lengths, provenance = _route_lengths(inputs, wire_routing)
+    pv_raceway = inputs.routing.pv_raceway_type
+    ac_raceway = inputs.routing.ac_raceway_type
     return [
         _raceway_segment(
             tag="A",
@@ -408,7 +471,7 @@ def build_raceway_segments(
             length_ft=lengths["B"],
             wires="2+G",
             conductor_sizes=[pv_conductor_size, pv_conductor_size, pv_ground_size],
-            raceway_type="EMT",
+            raceway_type=pv_raceway,
             provenance=provenance,
             note="PV DC OCPD to inverter",
         ),
@@ -424,7 +487,7 @@ def build_raceway_segments(
                 per_inverter_ac_conductor_size,
                 per_inverter_ground_size,
             ],
-            raceway_type="EMT",
+            raceway_type=ac_raceway,
             provenance=provenance,
             note="per-inverter output conductors",
         ),
@@ -440,7 +503,7 @@ def build_raceway_segments(
                 aggregate_ac_conductor_size,
                 aggregate_ac_ground_size,
             ],
-            raceway_type="EMT",
+            raceway_type=ac_raceway,
             provenance=provenance,
             note="AC disconnect to line-side tap",
         ),
@@ -489,10 +552,12 @@ def compute_adjacent(
         surge=plan_surge_protection(inputs),
         ground_rods=check_ground_rods_from_inputs(inputs),
         pv_conduit=select_conduit(
-            [pv_conductor_size] * pv_conductor_count + [pv_ground_size]
+            [pv_conductor_size] * pv_conductor_count + [pv_ground_size],
+            raceway_type=inputs.routing.pv_raceway_type,
         ),
         ac_conduit=select_conduit(
-            [ac_conductor_size] * ac_conductor_count + [ac_ground_size]
+            [ac_conductor_size] * ac_conductor_count + [ac_ground_size],
+            raceway_type=inputs.routing.ac_raceway_type,
         ),
         raceways=raceways,
     )

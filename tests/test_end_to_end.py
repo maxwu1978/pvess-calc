@@ -46,3 +46,14 @@ def test_pv_only_report_skips_ess_install_warning(repo_root: Path):
     assert "install_location_specified" not in md
     assert "Raceway schedule（H.2）" in md
     assert "| B | PV DC OUTPUT |" in md
+
+
+def test_report_renders_configured_raceway_type(repo_root: Path):
+    project_dir = repo_root / "projects" / "003-frisco-glasshouse"
+    inputs = Inputs.from_yaml(project_dir / "inputs.yaml")
+    inputs.routing.ac_raceway_type = "PVC80"
+    result = run(inputs)
+
+    md = render(result)
+    assert "PVC80" in md
+    assert "| D | SUPPLY TAP |" in md

@@ -2067,7 +2067,7 @@ def _check_phase_h_adjacent_calcs_complete(
                 f"{label} conduit fill {fill.fill_pct:.1f}% exceeds 40% limit"
             )
         if fill.selected_conduit.endswith("+"):
-            failures.append(f"{label} conduit exceeds built-in EMT table")
+            failures.append(f"{label} conduit exceeds built-in raceway table")
 
     raceways = {rw.tag: rw for rw in adj.raceways}
     missing_tags = [tag for tag in ("A", "B", "C", "D") if tag not in raceways]
@@ -2082,7 +2082,7 @@ def _check_phase_h_adjacent_calcs_complete(
         if rw.fill is not None and rw.fill.fill_pct > 100:
             failures.append(f"raceway {tag} fill {rw.fill.fill_pct:.1f}% exceeds 40% limit")
         if rw.fill is not None and rw.fill.selected_conduit.endswith("+"):
-            failures.append(f"raceway {tag} exceeds built-in EMT table")
+            failures.append(f"raceway {tag} exceeds built-in raceway table")
 
     if adj.ground_rods.status == "MANUAL":
         warnings.append("ground rod resistance/electrode topology needs field proof")

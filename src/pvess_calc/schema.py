@@ -393,11 +393,16 @@ class UtilityTransformer(BaseModel):
     secondary_voltage: float = 240.0        # split-phase residence
 
 
+RacewayType = Literal["EMT", "PVC40", "PVC80", "RMC", "FMC"]
+
+
 class Routing(BaseModel):
     """Conduit routing context for NEC 310.15(B) derating."""
     ambient_temp_c: float = 30.0            # default ambient (NEC 310.15(B)(2)(a) base)
     pv_conduit_fill_count: int = 3          # current-carrying conductors in PV conduit
     ac_conduit_fill_count: int = 3          # current-carrying conductors in AC conduit
+    pv_raceway_type: RacewayType = "EMT"    # PV DC output raceway type
+    ac_raceway_type: RacewayType = "EMT"    # inverter AC / supply tap raceway type
 
 
 class Optimizer(BaseModel):

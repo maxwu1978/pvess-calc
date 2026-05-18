@@ -221,9 +221,21 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
     rw_b = raceways.get("B")
     rw_c = raceways.get("C")
     rw_d = raceways.get("D")
-    pv_emt = rw_b.selected_raceway if rw_b else f"{result.adjacent.pv_conduit.selected_conduit} EMT"
-    inv_emt = rw_c.selected_raceway if rw_c else f"{result.adjacent.ac_conduit.selected_conduit} EMT"
-    ac_emt = rw_d.selected_raceway if rw_d else f"{result.adjacent.ac_conduit.selected_conduit} EMT"
+    pv_raceway = (
+        rw_b.selected_raceway
+        if rw_b else
+        f"{result.adjacent.pv_conduit.selected_conduit} {result.adjacent.pv_conduit.raceway_type}"
+    )
+    inv_raceway = (
+        rw_c.selected_raceway
+        if rw_c else
+        f"{result.adjacent.ac_conduit.selected_conduit} {result.adjacent.ac_conduit.raceway_type}"
+    )
+    ac_raceway = (
+        rw_d.selected_raceway
+        if rw_d else
+        f"{result.adjacent.ac_conduit.selected_conduit} {result.adjacent.ac_conduit.raceway_type}"
+    )
     c_tag = "C" + (f"x{n_inv}" if n_inv > 1 else "")
 
     schedule: list[ConductorScheduleRow] = [
@@ -255,7 +267,7 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
             size=f"{result.pv_conductor.size} AWG",
             conductor_type="THWN-2 CU",
             ground=f"{result.grounding.egc_pv_source} AWG",
-            conduit=pv_emt,
+            conduit=pv_raceway,
             amps=pv_base,
             ampacity=result.pv_conductor.ampacity_a,
             ocpd_a=result.pv_ocpd_a,
@@ -273,7 +285,7 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
             size=f"{per_inv_cond.size} AWG",
             conductor_type="THWN-2 CU",
             ground=f"{result.grounding.egc_inverter_ac} AWG",
-            conduit=inv_emt,
+            conduit=inv_raceway,
             amps=ac_base,
             ampacity=per_inv_cond.ampacity_a,
             ocpd_a=per_inv_ocpd,
@@ -291,7 +303,7 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
             size=f"{result.ess_conductor.size} AWG",
             conductor_type="THWN-2 CU",
             ground=f"{result.grounding.egc_aggregate_ac} AWG",
-            conduit=ac_emt,
+            conduit=ac_raceway,
             amps=aggregate_ac_base,
             ampacity=result.ess_conductor.ampacity_a,
             ocpd_a=result.ess.ac_disconnect_ocpd_a,

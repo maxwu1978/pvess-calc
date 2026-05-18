@@ -8,6 +8,17 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-18 — Phase H.3: configurable raceway types
+
+- Added `routing.pv_raceway_type` and `routing.ac_raceway_type` with EMT
+  defaults for backward-compatible project inputs
+- Extended Chapter 9 40% fill sizing from EMT-only to EMT, PVC Schedule 40,
+  PVC Schedule 80, RMC, and FMC raceway tables
+- Propagated configured raceway type through aggregate Phase H facts,
+  A/B/C/D raceway segments, topology conductor schedules, and `report.md`
+- Added regression tests for PVC80 step-up behavior, topology propagation,
+  and non-EMT report rendering
+
 ### 2026-05-18 — Phase H.2: routed raceway schedule
 
 - Added `adjacent.raceways[]` with A/B/C/D segment records, K.11 route

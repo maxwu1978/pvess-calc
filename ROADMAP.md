@@ -795,7 +795,7 @@ Doctor 39 (unchanged — pure visual polish).
 
 ### Phase H — NEC 690.11 DC AFCI + SPD + Conduit fill
 
-Status: **H.1 + H.2 complete / H.3 planned**.
+Status: **H.1 + H.2 + H.3 complete / H.4 planned**.
 
 #### H.1 — Adjacent protection calculation closure
 
@@ -856,10 +856,38 @@ Test plan:
 - E2E report test verifies the H.2 raceway table renders for PV-only
   Frisco.
 
-#### H.3 — Remaining adjacent detail work
+#### H.3 — Configurable raceway type closure
 
-- Annex C / raceway-type selection beyond EMT (`PVC`, `RMC`, flexible metal)
-  when the project declares installation environment.
+Development plan:
+- Add project-level routing fields for PV DC output raceway type and AC /
+  supply-tap raceway type.
+- Extend the Chapter 9 40% fill selector beyond EMT to PVC Schedule 40,
+  PVC Schedule 80, RMC, and FMC.
+- Preserve EMT defaults so legacy yaml output is stable unless a project
+  explicitly declares another raceway type.
+- Propagate the selected type through aggregate Phase H facts,
+  A/B/C/D raceway segments, topology conductor schedules, and `report.md`.
+
+Closing standard:
+- Frisco still emits the same EMT raceway schedule with no yaml changes.
+- A project that declares `routing.ac_raceway_type: PVC80` shows PVC80 in
+  `adjacent.ac_conduit`, C/D raceway segments, topology rows, and report
+  output.
+- The selector steps up trade size when a smaller-ID raceway such as PVC80
+  cannot hold the same conductor set that fits EMT.
+- Doctor failures refer to unsupported raceway tables generically instead
+  of hard-coding EMT.
+
+Test plan:
+- Unit tests compare EMT vs PVC80 sizing on the same conductor set.
+- Frisco regression verifies configured PV/AC raceway types propagate into
+  the electrical topology.
+- E2E report test verifies non-EMT raceway type text renders in Markdown.
+- Full verification remains `pytest -q`, `mkdocs build --strict`, and
+  `pvess-doctor projects/003-frisco-glasshouse`.
+
+#### H.4 — Remaining adjacent detail work
+
 - AHJ-specific SPD policy overrides where local amendment is stricter than
   base NEC.
 

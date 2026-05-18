@@ -103,6 +103,17 @@ def test_conduit_fill_step_up_when_many_conductors():
     assert result.selected_conduit == '3/4"'
 
 
+def test_conduit_fill_uses_declared_raceway_type():
+    """4 × #10 AWG fits 1/2\" EMT but needs 3/4\" PVC80."""
+    emt = select_conduit(["10"] * 4)
+    pvc80 = select_conduit(["10"] * 4, raceway_type="PVC80")
+
+    assert emt.raceway_type == "EMT"
+    assert emt.selected_conduit == '1/2"'
+    assert pvc80.raceway_type == "PVC80"
+    assert pvc80.selected_conduit == '3/4"'
+
+
 def test_conduit_fill_picks_larger_for_4_aug_conductors():
     """4 × #2/0 + #6 ground = 4 × 0.2223 + 0.0507 ≈ 0.94 in² → needs 1-1/2\" EMT."""
     result = select_conduit(["2/0", "2/0", "2/0", "2/0", "6"])
@@ -144,6 +155,29 @@ def test_frisco_routed_raceways_carry_lengths_and_fill():
     schedule = build_electrical_topology(result).schedule_by_tag()
     assert schedule["B"].length_ft == pytest.approx(raceways["B"].length_ft)
     assert schedule["B"].fill_pct == pytest.approx(raceways["B"].fill.fill_pct)
+    assert schedule["D"].conduit == raceways["D"].selected_raceway
+
+
+def test_declared_raceway_types_propagate_to_topology():
+    from pvess_calc.electrical.topology import build_electrical_topology
+    from pvess_calc.schema import Inputs
+
+    project = Path(__file__).resolve().parents[1] / "projects" / "003-frisco-glasshouse"
+    inputs = Inputs.from_yaml(project / "inputs.yaml")
+    inputs.routing.pv_raceway_type = "PVC40"
+    inputs.routing.ac_raceway_type = "PVC80"
+
+    result = run(inputs)
+    raceways = {rw.tag: rw for rw in result.adjacent.raceways}
+
+    assert result.adjacent.pv_conduit.raceway_type == "PVC40"
+    assert result.adjacent.ac_conduit.raceway_type == "PVC80"
+    assert raceways["B"].selected_raceway.endswith("PVC40")
+    assert raceways["C"].selected_raceway.endswith("PVC80")
+    assert raceways["D"].selected_raceway.endswith("PVC80")
+
+    schedule = build_electrical_topology(result).schedule_by_tag()
+    assert schedule["B"].conduit == raceways["B"].selected_raceway
     assert schedule["D"].conduit == raceways["D"].selected_raceway
 
 

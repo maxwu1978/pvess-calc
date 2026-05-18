@@ -142,8 +142,8 @@ PV-only project：未安装 ESS，NEC 706.10 / IRC R328 安装位置检查不适
 | Service SPD（NEC 230.67） | {% if adjacent.surge.service_spd_required %}✓ REQUIRED{% else %}— RECOMMENDED{% endif %} | {{ adjacent.surge.note }} |
 | SPD 位置 | {{ adjacent.surge.locations|join(", ") }} | Type: {{ adjacent.surge.spd_type }} |
 | 接地棒拓扑（NEC 250.53(A)(2)） | {% if adjacent.ground_rods.status == "PASS" %}✓ PASS{% else %}⚠ MANUAL{% endif %} | {{ adjacent.ground_rods.note }} |
-| PV 导管填充（Chapter 9 Table 1） | {{ adjacent.pv_conduit.selected_conduit }} EMT · {{ "%.1f"|format(adjacent.pv_conduit.fill_pct) }}% of 40% fill | conductor area {{ "%.4f"|format(adjacent.pv_conduit.total_conductor_area_in2) }} in² / cap {{ "%.4f"|format(adjacent.pv_conduit.fill_capacity_in2) }} in² |
-| AC 导管填充（Chapter 9 Table 1） | {{ adjacent.ac_conduit.selected_conduit }} EMT · {{ "%.1f"|format(adjacent.ac_conduit.fill_pct) }}% of 40% fill | conductor area {{ "%.4f"|format(adjacent.ac_conduit.total_conductor_area_in2) }} in² / cap {{ "%.4f"|format(adjacent.ac_conduit.fill_capacity_in2) }} in² |
+| PV 导管填充（Chapter 9 Table 1） | {{ adjacent.pv_conduit.selected_conduit }} {{ adjacent.pv_conduit.raceway_type }} · {{ "%.1f"|format(adjacent.pv_conduit.fill_pct) }}% of 40% fill | conductor area {{ "%.4f"|format(adjacent.pv_conduit.total_conductor_area_in2) }} in² / cap {{ "%.4f"|format(adjacent.pv_conduit.fill_capacity_in2) }} in² |
+| AC 导管填充（Chapter 9 Table 1） | {{ adjacent.ac_conduit.selected_conduit }} {{ adjacent.ac_conduit.raceway_type }} · {{ "%.1f"|format(adjacent.ac_conduit.fill_pct) }}% of 40% fill | conductor area {{ "%.4f"|format(adjacent.ac_conduit.total_conductor_area_in2) }} in² / cap {{ "%.4f"|format(adjacent.ac_conduit.fill_capacity_in2) }} in² |
 
 ### Raceway schedule（H.2）
 
