@@ -27,7 +27,7 @@ def render_spec_placeholder(result: CalculationResult, out_path: Path) -> None:
     c.drawCentredString(
         W / 2, H - 1.05 * inch,
         "Manufacturer datasheets are appended here when provided in "
-        "project.spec_sheets[] or cut_sheets/*.pdf.",
+        "project.spec_sheets[] for selected equipment.",
     )
 
     rows = [

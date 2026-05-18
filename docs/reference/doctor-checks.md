@@ -41,7 +41,7 @@ broken state and asserts the check FAILs.
 
 | Check | Function | What it catches |
 |---|---|---|
-| `ess_install_compliant` | `_check_ess_install_compliant` | IRC R328.5 3-ft setbacks + 40 kWh indoor ceiling |
+| `ess_install_compliant` | `_check_ess_install_compliant` | IRC R328.5 3-ft setbacks + 40 kWh indoor ceiling; skips cleanly for PV-only projects |
 
 ## K.5 — grounding
 
@@ -111,6 +111,7 @@ broken state and asserts the check FAILs.
 |---|---|---|
 | `reference_profile_site_intake_complete` | `_check_reference_profile_site_intake_complete` | `tx_residential_pv` / `wyssling_like` package missing address, coordinates, meter, ESID, roof/framing, or attic/decking survey fields |
 | `reference_profile_attachments_ready` | `_check_reference_profile_attachments_ready` | Missing signed structural letter, PV-7 site photos, or SPEC manufacturer PDFs. These are WARN because the builder emits clear draft/placeholder pages |
+| `reference_profile_data_readiness` | `_check_reference_profile_data_readiness` | Stage 5 readiness summary that distinguishes ready data from simulated/mock/TBD values, reads optional `simulated-site-data.yaml` source packs, and marks PV-only ESS data not-applicable |
 
 ---
 

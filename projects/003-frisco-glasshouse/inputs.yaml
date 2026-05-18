@@ -49,13 +49,11 @@ project:
       path: "photos/mock-equipment-wall.png"
       caption: "Proposed inverter/equipment wall"
   spec_sheets:
-    - equipment: "inverter_primary_growatt_min11400tl_xh_us"
+    # Only the selected inverter's datasheet belongs in the permit SPEC set.
+    # Hoymiles / Megarevo PDFs are candidate-reference files only; real
+    # projects choose exactly one inverter model for the submitted package.
+    - equipment: "selected_inverter_growatt_min11400tl_xh_us"
       path: "cut_sheets/01-growatt-min-11400tl-xh-us-datasheet.pdf"
-    - equipment: "inverter_option_hoymiles_hys_11_5lv_usg1"
-      path: "cut_sheets/02-hoymiles-hys-11-5lv-usg1-datasheet.pdf"
-    - equipment: "inverter_option_megarevo_r8klna"
-      path: "cut_sheets/03-megarevo-r8klna-datasheet.pdf"
-      pages: [12]
   # K.4.6.3: real installer BOM costs (DFW Chinese-installer stack).
   # Replaces the NREL Q1-2026 benchmark ($3.50/W + $950/kWh) which
   # overstates this project's actual cost by ~30%. With this block

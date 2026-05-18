@@ -145,11 +145,25 @@ def _render_or_collect_specs(result: CalculationResult, placeholder: Path) -> li
         p = _resolve_project_path(result, ref.path)
         if p.exists() and p.suffix.lower() == ".pdf":
             explicit.append(p)
-    cut_sheets = _collect_cut_sheets(result)
-    if explicit or cut_sheets:
+    if explicit:
+        # project.spec_sheets[] is the selected-equipment contract. Do not
+        # append every PDF found in cut_sheets/ because that folder may also
+        # carry candidate inverter datasheets used during design comparison.
         out: list[Path] = []
         seen: set[Path] = set()
-        for p in explicit + cut_sheets:
+        for p in explicit:
+            key = p.resolve()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(p)
+        return out
+
+    cut_sheets = _collect_cut_sheets(result)
+    if cut_sheets:
+        out: list[Path] = []
+        seen: set[Path] = set()
+        for p in cut_sheets:
             key = p.resolve()
             if key in seen:
                 continue
@@ -215,6 +229,8 @@ def build_permit_package(
     *,
     ahj_name: str | None = None,
     package_profile: str | None = None,
+    include_readiness_appendix: bool = False,
+    project_dir: Path | None = None,
 ) -> int:
     """Build the full permit PDF. Returns the number of pages."""
     package_profile = package_profile or result.inputs.project.permit_profile
@@ -234,6 +250,16 @@ def build_permit_package(
             safe_code = spec.display_code.lower().replace(".", "-")
             p = tmp_dir / f"{idx:02d}-{safe_code}.pdf"
             pdfs.extend(_render_sheet(result, spec, p, sheet_rows=sheet_rows))
+
+        if include_readiness_appendix:
+            from .readiness import render_readiness_appendix
+            p = tmp_dir / "99-internal-readiness-appendix.pdf"
+            render_readiness_appendix(
+                result,
+                p,
+                project_dir=project_dir or _project_dir(result),
+            )
+            pdfs.append(p)
 
         # Combine all PDFs into one
         writer = PdfWriter()

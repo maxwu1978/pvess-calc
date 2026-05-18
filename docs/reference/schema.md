@@ -49,10 +49,12 @@ project:
       path: "photos/front.jpg"        # project-relative or absolute
       caption: "Front elevation"
 
-  # Stage 9.14: manufacturer PDFs appended in the SPEC section.
+  # Stage 9.14: selected-equipment manufacturer PDFs appended in SPEC.
+  # Do not list alternate inverter candidates here; each actual project
+  # submits one selected inverter model.
   spec_sheets:
-    - equipment: "module"
-      path: "cut_sheets/01-module.pdf"
+    - equipment: "selected_inverter"
+      path: "cut_sheets/01-inverter.pdf"
       pages: []                       # 1-based subset; empty = all pages
 
   # K.12 + Stage 9.12: plan-set / field-survey metadata.

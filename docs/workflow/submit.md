@@ -10,6 +10,7 @@ bundles the production artifacts.
 pvess permit projects/<id>/
 pvess permit --ahj phoenix_az projects/<id>/    # AHJ-specific subset
 pvess permit --profile tx_residential_pv projects/<id>/
+pvess permit --readiness-appendix projects/<id>/ # internal review only
 ```
 
 Generates `output/permit-package-<id>.pdf`. The default `internal` package
@@ -63,6 +64,17 @@ builder prepends it before PV-1. If not, it prepends a clearly marked
 unsigned structural-review draft. PV-7 and SPEC also degrade to explicit
 placeholders when photos or manufacturer PDFs are not yet supplied, and
 `pvess doctor` reports those as WARN rather than FAIL.
+
+`project.spec_sheets[]` is treated as the selected-equipment list. Do not put
+multiple candidate inverter datasheets there; an actual submitted project
+chooses exactly one inverter model. Candidate comparison PDFs can stay outside
+the selected list, for example under `cut_sheets/candidates/`, and are not
+appended to the SPEC section.
+
+`--readiness-appendix` appends the `pvess readiness` source-data summary as
+an internal-review appendix. It is not part of the Sheet Registry, is omitted
+from the cover index, and is off by default so AHJ submissions do not receive
+mock-data provenance pages unless explicitly approved.
 
 ### EE-4 trace skeleton
 

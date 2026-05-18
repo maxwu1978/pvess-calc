@@ -94,7 +94,20 @@ def labels_cmd(project_dir: Path) -> None:
     default=None,
     help="Permit package profile: internal / tx_residential_pv / wyssling_like.",
 )
-def permit_cmd(project_dir: Path, ahj: str | None, package_profile: str | None) -> None:
+@click.option(
+    "--readiness-appendix",
+    is_flag=True,
+    help=(
+        "Append an INTERNAL REVIEW ONLY data-readiness appendix. "
+        "Not included by default for AHJ submission packages."
+    ),
+)
+def permit_cmd(
+    project_dir: Path,
+    ahj: str | None,
+    package_profile: str | None,
+    readiness_appendix: bool,
+) -> None:
     """Generate a complete permit submittal PDF (Phase F)."""
     from .permit.builder import build_permit_package
     inputs = _load(project_dir)
@@ -102,8 +115,93 @@ def permit_cmd(project_dir: Path, ahj: str | None, package_profile: str | None) 
     out = project_dir / "output" / f"permit-package-{inputs.project.id}.pdf"
     n_pages = build_permit_package(
         result, out, ahj_name=ahj, package_profile=package_profile,
+        include_readiness_appendix=readiness_appendix,
+        project_dir=project_dir,
     )
     click.echo(f"wrote {out} ({n_pages} pages)")
+    if readiness_appendix:
+        click.echo(
+            "included INTERNAL REVIEW ONLY readiness appendix "
+            "(remove before AHJ submission unless explicitly approved)"
+        )
+
+
+@click.command(name="pvess-readiness")
+@click.argument("project_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--output", "-o",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output Markdown path. Default: <project>/output/reference-readiness.md",
+)
+@click.option(
+    "--checklist-output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Real-data checklist path. Default: <project>/output/real-data-checklist.md",
+)
+@click.option(
+    "--checklist/--no-checklist",
+    default=True,
+    show_default=True,
+    help="Also write the real-data replacement checklist.",
+)
+@click.option(
+    "--stdout", "to_stdout",
+    is_flag=True,
+    help="Print the readiness report instead of writing a file.",
+)
+@click.option(
+    "--strict",
+    is_flag=True,
+    help="Exit 1 when any field is simulated or missing.",
+)
+def readiness_cmd(
+    project_dir: Path,
+    output: Path | None,
+    checklist_output: Path | None,
+    checklist: bool,
+    to_stdout: bool,
+    strict: bool,
+) -> None:
+    """Generate a reference-profile data-readiness report.
+
+    This is a source-data gate, not a renderer. It lets a team iterate with
+    simulated site photos / utility data while keeping those placeholders
+    visible before AHJ submission.
+    """
+    from .permit.readiness import (
+        assess_reference_profile_readiness,
+        format_real_data_checklist_markdown,
+        format_reference_readiness_markdown,
+    )
+
+    inputs = _load(project_dir)
+    result = run(inputs)
+    readiness = assess_reference_profile_readiness(result, project_dir)
+    text = format_reference_readiness_markdown(readiness)
+    checklist_text = format_real_data_checklist_markdown(readiness)
+
+    if to_stdout:
+        click.echo(text, nl=False)
+    else:
+        out = output or project_dir / "output" / "reference-readiness.md"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text, encoding="utf-8")
+        click.echo(f"wrote {out}")
+        if checklist:
+            checklist_out = (
+                checklist_output
+                or project_dir / "output" / "real-data-checklist.md"
+            )
+            checklist_out.parent.mkdir(parents=True, exist_ok=True)
+            checklist_out.write_text(checklist_text, encoding="utf-8")
+            click.echo(f"wrote {checklist_out}")
+
+    status = "WARN" if readiness.needs_review else "PASS"
+    click.echo(f"readiness: {status} — {readiness.doctor_detail()}")
+    if strict and readiness.needs_review:
+        raise SystemExit(1)
 
 
 @click.command(name="pvess-compare")

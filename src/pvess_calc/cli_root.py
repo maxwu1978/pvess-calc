@@ -23,6 +23,7 @@ Subcommand layout mirrors the natural customer workflow phases:
                           pvess ee4-preview EE-4 PDF/PNG preview
 
   Phase 4 — VERIFY        pvess doctor      structural self-checks
+                          pvess readiness   source-data readiness report
                           pvess symbols     symbols preview
 
   Phase 5 — PIPELINES     pvess pipeline customer   calc + customer-summary
@@ -48,6 +49,7 @@ from .cli import (
     labels_cmd,
     lookup_check_cmd,
     permit_cmd,
+    readiness_cmd,
     render_cmd,
     roof_vis_cmd,
     site_checklist_cmd,
@@ -68,7 +70,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
         "  2. DESIGN   :  `pvess calc`, `pvess customer`, `pvess compare`\n"
         "  3. SUBMIT   :  `pvess permit`, `pvess dxf`, `pvess labels`, "
         "`pvess render`, `pvess ee4-trace`, `pvess ee4-preview`\n"
-        "  4. VERIFY   :  `pvess doctor`, `pvess symbols`\n\n"
+        "  4. VERIFY   :  `pvess doctor`, `pvess readiness`, `pvess symbols`\n\n"
         "Or skip the choreography and use a pipeline:\n"
         "  `pvess pipeline customer projects/<id>/`   "
         "→ calc + customer-summary in one shot\n"
@@ -114,6 +116,7 @@ pvess.add_command(ee4_preview_cmd, name="ee4-preview")
 
 
 pvess.add_command(doctor_cmd, name="doctor")
+pvess.add_command(readiness_cmd, name="readiness")
 pvess.add_command(symbols_preview_cmd, name="symbols")
 
 
@@ -186,6 +189,7 @@ def pipeline_submit(
         project_dir=project_dir,
         ahj=ahj,
         package_profile=package_profile,
+        readiness_appendix=False,
     )
 
     _echo_step(3, total, f"pvess dxf --preview {project_dir}")

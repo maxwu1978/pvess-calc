@@ -100,7 +100,7 @@ Where `<scenarios-dir>` contains subdirectories each with their own
 ### `pvess permit`
 
 ```bash
-pvess permit <project-dir> [--ahj NAME] [--profile PROFILE]
+pvess permit <project-dir> [--ahj NAME] [--profile PROFILE] [--readiness-appendix]
 ```
 
 Generates `output/permit-package-<id>.pdf`.
@@ -109,10 +109,13 @@ Generates `output/permit-package-<id>.pdf`.
 |---|---|
 | `--ahj` | AHJ profile name. Defaults to "all sheets". Available: `austin_tx`, `phoenix_az`, `california_generic`, `hawaii_generic` |
 | `--profile` | Permit package profile. Defaults to `project.permit_profile` or `internal`. Available: `internal`, `tx_residential_pv`, `wyssling_like` |
+| `--readiness-appendix` | Appends an `INTERNAL REVIEW ONLY` data-readiness appendix generated from `pvess readiness`. It is opt-in and should not be included in AHJ submissions unless explicitly approved. |
 
 `tx_residential_pv` / `wyssling_like` emit a reference-style PV/EE drawing
 set with PV-1 cover, PV-7 site photos, SPEC appendix, EE-5 placard, and a
 conditional EE-2.1 one-line diagram for supply-side / service-intercept paths.
+The SPEC appendix uses `project.spec_sheets[]` as the selected-equipment list;
+candidate inverter alternatives should not be listed there.
 
 ### `pvess dxf`
 
@@ -185,6 +188,28 @@ pvess doctor <project-dir> [--quiet]
 
 Runs structural self-checks. Exits non-zero on any FAIL. `--quiet`
 suppresses PASS lines (CI-friendly).
+
+### `pvess readiness`
+
+```bash
+pvess readiness <project-dir> [-o PATH] [--checklist-output PATH] [--stdout] [--strict]
+```
+
+Writes two source-data review files by default:
+
+- `output/reference-readiness.md` — audit detail separating real field data
+  from simulated/mock/TBD values and missing signed inputs
+- `output/real-data-checklist.md` — operator checklist for replacing every
+  simulated/missing item before submission
+
+Default mode is non-blocking so teams can iterate with simulated site data.
+`--strict` exits 1 when any readiness item is `simulated` or `missing`.
+
+If the project root contains `simulated-site-data.yaml`, the report includes
+that source pack as the explicit provenance record for mock photos,
+synthetic utility usage, modeled roof geometry, and other demo-only inputs.
+Fields listed in the source pack stay `simulated` until the replacement
+standard in that file is satisfied.
 
 ### `pvess symbols`
 

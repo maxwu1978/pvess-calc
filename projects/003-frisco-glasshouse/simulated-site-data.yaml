@@ -1,0 +1,55 @@
+version: 1
+name: "frisco-glasshouse-simulated-site-data"
+updated: "2026-05-18"
+purpose: >
+  Stage 5 demo/intake fixture for exercising the reference-style planset
+  without real homeowner field photos, utility usage export, signed
+  structural letter, or finalized contractor / engineer metadata.
+
+sources:
+  project.apn:
+    status: simulated
+    source: "TODO placeholder in inputs.yaml"
+    replacement: "Collin CAD parcel/APN record for 7652 Glasshouse Walk"
+
+  design_engineer:
+    status: simulated
+    source: "internal review placeholder"
+    replacement: "licensed engineer-of-record firm, PE number, contact, and signed structural packet"
+
+  installer:
+    status: simulated
+    source: "TBD DFW installer placeholder"
+    replacement: "contracted installer company name and permit-facing address"
+
+  project.structural_letter_pdf:
+    status: missing
+    source: "no signed structural review supplied"
+    replacement: "signed/sealed structural letter PDF from engineer of record"
+
+  project.site_photos:
+    status: simulated
+    source: "watermarked mock images generated for layout testing"
+    replacement: "actual site-survey photos from installer/homeowner"
+    files:
+      - "photos/mock-front-elevation.png"
+      - "photos/mock-roof-array-area.png"
+      - "photos/mock-oncor-meter.png"
+      - "photos/mock-main-service-panel.png"
+      - "photos/mock-critical-loads-subpanel.png"
+      - "photos/mock-equipment-wall.png"
+
+  loads.monthly_kwh:
+    status: simulated
+    source: "synthetic 12-month Smart Meter Texas usage pattern"
+    replacement: "homeowner Smart Meter Texas CSV export or utility bill history"
+
+  site.roof_sections:
+    status: simulated
+    source: "Google Solar / reference-image derived roof faces with hand-pinned module counts"
+    replacement: "field-verified roof measurements, drone survey, or EagleView-style roof report"
+
+  site.plan_geometry:
+    status: simulated
+    source: "hand-modeled EE-4 trace and property context from reference imagery"
+    replacement: "field/survey/GIS verified roof, lot, driveway, fence, and fire-access geometry"

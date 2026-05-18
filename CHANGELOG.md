@@ -8,6 +8,33 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-18 — Stage 5.1: reference data readiness simulation
+
+- Added `reference_profile_data_readiness` doctor output to separate
+  ready field data from simulated/mock/TBD data, missing signed attachments,
+  and PV-only not-applicable ESS inputs
+- Added a reusable readiness assessor that can generate a Markdown data-gap
+  report for the Frisco reference package
+- Kept the check non-blocking (`WARN`) so simulated data can be used for
+  layout iteration without being mistaken for AHJ-ready source material
+- Clarified `ess_install_compliant` so PV-only projects skip ESS install
+  readiness instead of warning on a deliberately empty battery block
+- Added `pvess readiness` / `pvess-readiness` to regenerate the Markdown
+  readiness report from any project, with `--strict` for AHJ-ready gating
+- Added `simulated-site-data.yaml` source-pack support so mock photos,
+  synthetic usage, modeled roof geometry, and placeholder metadata have
+  explicit replacement standards and cannot accidentally report as ready
+- Added opt-in permit `--readiness-appendix` support for internal review
+  packages. The appendix is outside the Sheet Registry, omitted by default,
+  and clearly marked not for AHJ submission
+- Tightened SPEC handling so `project.spec_sheets[]` represents selected
+  equipment only. Frisco now submits only the selected Growatt inverter
+  datasheet; Hoymiles / Megarevo PDFs are retained as candidate references
+  outside the permit SPEC path
+- Added `output/real-data-checklist.md` generation from `pvess readiness`,
+  giving operators a concrete replacement action for each simulated/missing
+  data item before running the strict AHJ-ready gate
+
 ### 2026-05-18 — Stage 10.2: visual-stability guards
 
 Closed the post-reference-package stabilization pass for EE-2 / EE-2.1 / PV-5:

@@ -944,6 +944,9 @@ def _check_ess_install_compliant(
     forbidden spot.
     """
     name = "ess_install_compliant"
+    if not calc_result.inputs.battery.installed:
+        return [CheckResult(name, "PASS", "PV-only project; ESS install skipped")]
+
     ei = calc_result.ess_install
     if ei.overall_status == "FAIL":
         failing = [c for c in ei.checks if c.status == "FAIL"]
@@ -2271,6 +2274,26 @@ def _check_reference_profile_attachments_ready(
     return [CheckResult(name, "PASS", "structural letter, PV-7 photos, and SPEC PDFs present")]
 
 
+def _check_reference_profile_data_readiness(
+    calc_result: CalculationResult,
+    project_dir: Path | None = None,
+) -> list[CheckResult]:
+    """5.1 — make simulated/missing field data explicit before submission."""
+    name = "reference_profile_data_readiness"
+    i = calc_result.inputs
+    if i.project.permit_profile == "internal":
+        return [CheckResult(name, "PASS", "internal profile (skipped)")]
+
+    try:
+        from .permit.readiness import assess_reference_profile_readiness
+    except ImportError as exc:
+        return [CheckResult(name, "FAIL", f"import failed: {exc}")]
+
+    readiness = assess_reference_profile_readiness(calc_result, project_dir)
+    status = "WARN" if readiness.needs_review else "PASS"
+    return [CheckResult(name, status, readiness.doctor_detail())]
+
+
 def _mounting_family(value: str) -> str:
     norm = re.sub(r"[^a-z0-9]+", "", value.lower())
     if "flashvue" in norm:
@@ -2808,6 +2831,9 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
     # 9.12-9.17 — reference-profile package data/readiness guards
     results.extend(_check_reference_profile_site_intake_complete(calc_result))
     results.extend(_check_reference_profile_attachments_ready(calc_result))
+    results.extend(_check_reference_profile_data_readiness(
+        calc_result, project_dir,
+    ))
     # Stage 10.1 — reference PV-5 / EE-2.1 content quality guards
     results.extend(_check_mounting_data_consistent(calc_result))
     results.extend(_check_pv5_mounting_detail_complete(calc_result))
