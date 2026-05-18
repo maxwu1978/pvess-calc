@@ -578,6 +578,9 @@ def _draw_title_block(msp: Modelspace, result: CalculationResult) -> None:
     dc_kw = i.pv_array.modules * i.pv_array.module.power_w / 1000.0
     ac_kw = i.inverter.ac_output_v * i.inverter.ac_output_a * n_inv / 1000.0
 
+    sheet_code = getattr(result, "_active_sheet_display_code", "EE-1")
+    sheet_title = getattr(result, "_active_sheet_title", "Three-Line Diagram").upper()
+
     sections: list[tuple[str, list[str]]] = [
         ("DESIGN ENGINEER", [
             eng.firm or "—",
@@ -599,7 +602,7 @@ def _draw_title_block(msp: Modelspace, result: CalculationResult) -> None:
                 + (f"    UTILITY: {i.project.utility}" if i.project.utility else ""),
         ]),
         ("DRAWING", [
-            f"SHEET: EE-1  ·  THREE-LINE DIAGRAM",
+            f"SHEET: {sheet_code}  ·  {sheet_title}",
             f"NEC: {i.project.nec_edition}    PROJECT ID: {i.project.id}",
             f"REV: {i.project.revision}"
                 + (f"    DATE: {i.project.initial_design_date}"
