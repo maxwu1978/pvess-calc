@@ -170,16 +170,15 @@ def _ensure_device_block(doc: Drawing, name: str, w: float, h: float, icon: str)
     # Hierarchy: TAG1 (device identifier) at HEADER tier, supporting
     # description lines at BODY tier — gives the eye an anchor when
     # scanning a row of devices.
-    # For MSP, the DESC1/DESC2/MFG/CAT ATTDEFs render below the box —
-    # exactly where the wire to the critical-loads sub-panel drops
-    # straight down. Crossing text. The Wyssling header drawn ABOVE the
-    # box ("(E) MAIN SERVICE / 200A · 120/240V") already identifies the
-    # device, so we hide those ATTRIBs visually but keep them present
-    # in the block (flag=1 = invisible per DXF spec). AutoCAD attribute
-    # queries still return the data; only the rendered output drops the
-    # extra text. TAG1 stays visible because it's narrow ("MSP") and
-    # sits at the left edge, well clear of the wire's center column.
-    HIDE_FOR = {"MSP"}
+    # For MSP and inverter blocks, DESC1/DESC2/MFG/CAT ATTDEFs render
+    # below the box in the same corridor used by vertical conductors
+    # (critical-loads riser for MSP; ESS/battery drop for inverter).
+    # Wyssling-style headers drawn ABOVE the box carry the human-readable
+    # information, so we hide those duplicate ATTRIBs visually but keep
+    # them present in the block (flag=1 = invisible per DXF spec).
+    # AutoCAD attribute queries still return the data; only the rendered
+    # output drops the collision-prone duplicate text. TAG1 stays visible.
+    HIDE_FOR = {"MSP", "INV"}
     for tag, dy in [
         ("TAG1",  0.18 + 0.14 * 0),
         ("DESC1", 0.18 + 0.14 * 1),
@@ -992,14 +991,12 @@ def _draw_schematic(msp: Modelspace, doc: Drawing, result: CalculationResult) ->
 
     # --- Layout ---
     # Anchor the top of the inverter stack below the notes strip.
-    # NOTES_AREA_H reserves vertical room for the 6-line notes block at
-    # the top of the sheet. It governs how far DOWN the entire schematic
-    # column shifts. The PV string column (which can extend higher than
-    # the inverter column when many strings are stacked) was kissing the
-    # NOTES line's descenders at 0.9; 1.15 puts ~0.18" clearance between
-    # PV-S1's top edge and the NOTES line below.
+    # NOTES_AREA_H reserves vertical room for the 6-line notes block and
+    # the full multi-string PV fan-in bus. It governs how far DOWN the
+    # entire schematic column shifts; smaller values let PV-S1/bus geometry
+    # cross the INVERTER / INTERCONNECT notes block.
     LABEL_BLOCK = 0.95
-    NOTES_AREA_H = 1.15
+    NOTES_AREA_H = 1.85
     inv_pitch = 1.8
     top_inv_y_center = SCHEMATIC_Y1 - NOTES_AREA_H - 0.3 - inverter_specs[0].h / 2
     inv_y_centers = [top_inv_y_center - k * inv_pitch for k in range(n_inv)]

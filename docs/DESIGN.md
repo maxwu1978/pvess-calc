@@ -138,22 +138,26 @@ text isn't.
   on EE-1/EE-2 (excluding `ANNOTATION` layer, where wire tags are
   intentionally placed near other elements); flags overlaps above 25%
   of the smaller bbox area
+- `dxf_wire_text_no_overlap` — renders EE-2 three-line + EE-2.1 one-line
+  and verifies conductor geometry does not cross visible `TEXT` or
+  AutoCAD `ATTRIB` labels
 
 The reportlab path doesn't need a runtime overflow check because `fit()`
 uses real `stringWidth` — by construction the text fits.
 
-### Doctor gap: text vs. non-text geometry
+### Doctor gap: text vs. icon geometry
 
-Doctor's automated checks **do not** catch text crossing through wires
-or polyline icon geometry — this is text-vs-text and text-vs-bounds
-only. The skill `.claude/skills/pvess-visual-polish/` documents the
-canonical fixes for each known collision pattern:
+Doctor's automated checks now catch the common text-vs-wire collision
+class, including visible AutoCAD `ATTRIB` values. They still do not
+prove that text is clear of every polyline inside a device icon block.
+The skill `.claude/skills/pvess-visual-polish/` documents the canonical
+fixes for each known collision pattern:
 
 - **Vertical wire crosses an ATTDEF stack** (e.g. MSP's "200A main"
   DESC1 hit by the wire dropping to the critical sub-panel): set
   `attdef.dxf.flags = 1` (invisible) on the redundant ATTDEFs. Data is
   preserved for ACADE; only the rendered output drops the conflicting
-  text. Currently applied to the `MSP` device block.
+  text. Currently applied to `MSP` and `INV` device blocks.
 - **Vertical wire crosses a panel header** (e.g. SUB-#1's "(N) SUB
   PANEL #1" hit by the wire from MSP above): move the header to the
   SIDE of the panel (right-aligned, ending before the panel's left
@@ -162,8 +166,9 @@ canonical fixes for each known collision pattern:
   touched the NOTES line's descenders): increase `NOTES_AREA_H` in
   `_draw_schematic` to push the whole device column down.
 
-Manual eyeball review of EE-1 and EE-2 remains required for these
-cases — the 5-criteria closing standard's ⑤ explicitly covers them.
+Manual eyeball review of EE-1 and EE-2 remains required for icon-internal
+geometry and overall readability — the 5-criteria closing standard's ⑤
+explicitly covers them.
 
 ## 7.5. Design tokens — typography + strokes
 

@@ -1123,7 +1123,7 @@ def _pv5_general_roof_mount_detail(
                 right - 1.56 * inch, roof_y + 0.36 * inch)
     c.setFont("Helvetica", 8.0)
     c.setFont("Helvetica", 7.4)
-    c.drawString(left + 1.10 * inch, y - 0.20 * inch,
+    c.drawString(left + 1.10 * inch, y - 0.45 * inch,
                  f"{m.flashing.upper()} ROOF MOUNT")
 
 

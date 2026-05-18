@@ -8,6 +8,22 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-18 — Stage 10.2: visual-stability guards
+
+Closed the post-reference-package stabilization pass for EE-2 / EE-2.1 / PV-5:
+
+- Added `dxf_wire_text_no_overlap` doctor guard for conductor geometry crossing
+  visible DXF `TEXT` / AutoCAD `ATTRIB` labels on EE-2 and EE-2.1
+- Added `pv5_text_no_overlap` doctor guard for mounting-detail callout text
+  collisions
+- Shifted the EE-2 schematic down to clear top notes from multi-string PV bus
+  geometry
+- Hid duplicate inverter ATTRIB text that conflicted with the ESS/battery drop
+  while preserving AutoCAD Electrical metadata
+- Adjusted PV-5 FlashVue callout placement to remove text crowding
+- Added regression-bait tests for crossed DXF text, crossed visible ATTRIBs, and
+  PV-5 overlapping callouts
+
 ### 2026-05-18 — Stage 9.11-9.17: reference-style planset profile
 
 Completed the Wyssling/Texas Green Eco style package path:

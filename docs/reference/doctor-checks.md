@@ -86,6 +86,7 @@ broken state and asserts the check FAILs.
 |---|---|---|
 | `dxf_text_no_overflow` | `_check_dxf_text_no_overflow` | EE-1/EE-2 SCHEDULE/TITLE_BLOCK/NOTES text fits its container width |
 | `dxf_no_text_overlap` | `_check_dxf_no_text_overlap` | TEXT entity bboxes don't overlap > 25% |
+| `dxf_wire_text_no_overlap` | `_check_dxf_wire_text_no_overlap` | EE-2/EE-2.1 conductor geometry does not cross visible TEXT / ATTRIB labels |
 
 ## Site checklist coverage
 
@@ -102,6 +103,7 @@ broken state and asserts the check FAILs.
 | `ee4_preview_visual_lint` | `_check_ee4_preview_visual_lint` | Stage 9.4 geometry / leader / callout lints for the EE-4 preview |
 | `ee4a_property_context_data_driven` | `_check_ee4a_property_context_data_driven` | Stage 9.9 EE-4A renders explicit lot / driveway / fence / dimension context when supplied |
 | `pv6_string_layout_visual_lint` | `_check_pv6_string_layout_visual_lint` | Stage 9.10.5 PV-6 string rollups, leader callouts, and label collisions |
+| `pv5_text_no_overlap` | `_check_pv5_text_no_overlap` | PV-5 mounting-detail callout text boxes do not overlap |
 
 ## Stage 9.11-9.17 — reference planset profile
 
@@ -122,7 +124,7 @@ broken state and asserts the check FAILs.
 
 ## What doctor does NOT cover
 
-- Text vs **wire / icon geometry** collisions in DXF (requires visual review)
+- Text vs **icon geometry inside a block** collisions in DXF (requires visual review)
 - NEC interpretation correctness (the engine outputs correct math for
   the rules it implements; doctor doesn't verify the *interpretation* of
   those rules)

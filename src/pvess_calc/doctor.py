@@ -243,6 +243,214 @@ def _check_pdf_is_text_searchable(result: CalculationResult) -> list[CheckResult
     return [CheckResult("pdf_text_searchable", "PASS")]
 
 
+def _dxf_text_bbox(entity) -> tuple[float, float, float, float]:
+    """Estimate a DXF TEXT/ATTRIB entity bbox in modelspace units."""
+    from .dxf._textfit import estimate_text_width
+
+    height = float(entity.dxf.height)
+    width = estimate_text_width(entity.dxf.text, height)
+    halign = int(getattr(entity.dxf, "halign", 0) or 0)
+    if halign == 0:
+        x_min = float(entity.dxf.insert.x)
+        y_baseline = float(entity.dxf.insert.y)
+    else:
+        align_point = (
+            entity.dxf.align_point
+            if entity.dxf.hasattr("align_point")
+            else entity.dxf.insert
+        )
+        anchor_x = float(align_point.x)
+        y_baseline = float(align_point.y)
+        if halign == 1:
+            x_min = anchor_x - width / 2
+        else:
+            x_min = anchor_x - width
+    return (
+        x_min,
+        y_baseline - height * 0.25,
+        x_min + width,
+        y_baseline + height * 0.85,
+    )
+
+
+def _dxf_segment_boxes(entity, pad: float) -> list[tuple[float, float, float, float]]:
+    if entity.dxftype() == "LINE":
+        pts = [
+            (float(entity.dxf.start.x), float(entity.dxf.start.y)),
+            (float(entity.dxf.end.x), float(entity.dxf.end.y)),
+        ]
+    else:
+        pts = [(float(p[0]), float(p[1])) for p in entity.get_points("xy")]
+    return [
+        (
+            min(a[0], b[0]) - pad,
+            min(a[1], b[1]) - pad,
+            max(a[0], b[0]) + pad,
+            max(a[1], b[1]) + pad,
+        )
+        for a, b in zip(pts, pts[1:])
+    ]
+
+
+def _dxf_boxes_overlap(a, b) -> bool:
+    return (
+        min(a[2], b[2]) > max(a[0], b[0])
+        and min(a[3], b[3]) > max(a[1], b[1])
+    )
+
+
+def _is_transient_wire_label(text: str) -> bool:
+    """Skip labels intentionally placed on/near conductors."""
+    norm = text.strip().upper()
+    if re.fullmatch(r"[A-Z](?:×\d+)?", norm):
+        return True
+    if re.fullmatch(r"\dP-\d+A", norm):
+        return True
+    return False
+
+
+def _dxf_wire_text_offenders(
+    doc,
+    sheet_name: str,
+    *,
+    text_layers: set[str],
+    wire_layers: set[str] | None = None,
+    ignored_texts: set[str] | None = None,
+    include_attribs: bool = True,
+    wire_pad: float = 0.035,
+    limit: int = 8,
+) -> tuple[list[str], int]:
+    """Return text labels whose bbox intersects conductor segment boxes.
+
+    This intentionally checks both TEXT and visible ATTRIB entities. The
+    latter matters because AutoCAD Electrical component metadata renders as
+    ATTRIB text; previous manual reviews caught conductor lines crossing those
+    visible attributes even while the TEXT-only doctor checks passed.
+    """
+    msp = doc.modelspace()
+    ignored = {t.upper() for t in (ignored_texts or set())}
+
+    text_boxes: list[tuple[str, str, tuple[float, float, float, float]]] = []
+    for entity in msp.query("TEXT"):
+        text = entity.dxf.text.strip()
+        layer = entity.dxf.layer
+        norm = text.upper()
+        if not text or layer not in text_layers:
+            continue
+        if norm in ignored or _is_transient_wire_label(text):
+            continue
+        text_boxes.append((text, layer, _dxf_text_bbox(entity)))
+
+    if include_attribs:
+        for insert in msp.query("INSERT"):
+            for attr in insert.attribs:
+                text = attr.dxf.text.strip()
+                norm = text.upper()
+                flags = int(getattr(attr.dxf, "flags", 0) or 0)
+                if not text or flags & 1:
+                    continue
+                if norm in ignored or _is_transient_wire_label(text):
+                    continue
+                text_boxes.append((text, attr.dxf.layer, _dxf_text_bbox(attr)))
+
+    wire_boxes: list[tuple[str, tuple[float, float, float, float]]] = []
+    for entity in msp.query("LWPOLYLINE LINE"):
+        layer = entity.dxf.layer
+        if wire_layers is None:
+            if not layer.startswith("WIRE"):
+                continue
+        elif layer not in wire_layers:
+            continue
+        wire_boxes.extend(
+            (layer, box) for box in _dxf_segment_boxes(entity, wire_pad)
+        )
+
+    offenders: list[str] = []
+    for text, text_layer, text_box in text_boxes:
+        for wire_layer, wire_box in wire_boxes:
+            if _dxf_boxes_overlap(text_box, wire_box):
+                offenders.append(
+                    f"{sheet_name} {text_layer} text={text!r} "
+                    f"crossed by {wire_layer}"
+                )
+                break
+        if len(offenders) >= limit:
+            break
+    return offenders, len(wire_boxes)
+
+
+def _check_dxf_wire_text_no_overlap(result: CalculationResult) -> list[CheckResult]:
+    """EE-2/EE-2.1 conductors must not cross visible labels.
+
+    `dxf_no_text_overlap` catches text-vs-text only. This guard covers the
+    manual-review class where a conductor, bus, or tap line passes through a
+    note, equipment header, or visible AutoCAD ATTRIB value.
+    """
+    name = "dxf_wire_text_no_overlap"
+    import ezdxf
+
+    from .dxf.one_line import render_one_line_dxf
+    from .dxf.render import render_dxf
+    from .electrical.topology import build_electrical_topology
+    from .permit.builder import _should_emit_one_line
+
+    sheets = [
+        (
+            "EE-1/EE-2 three-line",
+            render_dxf,
+            {"NOTES", "EQUIPMENT_TEXT"},
+            None,
+        ),
+    ]
+    if _should_emit_one_line(result):
+        schedule_tags = {
+            row.tag.upper() for row in build_electrical_topology(result).schedule
+        }
+        sheets.append((
+            "EE-2.1 one-line",
+            render_one_line_dxf,
+            {"NOTES", "EQUIPMENT_TEXT", "ANNOTATION"},
+            {"WIRE_ONE_LINE"},
+        ))
+    else:
+        schedule_tags = set()
+
+    offenders: list[str] = []
+    wire_count = 0
+    with TemporaryDirectory() as tmp:
+        for sheet_name, renderer, text_layers, wire_layers in sheets:
+            out = Path(tmp) / f"{sheet_name}.dxf"
+            try:
+                renderer(result, out)
+            except Exception as exc:
+                return [CheckResult(name, "FAIL", f"{sheet_name} renderer crashed: {exc}")]
+            doc = ezdxf.readfile(str(out))
+            sheet_offenders, sheet_wire_count = _dxf_wire_text_offenders(
+                doc,
+                sheet_name,
+                text_layers=text_layers,
+                wire_layers=wire_layers,
+                ignored_texts=schedule_tags,
+            )
+            offenders.extend(sheet_offenders)
+            wire_count += sheet_wire_count
+            if len(offenders) >= 8:
+                break
+
+    if offenders:
+        return [CheckResult(
+            name,
+            "FAIL",
+            "conductor geometry crosses visible text:\n  "
+            + "\n  ".join(offenders[:8]),
+        )]
+    return [CheckResult(
+        name,
+        "PASS",
+        f"{wire_count} conductor segment(s) clear of visible labels",
+    )]
+
+
 def _check_dxf_text_no_overflow(result: CalculationResult) -> list[CheckResult]:
     """Every TEXT entity on SCHEDULE/TITLE_BLOCK layers in EE-1 and EE-2
     must fit within its container's right edge.
@@ -2164,6 +2372,84 @@ def _check_pv5_mounting_detail_complete(
     return [CheckResult(name, "PASS", f"{len(required)} PV-5 detail tokens present")]
 
 
+def _pdf_text_bbox_items(path: Path) -> list[tuple[str, float, float, float, float]]:
+    """Best-effort text bboxes from a PDF page using pypdf text positions."""
+    import pypdf
+    from reportlab.pdfbase import pdfmetrics
+
+    items: list[tuple[str, float, float, float, float]] = []
+
+    def visitor(text, cm, tm, font_dict, font_size):
+        del cm, font_dict
+        label = " ".join(text.split())
+        if not label:
+            return
+        x = float(tm[4])
+        baseline = float(tm[5])
+        # Use Helvetica as a stable approximation. This is intentionally a
+        # coarse visual lint, not a PDF preflight engine.
+        width = pdfmetrics.stringWidth(label, "Helvetica", float(font_size))
+        items.append((
+            label,
+            x,
+            baseline - float(font_size) * 0.25,
+            x + width,
+            baseline + float(font_size) * 0.90,
+        ))
+
+    for page in pypdf.PdfReader(str(path)).pages:
+        page.extract_text(visitor_text=visitor)
+    return items
+
+
+def _bbox_overlap_ratio(a, b) -> float:
+    ix = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    iy = max(0.0, min(a[4], b[4]) - max(a[2], b[2]))
+    inter = ix * iy
+    if inter <= 0:
+        return 0.0
+    area_a = (a[3] - a[1]) * (a[4] - a[2])
+    area_b = (b[3] - b[1]) * (b[4] - b[2])
+    return inter / max(1e-9, min(area_a, area_b))
+
+
+def _check_pv5_text_no_overlap(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """PV-5 callout text should not pile up on itself."""
+    name = "pv5_text_no_overlap"
+    i = calc_result.inputs
+    if i.project.permit_profile == "internal":
+        return [CheckResult(name, "PASS", "internal profile (skipped)")]
+
+    from .permit.structural import render_mounting_details
+
+    with TemporaryDirectory() as tmp:
+        out = Path(tmp) / "pv5.pdf"
+        try:
+            render_mounting_details(calc_result, out)
+        except Exception as exc:
+            return [CheckResult(name, "FAIL", f"PV-5 render crashed: {exc}")]
+        text_boxes = _pdf_text_bbox_items(out)
+
+    offenders: list[str] = []
+    for idx, a in enumerate(text_boxes):
+        for b in text_boxes[idx + 1:]:
+            ratio = _bbox_overlap_ratio(a, b)
+            if ratio > 0.25:
+                offenders.append(f"{a[0]!r} overlaps {b[0]!r} ({ratio:.0%})")
+                break
+        if len(offenders) >= 6:
+            break
+    if offenders:
+        return [CheckResult(
+            name,
+            "FAIL",
+            "PV-5 text bounding boxes overlap:\n  " + "\n  ".join(offenders),
+        )]
+    return [CheckResult(name, "PASS", f"{len(text_boxes)} text item(s) clear")]
+
+
 def _should_have_ee21(calc_result: CalculationResult) -> bool:
     from .permit.builder import _should_emit_one_line
     return _should_emit_one_line(calc_result)
@@ -2350,7 +2636,6 @@ def _check_ee21_no_wire_text_overlap(
     if not _should_have_ee21(calc_result):
         return [CheckResult(name, "PASS", "one-line not selected (skipped)")]
     import ezdxf
-    from .dxf._textfit import estimate_text_width
     from .dxf.one_line import render_one_line_dxf
     from .electrical.topology import build_electrical_topology
 
@@ -2362,79 +2647,20 @@ def _check_ee21_no_wire_text_overlap(
             return [CheckResult(name, "FAIL", f"EE-2.1 render crashed: {exc}")]
         doc = ezdxf.readfile(str(out))
 
-    msp = doc.modelspace()
     tags = {row.tag.upper() for row in build_electrical_topology(calc_result).schedule}
-    skip_layers = {"SCHEDULE", "TITLE_BLOCK", "NOTES"}
-    wire_pad = 0.035
-
-    def _text_bbox(entity) -> tuple[float, float, float, float]:
-        text = entity.dxf.text
-        height = entity.dxf.height
-        width = estimate_text_width(text, height)
-        halign = entity.dxf.halign
-        if halign == 0:
-            x_min = entity.dxf.insert.x
-            y_baseline = entity.dxf.insert.y
-        else:
-            anchor_x = entity.dxf.align_point.x
-            y_baseline = entity.dxf.align_point.y
-            x_min = anchor_x - width / 2 if halign == 1 else anchor_x - width
-        return (
-            x_min,
-            y_baseline - height * 0.25,
-            x_min + width,
-            y_baseline + height * 0.85,
-        )
-
-    def _segment_boxes(entity) -> list[tuple[float, float, float, float]]:
-        if entity.dxftype() == "LINE":
-            pts = [
-                (entity.dxf.start.x, entity.dxf.start.y),
-                (entity.dxf.end.x, entity.dxf.end.y),
-            ]
-        else:
-            pts = [(p[0], p[1]) for p in entity.get_points("xy")]
-        boxes = []
-        for a, b in zip(pts, pts[1:]):
-            boxes.append((
-                min(a[0], b[0]) - wire_pad,
-                min(a[1], b[1]) - wire_pad,
-                max(a[0], b[0]) + wire_pad,
-                max(a[1], b[1]) + wire_pad,
-            ))
-        return boxes
-
-    def _overlaps(a, b) -> bool:
-        return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
-
-    texts = []
-    for entity in msp.query("TEXT"):
-        text = entity.dxf.text.strip()
-        if not text or entity.dxf.layer in skip_layers:
-            continue
-        if text.upper() in tags:
-            continue
-        texts.append((text, _text_bbox(entity)))
-
-    wire_boxes = []
-    for entity in msp.query("LWPOLYLINE LINE"):
-        if entity.dxf.layer == "WIRE_ONE_LINE":
-            wire_boxes.extend(_segment_boxes(entity))
-
-    offenders: list[str] = []
-    for text, text_box in texts:
-        for wire_box in wire_boxes:
-            if _overlaps(text_box, wire_box):
-                offenders.append(text)
-                break
-        if len(offenders) >= 8:
-            break
+    offenders, wire_count = _dxf_wire_text_offenders(
+        doc,
+        "EE-2.1",
+        text_layers={"EQUIPMENT_TEXT", "ANNOTATION"},
+        wire_layers={"WIRE_ONE_LINE"},
+        ignored_texts=tags,
+    )
     if offenders:
         return [CheckResult(
             name, "FAIL",
-            "WIRE_ONE_LINE overlaps label text: " + ", ".join(offenders),
+            "WIRE_ONE_LINE overlaps label text:\n  " + "\n  ".join(offenders),
         )]
-    return [CheckResult(name, "PASS", f"{len(wire_boxes)} wire segment(s) clear of labels")]
+    return [CheckResult(name, "PASS", f"{wire_count} wire segment(s) clear of labels")]
 
 
 def _check_face_value_score_distinguishes_east_west() -> list[CheckResult]:
@@ -2585,6 +2811,7 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
     # Stage 10.1 — reference PV-5 / EE-2.1 content quality guards
     results.extend(_check_mounting_data_consistent(calc_result))
     results.extend(_check_pv5_mounting_detail_complete(calc_result))
+    results.extend(_check_pv5_text_no_overlap(calc_result))
     results.extend(_check_ee21_one_line_complete(calc_result))
     results.extend(_check_ee21_no_phantom_ocpd(calc_result))
     results.extend(_check_ee21_topology_consistent(calc_result))
@@ -2619,6 +2846,7 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
     results.extend(_check_pdf_is_text_searchable(calc_result))
     results.extend(_check_dxf_text_no_overflow(calc_result))
     results.extend(_check_dxf_no_text_overlap(calc_result))
+    results.extend(_check_dxf_wire_text_no_overlap(calc_result))
     results.extend(_check_site_checklist_covers_schema())
 
     return results

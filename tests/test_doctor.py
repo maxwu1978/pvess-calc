@@ -23,9 +23,11 @@ from pvess_calc.doctor import (
     _check_calc_engine,
     _check_cover_lists_all_sheets,
     _check_dxf_text_no_overflow,
+    _check_dxf_wire_text_no_overlap,
     _check_inputs_load,
     _check_label_set_codes,
     _check_no_fixed_width_truncation_markers,
+    _check_pv5_text_no_overlap,
     run_doctor,
 )
 from pvess_calc.permit.sheet_registry import SHEET_REGISTRY, codes
@@ -562,6 +564,120 @@ def test_dxf_text_no_overflow_passes_on_phoenix():
     result = run(Inputs.from_yaml(PHOENIX / "inputs.yaml"))
     [r] = _check_dxf_text_no_overflow(result)
     assert r.status == "PASS", r.detail
+
+
+def test_dxf_wire_text_no_overlap_passes_on_active_fixtures():
+    """Positive guard: EE-2/EE-2.1 conductors must clear visible labels."""
+    from pvess_calc.calc.engine import run
+    from pvess_calc.schema import Inputs
+
+    for project in (PHOENIX, FRISCO):
+        result = run(Inputs.from_yaml(project / "inputs.yaml"))
+        [r] = _check_dxf_wire_text_no_overlap(result)
+        assert r.status == "PASS", f"{project.name}: {r.detail}"
+
+
+def test_dxf_wire_text_no_overlap_catches_crossed_text(monkeypatch):
+    """Regression-bait: a conductor crossing a visible label must fail."""
+    import ezdxf
+    import pvess_calc.dxf.render as render_mod
+    from pvess_calc.calc.engine import run
+    from pvess_calc.schema import Inputs
+
+    original = render_mod.render_dxf
+
+    def crossed_label(result, out_path):
+        original(result, out_path)
+        doc = ezdxf.readfile(str(out_path))
+        msp = doc.modelspace()
+        msp.add_text(
+            "REGRESSION LABEL",
+            height=0.10,
+            dxfattribs={"layer": "EQUIPMENT_TEXT"},
+        ).set_placement((2.0, 7.0))
+        msp.add_lwpolyline(
+            [(2.30, 6.80), (2.30, 7.25)],
+            dxfattribs={"layer": "WIRE_DC_POS"},
+        )
+        doc.saveas(str(out_path))
+
+    monkeypatch.setattr(render_mod, "render_dxf", crossed_label)
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    [r] = _check_dxf_wire_text_no_overlap(result)
+    assert r.status == "FAIL"
+    assert "REGRESSION LABEL" in r.detail
+
+
+def test_dxf_wire_text_no_overlap_catches_visible_attrib(monkeypatch):
+    """Regression-bait: ACADE ATTRIB text is visible text, not metadata only."""
+    import ezdxf
+    import pvess_calc.dxf.render as render_mod
+    from pvess_calc.calc.engine import run
+    from pvess_calc.schema import Inputs
+
+    original = render_mod.render_dxf
+
+    def crossed_attrib(result, out_path):
+        original(result, out_path)
+        doc = ezdxf.readfile(str(out_path))
+        block = doc.blocks.new("REGRESSION_ATTR_BLOCK")
+        block.add_attdef(
+            "TAG1",
+            insert=(0, 0),
+            dxfattribs={"layer": "ANNOTATION", "height": 0.10},
+        )
+        ins = doc.modelspace().add_blockref(
+            "REGRESSION_ATTR_BLOCK",
+            insert=(2.0, 7.0),
+            dxfattribs={"layer": "EQUIPMENT"},
+        )
+        ins.add_auto_attribs({"TAG1": "VISIBLE ATTR"})
+        doc.modelspace().add_lwpolyline(
+            [(2.25, 6.80), (2.25, 7.25)],
+            dxfattribs={"layer": "WIRE_DC_POS"},
+        )
+        doc.saveas(str(out_path))
+
+    monkeypatch.setattr(render_mod, "render_dxf", crossed_attrib)
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    [r] = _check_dxf_wire_text_no_overlap(result)
+    assert r.status == "FAIL"
+    assert "VISIBLE ATTR" in r.detail
+
+
+def test_pv5_text_no_overlap_passes_on_frisco():
+    """Positive guard: reference PV-5 callout labels do not collide."""
+    from pvess_calc.calc.engine import run
+    from pvess_calc.schema import Inputs
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    [r] = _check_pv5_text_no_overlap(result)
+    assert r.status == "PASS", r.detail
+
+
+def test_pv5_text_no_overlap_catches_collided_callouts(monkeypatch):
+    """Regression-bait: PV-5 text fragments at the same position fail."""
+    import pvess_calc.permit.structural as structural_mod
+    from reportlab.lib.pagesizes import landscape, letter
+    from reportlab.pdfgen import canvas
+    from pvess_calc.calc.engine import run
+    from pvess_calc.schema import Inputs
+
+    def overlapping_text(_result, out_path):
+        c = canvas.Canvas(str(out_path), pagesize=landscape(letter))
+        c.setFont("Helvetica", 10)
+        c.drawString(100, 100, "OVERLAP A")
+        c.drawString(102, 102, "OVERLAP B")
+        c.save()
+
+    monkeypatch.setattr(structural_mod, "render_mounting_details", overlapping_text)
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    [r] = _check_pv5_text_no_overlap(result)
+    assert r.status == "FAIL"
+    assert "OVERLAP A" in r.detail
 
 
 def test_grounding_schedule_rows_fit_without_fit_dxf(monkeypatch):
