@@ -2069,6 +2069,21 @@ def _check_phase_h_adjacent_calcs_complete(
         if fill.selected_conduit.endswith("+"):
             failures.append(f"{label} conduit exceeds built-in EMT table")
 
+    raceways = {rw.tag: rw for rw in adj.raceways}
+    missing_tags = [tag for tag in ("A", "B", "C", "D") if tag not in raceways]
+    if missing_tags:
+        failures.append(f"missing H.2 raceway segment(s): {missing_tags}")
+    if calc_result.wire_routing is not None and calc_result.wire_routing.routed:
+        for tag in ("B", "C", "D"):
+            rw = raceways.get(tag)
+            if rw is not None and rw.length_ft <= 0:
+                failures.append(f"raceway {tag} has routed length <= 0 ft")
+    for tag, rw in sorted(raceways.items()):
+        if rw.fill is not None and rw.fill.fill_pct > 100:
+            failures.append(f"raceway {tag} fill {rw.fill.fill_pct:.1f}% exceeds 40% limit")
+        if rw.fill is not None and rw.fill.selected_conduit.endswith("+"):
+            failures.append(f"raceway {tag} exceeds built-in EMT table")
+
     if adj.ground_rods.status == "MANUAL":
         warnings.append("ground rod resistance/electrode topology needs field proof")
 
@@ -2080,7 +2095,8 @@ def _check_phase_h_adjacent_calcs_complete(
         f"PV {adj.pv_conduit.selected_conduit} "
         f"({adj.pv_conduit.fill_pct:.1f}%), "
         f"AC {adj.ac_conduit.selected_conduit} "
-        f"({adj.ac_conduit.fill_pct:.1f}%)"
+        f"({adj.ac_conduit.fill_pct:.1f}%), "
+        f"{len(raceways)} raceway segment(s)"
     )
     if warnings:
         return [CheckResult(name, "WARN", detail + "; " + "; ".join(warnings))]

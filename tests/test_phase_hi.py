@@ -122,6 +122,29 @@ def test_engine_populates_adjacent_field():
     assert result.adjacent.ac_conduit.selected_conduit
     assert result.adjacent.surge.spd_type == "Type 2"
     assert result.adjacent.pv_conduit.fill_pct > 0
+    assert {rw.tag for rw in result.adjacent.raceways} == {"A", "B", "C", "D"}
+
+
+def test_frisco_routed_raceways_carry_lengths_and_fill():
+    from pvess_calc.electrical.topology import build_electrical_topology
+    from pvess_calc.schema import Inputs
+
+    project = Path(__file__).resolve().parents[1] / "projects" / "003-frisco-glasshouse"
+    result = run(Inputs.from_yaml(project / "inputs.yaml"))
+    raceways = {rw.tag: rw for rw in result.adjacent.raceways}
+
+    assert raceways["B"].length_ft == pytest.approx(
+        result.wire_routing.pv_to_combiner_ft
+    )
+    assert raceways["C"].fill is not None
+    assert raceways["D"].fill is not None
+    assert raceways["C"].selected_raceway.endswith("EMT")
+    assert raceways["D"].selected_raceway.endswith("EMT")
+
+    schedule = build_electrical_topology(result).schedule_by_tag()
+    assert schedule["B"].length_ft == pytest.approx(raceways["B"].length_ft)
+    assert schedule["B"].fill_pct == pytest.approx(raceways["B"].fill.fill_pct)
+    assert schedule["D"].conduit == raceways["D"].selected_raceway
 
 
 # --- Phase I: NEC 2017 / California / Hawaii / Oncor ----------------------

@@ -146,6 +146,11 @@ def _draw_conductor_schedule(
     msp: Modelspace,
     rows: tuple[ConductorScheduleRow, ...],
 ) -> None:
+    def raceway_label(row: ConductorScheduleRow) -> str:
+        if row.fill_pct is None:
+            return row.conduit
+        return f"{row.conduit} {row.fill_pct:.0f}%"
+
     hb_h = 0.30
     msp.add_lwpolyline(
         [(RIGHT_X0, SCHED_Y1 - hb_h), (RIGHT_X1, SCHED_Y1 - hb_h)],
@@ -186,7 +191,7 @@ def _draw_conductor_schedule(
             row.size,
             row.conductor_type,
             row.ground,
-            row.conduit,
+            raceway_label(row),
             f"{row.ocpd_a}A",
         ]
         for (title, x0, width), value in zip(cols, values):

@@ -51,6 +51,8 @@ class ConductorScheduleRow:
     amps: float
     ampacity: float
     ocpd_a: int
+    length_ft: float = 0.0
+    fill_pct: float | None = None
     note: str = ""
 
 
@@ -87,6 +89,10 @@ def _per_inverter_ac_spec(result: CalculationResult):
         derating_factor=result.ac_derating_factor,
     )
     return ocpd, cond
+
+
+def _raceway_by_tag(result: CalculationResult):
+    return {rw.tag: rw for rw in result.adjacent.raceways}
 
 
 def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
@@ -210,8 +216,14 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
     pv_base = result.pv_string.isc_690_8_a
     ac_base = i.inverter.ac_output_a
     aggregate_ac_base = result.interconnect.total_backfeed_a
-    pv_emt = f"{result.adjacent.pv_conduit.selected_conduit} EMT"
-    ac_emt = f"{result.adjacent.ac_conduit.selected_conduit} EMT"
+    raceways = _raceway_by_tag(result)
+    rw_a = raceways.get("A")
+    rw_b = raceways.get("B")
+    rw_c = raceways.get("C")
+    rw_d = raceways.get("D")
+    pv_emt = rw_b.selected_raceway if rw_b else f"{result.adjacent.pv_conduit.selected_conduit} EMT"
+    inv_emt = rw_c.selected_raceway if rw_c else f"{result.adjacent.ac_conduit.selected_conduit} EMT"
+    ac_emt = rw_d.selected_raceway if rw_d else f"{result.adjacent.ac_conduit.selected_conduit} EMT"
     c_tag = "C" + (f"x{n_inv}" if n_inv > 1 else "")
 
     schedule: list[ConductorScheduleRow] = [
@@ -229,6 +241,8 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
             amps=pv_base,
             ampacity=result.pv_conductor.ampacity_a,
             ocpd_a=result.pv_ocpd_a,
+            length_ft=rw_a.length_ft if rw_a else 0.0,
+            fill_pct=None,
             note="module/source circuits",
         ),
         ConductorScheduleRow(
@@ -245,6 +259,8 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
             amps=pv_base,
             ampacity=result.pv_conductor.ampacity_a,
             ocpd_a=result.pv_ocpd_a,
+            length_ft=rw_b.length_ft if rw_b else 0.0,
+            fill_pct=rw_b.fill.fill_pct if rw_b and rw_b.fill else None,
             note="PV DC OCPD to inverter",
         ),
         ConductorScheduleRow(
@@ -257,10 +273,12 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
             size=f"{per_inv_cond.size} AWG",
             conductor_type="THWN-2 CU",
             ground=f"{result.grounding.egc_inverter_ac} AWG",
-            conduit=ac_emt,
+            conduit=inv_emt,
             amps=ac_base,
             ampacity=per_inv_cond.ampacity_a,
             ocpd_a=per_inv_ocpd,
+            length_ft=rw_c.length_ft if rw_c else 0.0,
+            fill_pct=rw_c.fill.fill_pct if rw_c and rw_c.fill else None,
             note="per inverter" if n_inv > 1 else "inverter output",
         ),
         ConductorScheduleRow(
@@ -277,6 +295,8 @@ def build_electrical_topology(result: CalculationResult) -> ElectricalTopology:
             amps=aggregate_ac_base,
             ampacity=result.ess_conductor.ampacity_a,
             ocpd_a=result.ess.ac_disconnect_ocpd_a,
+            length_ft=rw_d.length_ft if rw_d else 0.0,
+            fill_pct=rw_d.fill.fill_pct if rw_d and rw_d.fill else None,
             note="NEC 705.11 / 240.21(B)",
         ),
     ]

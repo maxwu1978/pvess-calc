@@ -28,6 +28,7 @@ from ezdxf.layouts import Modelspace
 from ..calc.conductor import select_copper
 from ..calc.engine import CalculationResult
 from ..calc.ocpd import select_ocpd
+from ..electrical.topology import build_electrical_topology
 from ..schema import InternalBreaker, SubPanel
 from . import symbols as sym
 
@@ -695,43 +696,27 @@ def _draw_conductor_schedule(msp: Modelspace, result: CalculationResult) -> None
     The previous "×1.25" column was dropped — it's the trivial product
     of AMPS × 1.25, recoverable by anyone reading the table.
     """
-    i = result.inputs
-    cond = result.pv_conductor
-    ess_cond = result.ess_conductor
-    g = result.grounding
-    adj = result.adjacent
-    per_inv_ocpd, per_inv_cond = _per_inverter_ac_spec(result)
-    n_inv = i.inverter.count(i.battery.quantity)
+    from ._textfit import fit_dxf
 
-    # Base currents (BEFORE the conductor/OCPD 1.25× multiplier).
-    pv_base   = result.pv_string.isc_690_8_a            # Isc × 1.25 (690.8(A)(1))
-    pi_base   = i.inverter.ac_output_a                  # per-inverter continuous
-    bf_base   = result.interconnect.total_backfeed_a    # aggregate continuous
+    def raceway_label(conduit: str, fill_pct: float | None) -> str:
+        if fill_pct is None:
+            return conduit
+        return f"{conduit} {fill_pct:.0f}%"
 
-    c_tag = "C" + (f"×{n_inv}" if n_inv > 1 else "")
-
-    # Conduit strings. PV Row A is "FREE AIR" because module-to-combiner
-    # USE-2 jumpers run exposed on the roof (NEC 690.31(C) exception).
-    # All other paths are EMT sized from `adj.*.selected_conduit`, which
-    # already carries the trade-size inch mark (e.g. '1-1/2"').
-    pv_emt  = f"{adj.pv_conduit.selected_conduit} EMT"
-    ac_emt  = f"{adj.ac_conduit.selected_conduit} EMT"
-
-    # (tag, wires, size, type, ground, conduit, amps, ampacity, ocpd)
-    rows: list[tuple[str, ...]] = [
-        ("A", "2+G", f"{cond.size} AWG", "THWN-2 CU",
-         f"{g.egc_pv_source} AWG", "FREE AIR",
-         f"{pv_base:.1f}", f"{cond.ampacity_a}", f"{result.pv_ocpd_a}"),
-        ("B", "2+G", f"{cond.size} AWG", "THWN-2 CU",
-         f"{g.egc_pv_source} AWG", pv_emt,
-         f"{pv_base:.1f}", f"{cond.ampacity_a}", f"{result.pv_ocpd_a}"),
-        (c_tag, "3+G", f"{per_inv_cond.size} AWG", "THWN-2 CU",
-         f"{g.egc_inverter_ac} AWG", ac_emt,
-         f"{pi_base:.1f}", f"{per_inv_cond.ampacity_a}", f"{per_inv_ocpd}"),
-        ("D", "3+G", f"{ess_cond.size} AWG", "THWN-2 CU",
-         f"{g.egc_aggregate_ac} AWG", ac_emt,
-         f"{bf_base:.1f}", f"{ess_cond.ampacity_a}",
-         f"{result.ess.ac_disconnect_ocpd_a}"),
+    topo = build_electrical_topology(result)
+    rows = [
+        (
+            row.tag,
+            row.wires,
+            row.size,
+            row.conductor_type,
+            row.ground,
+            raceway_label(row.conduit, row.fill_pct),
+            f"{row.amps:.1f}",
+            f"{row.ampacity}",
+            f"{row.ocpd_a}",
+        )
+        for row in topo.schedule
     ]
 
     # Header bar
@@ -781,10 +766,16 @@ def _draw_conductor_schedule(msp: Modelspace, result: CalculationResult) -> None
 
     # Rows
     y = col_y - 0.20
+    col_widths = []
+    for idx, (_name, x0) in enumerate(cols):
+        if idx + 1 < len(cols):
+            col_widths.append(max(0.22, cols[idx + 1][1] - x0 - 0.04))
+        else:
+            col_widths.append(0.42)
     for row in rows:
-        for (_, x0), val in zip(cols, row):
+        for (_, x0), width, val in zip(cols, col_widths, row):
             msp.add_text(
-                val, height=TEXT_BODY,
+                fit_dxf(val, width, TEXT_BODY), height=TEXT_BODY,
                 dxfattribs={"layer": "SCHEDULE"},
             ).set_placement((RIGHT_X0 + x0, y), align=TextEntityAlignment.LEFT)
         y -= 0.18

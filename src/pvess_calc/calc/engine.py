@@ -245,10 +245,13 @@ def run(inputs: Inputs) -> CalculationResult:
         inputs,
         pv_conductor_size=pv_conductor.size,
         ac_conductor_size=ess_conductor.size,
+        per_inverter_ac_conductor_size=per_inv_cond.size,
         pv_conductor_count=2,
         ac_conductor_count=3,
         pv_ground_size=grounding.egc_pv_source,
+        per_inverter_ground_size=grounding.egc_inverter_ac,
         ac_ground_size=grounding.egc_aggregate_ac,
+        wire_routing=wire_routing,
     )
 
     # K.2.6b: NEC 706.10 + IRC R328 ESS install-location compliance.

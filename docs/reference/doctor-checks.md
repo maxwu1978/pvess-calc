@@ -53,7 +53,7 @@ broken state and asserts the check FAILs.
 
 | Check | Function | What it catches |
 |---|---|---|
-| `phase_h_adjacent_calcs_complete` | `_check_phase_h_adjacent_calcs_complete` | DC AFCI evidence, NEC 230.67 service SPD requirement, Chapter 9 raceway fill, and ground-rod field-proof status |
+| `phase_h_adjacent_calcs_complete` | `_check_phase_h_adjacent_calcs_complete` | DC AFCI evidence, NEC 230.67 service SPD requirement, H.2 A/B/C/D raceway segments, Chapter 9 fill, and ground-rod field-proof status |
 
 ## K.2.6c–K.2.8 — roof layout
 

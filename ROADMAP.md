@@ -795,7 +795,7 @@ Doctor 39 (unchanged — pure visual polish).
 
 ### Phase H — NEC 690.11 DC AFCI + SPD + Conduit fill
 
-Status: **H.1 complete / H.2 planned**.
+Status: **H.1 + H.2 complete / H.3 planned**.
 
 #### H.1 — Adjacent protection calculation closure
 
@@ -828,12 +828,38 @@ Test plan:
 - E2E verification: `pytest -q`, `pvess-doctor projects/003-frisco-glasshouse`,
   and `pvess calc projects/003-frisco-glasshouse` to confirm report output.
 
-#### H.2 — Remaining adjacent detail work
+#### H.2 — K.11 routed raceway schedule closure
+
+Development plan:
+- Promote raceway fill from PV/AC aggregate facts into A/B/C/D segment
+  records tied to K.11 route lengths.
+- Keep `pv_conduit` / `ac_conduit` aggregate fields for backward
+  compatibility, but add `adjacent.raceways[]` as the new detail surface.
+- Feed raceway size / fill data into the shared electrical topology so
+  EE-2 and EE-2.1 conductor schedules no longer invent conduit facts.
+- Render a dedicated H.2 raceway table in `report.md`.
+
+Closing standard:
+- Routed projects emit A/B/C/D raceway segments with non-zero lengths
+  for B/C/D and a `FREE AIR` A row.
+- Every raceway segment with a fill calculation is ≤100% of the NEC 40%
+  fill allowance and stays inside the built-in EMT table.
+- `build_electrical_topology()` conductor rows carry raceway length and
+  fill percentage for downstream DXF/PDF renderers.
+- Doctor fails on missing H.2 segments, overfilled raceways, or routed
+  raceways with zero length.
+
+Test plan:
+- Phase H tests cover Frisco routed segment lengths, conduit fill on
+  C/D rows, and topology propagation.
+- Doctor tests cover missing raceway-segment regression.
+- E2E report test verifies the H.2 raceway table renders for PV-only
+  Frisco.
+
+#### H.3 — Remaining adjacent detail work
 
 - Annex C / raceway-type selection beyond EMT (`PVC`, `RMC`, flexible metal)
   when the project declares installation environment.
-- Conduit-fill grouping from K.11 route segments instead of the current
-  PV/AC aggregate assumption.
 - AHJ-specific SPD policy overrides where local amendment is stricter than
   base NEC.
 

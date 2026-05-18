@@ -12,6 +12,7 @@ import re
 from typing import Literal
 
 from ..schema import Inputs
+from .wire_routing import WireRoutingResult
 
 
 # --- 690.11 DC AFCI --------------------------------------------------------
@@ -265,6 +266,21 @@ class ConduitFillResult:
     fill_pct: float
 
 
+@dataclass
+class RacewaySegmentResult:
+    tag: str
+    circuit: str
+    kind: Literal["DC", "AC", "BATTERY"]
+    length_ft: float
+    wires: str
+    conductor_sizes: list[str]
+    raceway_type: Literal["FREE AIR", "EMT"]
+    selected_raceway: str
+    fill: ConduitFillResult | None
+    provenance: Literal["routed", "manual", "default", "not_applicable"]
+    note: str = ""
+
+
 def select_conduit(conductor_sizes: list[str]) -> ConduitFillResult:
     """Pick the smallest EMT that can hold the given THWN-2 conductors at
     NEC's 40% fill limit (Chapter 9 Table 1)."""
@@ -294,6 +310,143 @@ def select_conduit(conductor_sizes: list[str]) -> ConduitFillResult:
     )
 
 
+def _route_lengths(
+    inputs: Inputs,
+    wire_routing: WireRoutingResult | None,
+) -> tuple[dict[str, float], str]:
+    if wire_routing is not None and wire_routing.routed:
+        return {
+            "A": wire_routing.pv_string_one_way_ft,
+            "B": wire_routing.pv_to_combiner_ft,
+            "C": wire_routing.inverter_to_ac_disc_ft,
+            "D": wire_routing.ac_disc_to_msp_ft,
+            "E": wire_routing.ess_to_inverter_ft,
+        }, "routed"
+    wl = inputs.wire_lengths
+    lengths = {
+        "A": wl.pv_string_one_way_ft,
+        "B": wl.pv_to_combiner_ft or wl.combiner_to_inverter_ft,
+        "C": wl.inverter_to_ac_disc_ft,
+        "D": wl.ac_disc_to_msp_ft,
+        "E": wl.ess_to_inverter_ft,
+    }
+    if any(v > 0 for v in lengths.values()):
+        return lengths, "manual"
+    return lengths, "default"
+
+
+def _raceway_segment(
+    *,
+    tag: str,
+    circuit: str,
+    kind: Literal["DC", "AC", "BATTERY"],
+    length_ft: float,
+    wires: str,
+    conductor_sizes: list[str],
+    raceway_type: Literal["FREE AIR", "EMT"],
+    provenance: Literal["routed", "manual", "default", "not_applicable"],
+    note: str = "",
+) -> RacewaySegmentResult:
+    if raceway_type == "FREE AIR":
+        return RacewaySegmentResult(
+            tag=tag,
+            circuit=circuit,
+            kind=kind,
+            length_ft=length_ft,
+            wires=wires,
+            conductor_sizes=conductor_sizes,
+            raceway_type=raceway_type,
+            selected_raceway="FREE AIR",
+            fill=None,
+            provenance=provenance,
+            note=note,
+        )
+    fill = select_conduit(conductor_sizes)
+    return RacewaySegmentResult(
+        tag=tag,
+        circuit=circuit,
+        kind=kind,
+        length_ft=length_ft,
+        wires=wires,
+        conductor_sizes=conductor_sizes,
+        raceway_type=raceway_type,
+        selected_raceway=f"{fill.selected_conduit} {raceway_type}",
+        fill=fill,
+        provenance=provenance,
+        note=note,
+    )
+
+
+def build_raceway_segments(
+    inputs: Inputs,
+    *,
+    pv_conductor_size: str,
+    aggregate_ac_conductor_size: str,
+    per_inverter_ac_conductor_size: str,
+    pv_ground_size: str,
+    per_inverter_ground_size: str,
+    aggregate_ac_ground_size: str,
+    wire_routing: WireRoutingResult | None = None,
+) -> list[RacewaySegmentResult]:
+    lengths, provenance = _route_lengths(inputs, wire_routing)
+    return [
+        _raceway_segment(
+            tag="A",
+            circuit="PV SOURCE",
+            kind="DC",
+            length_ft=lengths["A"],
+            wires="2+G",
+            conductor_sizes=[pv_conductor_size, pv_conductor_size, pv_ground_size],
+            raceway_type="FREE AIR",
+            provenance=provenance,
+            note="module/source circuit conductors on roof",
+        ),
+        _raceway_segment(
+            tag="B",
+            circuit="PV DC OUTPUT",
+            kind="DC",
+            length_ft=lengths["B"],
+            wires="2+G",
+            conductor_sizes=[pv_conductor_size, pv_conductor_size, pv_ground_size],
+            raceway_type="EMT",
+            provenance=provenance,
+            note="PV DC OCPD to inverter",
+        ),
+        _raceway_segment(
+            tag="C",
+            circuit="INVERTER AC",
+            kind="AC",
+            length_ft=lengths["C"],
+            wires="3+G",
+            conductor_sizes=[
+                per_inverter_ac_conductor_size,
+                per_inverter_ac_conductor_size,
+                per_inverter_ac_conductor_size,
+                per_inverter_ground_size,
+            ],
+            raceway_type="EMT",
+            provenance=provenance,
+            note="per-inverter output conductors",
+        ),
+        _raceway_segment(
+            tag="D",
+            circuit="SUPPLY TAP",
+            kind="AC",
+            length_ft=lengths["D"],
+            wires="3+G",
+            conductor_sizes=[
+                aggregate_ac_conductor_size,
+                aggregate_ac_conductor_size,
+                aggregate_ac_conductor_size,
+                aggregate_ac_ground_size,
+            ],
+            raceway_type="EMT",
+            provenance=provenance,
+            note="AC disconnect to line-side tap",
+        ),
+    ]
+
+
 # --- Top-level aggregation -------------------------------------------------
 
 @dataclass
@@ -303,6 +456,7 @@ class AdjacentResult:
     ground_rods: GroundRodCheck
     pv_conduit: ConduitFillResult
     ac_conduit: ConduitFillResult
+    raceways: list[RacewaySegmentResult] = field(default_factory=list)
 
 
 def compute_adjacent(
@@ -310,11 +464,26 @@ def compute_adjacent(
     *,
     pv_conductor_size: str,
     ac_conductor_size: str,
+    per_inverter_ac_conductor_size: str | None = None,
     pv_conductor_count: int = 2,        # + + - (DC source)
     ac_conductor_count: int = 3,        # L1 + L2 + N
     pv_ground_size: str = "10",
+    per_inverter_ground_size: str | None = None,
     ac_ground_size: str = "6",
+    wire_routing: WireRoutingResult | None = None,
 ) -> AdjacentResult:
+    per_inv_cond = per_inverter_ac_conductor_size or ac_conductor_size
+    per_inv_ground = per_inverter_ground_size or ac_ground_size
+    raceways = build_raceway_segments(
+        inputs,
+        pv_conductor_size=pv_conductor_size,
+        aggregate_ac_conductor_size=ac_conductor_size,
+        per_inverter_ac_conductor_size=per_inv_cond,
+        pv_ground_size=pv_ground_size,
+        per_inverter_ground_size=per_inv_ground,
+        aggregate_ac_ground_size=ac_ground_size,
+        wire_routing=wire_routing,
+    )
     return AdjacentResult(
         dc_afci=check_dc_afci(inputs),
         surge=plan_surge_protection(inputs),
@@ -325,4 +494,5 @@ def compute_adjacent(
         ac_conduit=select_conduit(
             [ac_conductor_size] * ac_conductor_count + [ac_ground_size]
         ),
+        raceways=raceways,
     )

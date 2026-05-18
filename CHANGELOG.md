@@ -8,6 +8,19 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-18 — Phase H.2: routed raceway schedule
+
+- Added `adjacent.raceways[]` with A/B/C/D segment records, K.11 route
+  lengths, conductor sizes, selected raceway, and Chapter 9 fill percent
+- Kept legacy `pv_conduit` / `ac_conduit` aggregate fields while making the
+  segment schedule the detailed source for EE-2 / EE-2.1 topology output
+- Added a H.2 raceway table to `report.md`
+- Tightened `phase_h_adjacent_calcs_complete` so doctor fails missing
+  H.2 segments, overfilled segment raceways, and routed zero-length B/C/D
+  raceways
+- Added regression tests for routed Frisco raceway lengths, topology
+  propagation, report output, and doctor missing-segment failure
+
 ### 2026-05-18 — Phase H.1: adjacent protection closure
 
 - Added datasheet-backed DC AFCI recognition for the selected Growatt

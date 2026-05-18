@@ -159,6 +159,7 @@ def test_phase_h_adjacent_guard_passes_on_frisco():
     [r] = _check_phase_h_adjacent_calcs_complete(result)
     assert r.status == "PASS", r.detail
     assert "AFCI=PASS" in r.detail
+    assert "4 raceway segment" in r.detail
 
 
 def test_phase_h_adjacent_guard_warns_on_unconfirmed_afci():
@@ -182,6 +183,20 @@ def test_phase_h_adjacent_guard_fails_on_overfilled_conduit():
     [r] = _check_phase_h_adjacent_calcs_complete(result)
     assert r.status == "FAIL"
     assert "PV conduit fill" in r.detail
+
+
+def test_phase_h_adjacent_guard_fails_on_missing_raceway_segment():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.doctor import _check_phase_h_adjacent_calcs_complete
+    from pvess_calc.schema import Inputs
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    result.adjacent.raceways = [
+        rw for rw in result.adjacent.raceways if rw.tag != "D"
+    ]
+    [r] = _check_phase_h_adjacent_calcs_complete(result)
+    assert r.status == "FAIL"
+    assert "missing H.2 raceway" in r.detail
 
 
 # ─── K.2.5 subpanel_slots_sufficient ──────────────────────────────────────
