@@ -1,6 +1,6 @@
 project:
   id: "003-frisco-glasshouse"
-  name: "15 kW PV-only Residence (Megarevo 11 kW + GME 1:1)"
+  name: "15 kW PV-only Residence (Growatt 11.4 kW + GME 1:1)"
   location: "Frisco, TX"
   ahj: "City of Frisco Building Inspection"
   nec_edition: "2020"
@@ -12,13 +12,57 @@ project:
   drawn_by: "WQX"
   revision: "B"
   initial_design_date: "2026-05-17"
+  permit_profile: "tx_residential_pv"
+  meter_info:
+    number: "153468971"
+    location: "1st floor"
+    esid: "10443720007628433"
+  roof_info:
+    stories: 2
+    type: "Comp Shingle"
+    height_ft: 25
+    construction: "Hip"
+    condition: "good"
+    being_replaced: false
+    flashing: "IronRidge FlashVue Flashing"
+    framing: "2x4 @ 24 in O.C. prefabricated trusses"
+    attic_access: "accessible"
+    decking_thickness_in: 0.5
+    roof_layers: 1
+  site_photos:
+    - kind: "front_elevation"
+      path: "photos/mock-front-elevation.png"
+      caption: "Front elevation"
+    - kind: "roof"
+      path: "photos/mock-roof-array-area.png"
+      caption: "Roof / proposed array area"
+    - kind: "meter"
+      path: "photos/mock-oncor-meter.png"
+      caption: "Oncor meter"
+    - kind: "main_panel"
+      path: "photos/mock-main-service-panel.png"
+      caption: "Main service panel"
+    - kind: "sub_panel"
+      path: "photos/mock-critical-loads-subpanel.png"
+      caption: "Critical loads sub-panel"
+    - kind: "equipment_location"
+      path: "photos/mock-equipment-wall.png"
+      caption: "Proposed inverter/equipment wall"
+  spec_sheets:
+    - equipment: "inverter_primary_growatt_min11400tl_xh_us"
+      path: "cut_sheets/01-growatt-min-11400tl-xh-us-datasheet.pdf"
+    - equipment: "inverter_option_hoymiles_hys_11_5lv_usg1"
+      path: "cut_sheets/02-hoymiles-hys-11-5lv-usg1-datasheet.pdf"
+    - equipment: "inverter_option_megarevo_r8klna"
+      path: "cut_sheets/03-megarevo-r8klna-datasheet.pdf"
+      pages: [12]
   # K.4.6.3: real installer BOM costs (DFW Chinese-installer stack).
   # Replaces the NREL Q1-2026 benchmark ($3.50/W + $950/kWh) which
   # overstates this project's actual cost by ~30%. With this block
   # the customer-PDF payback reflects the real quote.
   installer_cost_overrides:
     pv_turnkey_usd_per_w: 2.40       # modules + racking + labor + permit + soft, NO inverter
-    inverter_ref: "megarevo_r11klna" # $2,000 wholesale × 1 inverter = $2,000
+    inverter_ref: "growatt_min11400tl_xh_us" # $2,500 wholesale × 1 inverter
     # battery_ref omitted — PV-only project (no battery cost added)
 
 design_engineer:
@@ -38,7 +82,7 @@ installer:
 # NEC 690.7(A) cold-Voc:
 #   Voc_cold = 49.8 × (1 + 0.0027 × (25 - (-7))) = 54.1 V / module
 #   9 × 54.1 = 487 V < 600 V residential limit ✓ (190 V margin)
-# DC/AC ratio: 14.94 kW / 11 kW = 1.36 (Megarevo R11KLNA max overload ~1.5)
+# DC/AC ratio: 14.94 kW / 11.4 kW = 1.31 (Growatt MIN 11400TL-XH-US)
 # Skipped 5 north-facing roof faces (derate 30-49%) — see site.roof_sections.
 pv_array:
   modules: 36
@@ -72,15 +116,14 @@ battery:
   capacity_kwh_each: 0.0
   install_location: "unknown"
 
-# Single Megarevo R11KLNA 11 kW hybrid inverter. DC/AC ratio 14.1/11 = 1.28
-# (industry sweet-spot 1.1-1.3). 11 kW continuous AC = 45.8 A @ 240 V split.
-# When a battery is added later, this same inverter handles HV battery on
-# the DC bus alongside the PV strings — no second AC-coupled inverter needed.
+# Single Growatt MIN 11400TL-XH-US battery-ready inverter. DC/AC ratio
+# 14.94/11.4 = 1.31 (industry sweet-spot). Datasheet max output current
+# is 48 A @ 240 V split-phase.
 inverter:
-  brand: "Megarevo"
-  model: "R11KLNA"
+  brand: "Growatt"
+  model: "MIN 11400TL-XH-US"
   ac_output_v: 240
-  ac_output_a: 45.8
+  ac_output_a: 48.0
   quantity: 1
   per_unit: false
 
@@ -192,6 +235,107 @@ site:
   lot_depth_ft: 125
   house_width_ft: 60
   house_depth_ft: 42
+  # Stage 9.9: EE-4A property context is now data-driven. These survey-frame
+  # polygons live in the same local ft coordinates as `ee4_trace`, so the
+  # property line, driveway, fence, and dimension strings are no longer
+  # inferred from a generic rectangle.
+  property_context:
+    lot_outline:
+      - [-7.0, 28.0]
+      - [106.0, 28.0]
+      - [106.0, 94.0]
+      - [-7.0, 94.0]
+    driveway_polygon:
+      - [91.0, 28.0]
+      - [106.0, 28.0]
+      - [106.0, 94.0]
+      - [91.0, 94.0]
+    fence_lines:
+      - label: "FENCE"
+        kind: "fence"
+        points:
+          - [91.0, 94.0]
+          - [106.0, 94.0]
+    property_dimensions:
+      - start: [-7.0, 94.0]
+        end: [106.0, 94.0]
+        offset_ft: 8.0
+      - start: [106.0, 28.0]
+        end: [106.0, 94.0]
+        offset_ft: -3.0
+  # Stage 8: review-only satellite/mask calibration for EE-4.
+  # The Google Solar mask is not written back into roof geometry yet;
+  # it is fitted to the current house bbox so the green candidate line
+  # can be visually compared against modules/fire paths in the preview.
+  satellite_alignment:
+    mode: "fit_house_bbox"
+    contour_simplify_ft: 2.0
+    contour_max_vertices: 32
+  # Stage 9: hand/vector-traced EE-4 layer. This is the permit-facing
+  # white-background linework path; satellite/mask stays a review aid.
+  ee4_trace:
+    enabled: true
+    roof_outline:
+      name: "Traced roof outline"
+      vertices:
+        - [0.0, 48.0]
+        - [15.0, 48.0]
+        - [15.0, 35.0]
+        - [96.0, 35.0]
+        - [96.0, 42.0]
+        - [98.0, 47.0]
+        - [98.0, 58.0]
+        - [94.0, 64.0]
+        - [88.0, 64.0]
+        - [88.0, 75.0]
+        - [76.0, 75.0]
+        - [76.0, 83.0]
+        - [60.0, 83.0]
+        - [50.0, 75.0]
+        - [38.0, 75.0]
+        - [27.0, 83.0]
+        - [0.0, 83.0]
+    roof_facets:
+      - name: "Left dormer 1"
+        vertices: [[6.0, 63.0], [18.0, 63.0], [25.0, 68.0], [18.0, 73.0], [6.0, 73.0]]
+      - name: "Left dormer 2"
+        vertices: [[6.0, 51.0], [18.0, 51.0], [25.0, 56.0], [18.0, 61.0], [6.0, 61.0]]
+      - name: "Left dormer 3"
+        vertices: [[6.0, 39.0], [18.0, 39.0], [25.0, 44.0], [18.0, 49.0], [6.0, 49.0]]
+    roof_lines:
+      - {kind: "hip", points: [[27.0, 83.0], [38.0, 75.0], [38.0, 48.0], [15.0, 35.0]]}
+      - {kind: "hip", points: [[38.0, 75.0], [50.0, 75.0], [60.0, 83.0]]}
+      - {kind: "hip", points: [[76.0, 83.0], [76.0, 75.0], [88.0, 75.0]]}
+      - {kind: "valley", points: [[88.0, 75.0], [88.0, 64.0], [98.0, 58.0]]}
+      - {kind: "ridge", points: [[38.0, 48.0], [52.0, 54.0], [66.0, 54.0], [76.0, 64.0]]}
+      - {kind: "hip", points: [[15.0, 48.0], [38.0, 48.0]]}
+      - {kind: "hip", points: [[76.0, 64.0], [88.0, 64.0]]}
+      - {kind: "edge", points: [[18.0, 63.0], [18.0, 73.0]]}
+      - {kind: "edge", points: [[18.0, 51.0], [18.0, 61.0]]}
+      - {kind: "edge", points: [[18.0, 39.0], [18.0, 49.0]]}
+    fire_pathways:
+      - name: "Traced fire pathway"
+        vertices:
+          - [30.0, 66.0]
+          - [64.0, 66.0]
+          - [70.0, 59.0]
+          - [86.0, 59.0]
+          - [93.0, 52.0]
+          - [93.0, 35.0]
+          - [96.0, 35.0]
+          - [96.0, 54.0]
+          - [88.0, 62.0]
+          - [72.0, 62.0]
+          - [66.0, 69.0]
+          - [30.0, 69.0]
+    symbols:
+      - {kind: "roof_vent", x_ft: 30.0, y_ft: 72.0}
+      - {kind: "roof_vent", x_ft: 54.0, y_ft: 69.5}
+      - {kind: "roof_vent", x_ft: 64.0, y_ft: 67.5}
+      - {kind: "roof_vent", x_ft: 84.0, y_ft: 66.0}
+      - {kind: "plumbing", x_ft: 41.0, y_ft: 52.5}
+      - {kind: "plumbing", x_ft: 55.0, y_ft: 55.0}
+      - {kind: "chimney", x_ft: 44.0, y_ft: 63.5}
   # K.3c: roof_sections injected from Google Solar buildingInsights for
   # 33.141418, -96.801258 (Frisco, Collin Cty TX). Imagery 2024-02-06 HIGH
   # confidence.
@@ -207,7 +351,7 @@ site:
   # 2026-05-17 v2 (superseded): kept East faces, blended 86.1%
   # 2026-05-17 v3 (current):    drop East, blended ~91% AND $-per-kWh better
   #
-  # 13-face → 5-face concentrated layout: 3 South + 2 West.
+  # 13-face → concentrated no-overlap EE-4 layout: 3 South + 1 West.
   # Future K-phase: implement value-weighted derate so the algorithm does
   # this S+W-preference automatically; for now distribution is yaml-pinned.
   # K.11 site_anchor convention:
@@ -215,21 +359,24 @@ site:
   #   * azimuth_deg = 270 → eave runs south, ridge to east  (West face)
   # Anchors place the roof-local origin (eave-left corner) on the
   # house perimeter; per-face footprint then projects inward.
+  # 2026-05-18 Stage 9.6: explicit module_count pins the EE-4/PV-4
+  # visual layout after overlap linting. All 36 modules are placed while
+  # keeping rectangles clear of adjacent panels and traced fire pathways.
   roof_sections:
-    - {name: "South Roof",     roof_type: "Comp Shingle", pitch_deg: 44.3, azimuth_deg: 178.6, width_ft: 25.5, height_ft: 25.5, module_count: 0, shape: "rect", site_anchor_x_ft: 15.0,  site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
-    - {name: "South Roof #2",  roof_type: "Comp Shingle", pitch_deg: 34.5, azimuth_deg: 179.7, width_ft: 20.3, height_ft: 20.3, module_count: 0, shape: "rect", site_anchor_x_ft: 40.5, site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
-    - {name: "West Roof",      roof_type: "Comp Shingle", pitch_deg: 33.0, azimuth_deg: 268.1, width_ft: 19.7, height_ft: 19.7, module_count: 0, shape: "rect", site_anchor_x_ft: 15.0, site_anchor_y_ft: 77.0, site_anchor_azimuth_deg: 270.0}
-    - {name: "West Roof #2",   roof_type: "Comp Shingle", pitch_deg: 36.7, azimuth_deg: 272.1, width_ft: 13.2, height_ft: 13.2, module_count: 0, shape: "rect", site_anchor_x_ft: 34.7, site_anchor_y_ft: 77.0, site_anchor_azimuth_deg: 270.0}
-    - {name: "South Roof #3",  roof_type: "Comp Shingle", pitch_deg: 54.9, azimuth_deg: 182.0, width_ft: 12.3, height_ft: 12.3, module_count: 0, shape: "rect", site_anchor_x_ft: 61.0, site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
+    - {name: "South Roof",     roof_type: "Comp Shingle", pitch_deg: 44.3, azimuth_deg: 178.6, width_ft: 25.5, height_ft: 25.5, module_count: 15, shape: "rect", site_anchor_x_ft: 50.0, site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
+    - {name: "South Roof #2",  roof_type: "Comp Shingle", pitch_deg: 34.5, azimuth_deg: 179.7, width_ft: 20.3, height_ft: 20.3, module_count: 11, shape: "rect", site_anchor_x_ft: 70.0, site_anchor_y_ft: 35.0, site_anchor_azimuth_deg: 0.0}
+    - {name: "West Roof",      roof_type: "Comp Shingle", pitch_deg: 33.0, azimuth_deg: 268.1, width_ft: 19.7, height_ft: 19.7, module_count: 8, shape: "rect", site_anchor_x_ft: 34.0, site_anchor_y_ft: 70.0, site_anchor_azimuth_deg: 270.0}
+    - {name: "South Roof #3",  roof_type: "Comp Shingle", pitch_deg: 54.9, azimuth_deg: 182.0, width_ft: 12.3, height_ft: 12.3, module_count: 1, shape: "rect", site_anchor_x_ft: 84.0, site_anchor_y_ft: 30.0, site_anchor_azimuth_deg: 0.0}
+    - {name: "South Roof #4",  roof_type: "Comp Shingle", pitch_deg: 36.7, azimuth_deg: 182.0, width_ft: 12.0, height_ft: 16.0, module_count: 1, shape: "rect", site_anchor_x_ft: 86.5, site_anchor_y_ft: 38.5, site_anchor_azimuth_deg: 0.0}
   # K.11 equipment locations — east wall of garage (Oncor meter side),
   # vertically stacked MSP / AC-DISC / Inverter. PV-only (no ESS units).
   equipment_locations:
-    msp:           {label: "MSP",           x_ft: 75.0, y_ft: 50.0}
-    ac_disconnect: {label: "AC DISCONNECT", x_ft: 75.0, y_ft: 55.0}
+    msp:           {label: "MSP",           x_ft: 94.0, y_ft: 45.0}
+    ac_disconnect: {label: "AC DISCONNECT", x_ft: 94.0, y_ft: 50.0}
     inverters:
-      - {label: "INV-1 · MEGAREVO R11KLNA", x_ft: 75.0, y_ft: 60.0}
-    attic_drop_x_ft: 74.0
-    attic_drop_y_ft: 62.0
+      - {label: "INV-1 - GROWATT MIN 11400TL-XH-US", x_ft: 94.0, y_ft: 55.0}
+    attic_drop_x_ft: 88.0
+    attic_drop_y_ft: 60.0
     attic_to_eq_height_ft: 9.0
   # Dropped faces (off-quadrant — not worth rack cost OR value-weighted bad):
   #   North Roof (50%)   · North Roof #2 (51%) · North Roof #3 (31%)
@@ -241,11 +388,14 @@ site:
   #   load at 1.0× retail.
   mounting:
     rail_system: "IronRidge XR100"
-    flashing: "IronRidge FlashFoot 2"
+    flashing: "IronRidge FlashVue Flashing"
     max_x_spacing_in: 48
     max_y_spacing_in: 32
     max_cantilever_in: 18
-    fastener: "5/16\" lag screw, 3\" embedment"
+    fastener: "(1) 5/16\" x 4-1/4\" lag screw"
+    lag_screw_length_in: 4.25
+    min_embedment_in: 2.5
+    max_roof_surface_gap_in: 6
 
 wire_lengths:
   pv_string_one_way_ft: 70
