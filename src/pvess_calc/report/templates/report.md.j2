@@ -85,6 +85,7 @@
 {% endif -%}
 ### ESS 安装位置合规（NEC 706.10 / IRC R328）
 
+{% if inputs.battery.quantity > 0 -%}
 **Install location**: `{{ ess_install.install_location }}` &nbsp;·&nbsp; **整体结果**：{% if ess_install.overall_status == "PASS" %}✓ PASS{% elif ess_install.overall_status == "FAIL" %}✗ FAIL{% else %}⚠ {{ ess_install.overall_status }}{% endif %}
 
 | 检查项 | 状态 | 条款 | 详情 |
@@ -92,6 +93,9 @@
 {% for c in ess_install.checks -%}
 | `{{ c.name }}` | {% if c.status == "PASS" %}✓ PASS{% elif c.status == "FAIL" %}✗ FAIL{% elif c.status == "WARN" %}⚠ WARN{% else %}— N/A{% endif %} | {{ c.code_ref }} | {{ c.detail }} |
 {% endfor %}
+{% else -%}
+PV-only project：未安装 ESS，NEC 706.10 / IRC R328 安装位置检查不适用。
+{% endif %}
 
 ## 3. 压降表（NEC 215.2 / 210.19 informational）
 

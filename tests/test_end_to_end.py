@@ -35,3 +35,12 @@ def test_smith_residence_example_runs_clean(repo_root: Path, tmp_path: Path):
     report = inject_from_result(result, template, out, strict=True)
     assert "{{" not in out.read_text(encoding="utf-8")
     assert report.substitutions_applied > 20
+
+
+def test_pv_only_report_skips_ess_install_warning(repo_root: Path):
+    project_dir = repo_root / "projects" / "003-frisco-glasshouse"
+    result = run(Inputs.from_yaml(project_dir / "inputs.yaml"))
+
+    md = render(result)
+    assert "PV-only project" in md
+    assert "install_location_specified" not in md
