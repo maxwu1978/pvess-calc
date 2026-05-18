@@ -155,7 +155,11 @@ def test_pyproject_entry_points_match_root_subcommands():
     """K.7 closing standard #1 (sanity): every name registered as a
     pyproject `pvess-*` script must exist as a click command somewhere.
     Catches stale entry-points pointing at deleted functions."""
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib
+
     pyproject = PROJECT_ROOT / "pyproject.toml"
     with open(pyproject, "rb") as fh:
         cfg = tomllib.load(fh)
