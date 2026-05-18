@@ -72,6 +72,36 @@ class RoofInfo(BaseModel):
     condition: Literal["good", "fair", "poor", "unknown"] = "unknown"
     being_replaced: bool = False           # tear-off + re-roof before PV?
     flashing: str = ""                     # IronRidge FlashFoot 2, ...
+    framing: str = ""                      # "2x4 @ 24 in O.C. trusses"
+    attic_access: Literal["accessible", "inaccessible", "unknown"] = "unknown"
+    decking_thickness_in: float = 0.0
+    roof_layers: int = 0                   # 0 = unknown
+
+
+class SitePhoto(BaseModel):
+    """9.13 — one site-survey photo for the PV-7 sheet.
+
+    `path` is project-relative or absolute. Missing paths are allowed so
+    intake can declare required shots before the installer uploads them; the
+    renderer emits a clearly labeled placeholder instead of failing.
+    """
+    kind: Literal[
+        "front_elevation", "roof", "meter", "main_panel", "sub_panel",
+        "attic", "equipment_location", "other",
+    ] = "other"
+    path: str = ""
+    caption: str = ""
+
+
+class SpecSheetRef(BaseModel):
+    """9.14 — manufacturer cut/spec sheet reference.
+
+    `path` is project-relative or absolute. `equipment` should be a stable
+    human key such as `module`, `inverter`, `optimizer`, `racking`.
+    """
+    equipment: str
+    path: str = ""
+    pages: list[int] = Field(default_factory=list)  # 1-based page subset; empty = all
 
 
 class BuildingCodes(BaseModel):
@@ -138,6 +168,12 @@ class ProjectMeta(BaseModel):
     drawn_by: str = ""
     revision: str = "A"
     initial_design_date: str = ""
+    permit_profile: Literal[
+        "internal", "tx_residential_pv", "wyssling_like",
+    ] = "internal"
+    structural_letter_pdf: str = ""          # signed PDF to prepend if supplied
+    site_photos: list[SitePhoto] = Field(default_factory=list)
+    spec_sheets: list[SpecSheetRef] = Field(default_factory=list)
 
     # K.4.6.3: installer BOM cost overrides (opt-in; benchmark fallback)
     installer_cost_overrides: Optional[InstallerCostOverrides] = None
@@ -627,6 +663,9 @@ class Mounting(BaseModel):
     max_y_spacing_in: float = 32.0          # cross-array spacing
     max_cantilever_in: float = 18.0
     fastener: str = "5/16\" lag screw, 3\" embedment"
+    lag_screw_length_in: float = 4.25       # PV-5 detail callout
+    min_embedment_in: float = 2.5           # structural/PV-5 minimum
+    max_roof_surface_gap_in: float = 6.0    # PV-5 rail/module height note
 
 
 class EquipmentLocation(BaseModel):
@@ -686,6 +725,178 @@ class EquipmentLocations(BaseModel):
         return self.msp is not None and len(self.inverters) > 0
 
 
+class SatelliteAlignment(BaseModel):
+    """Stage 8 — EE-4 satellite/mask review alignment.
+
+    This block calibrates the optional Google Solar dataLayers underlay
+    and mask-contour candidate into the EE-4 site-plan coordinate
+    frame. It is intentionally review-only: it does not replace
+    `house_outline_vertices` or any `roof_sections[].vertices` until a
+    designer accepts the overlay.
+    """
+    mode: Literal["raw", "fit_house_bbox", "manual"] = "raw"
+    center_x_ft: Optional[float] = None
+    center_y_ft: Optional[float] = None
+    x_offset_ft: float = 0.0
+    y_offset_ft: float = 0.0
+    scale_x: float = 1.0
+    scale_y: float = 1.0
+    rotation_deg: float = 0.0
+    contour_simplify_ft: float = 2.0
+    contour_max_vertices: int = 32
+
+    @model_validator(mode="after")
+    def _check_alignment_values(self) -> "SatelliteAlignment":
+        if self.scale_x <= 0 or self.scale_y <= 0:
+            raise ValueError(
+                "satellite_alignment scale_x/scale_y must be positive"
+            )
+        if self.contour_simplify_ft < 0:
+            raise ValueError(
+                "satellite_alignment contour_simplify_ft must be >= 0"
+            )
+        if self.contour_max_vertices < 3:
+            raise ValueError(
+                "satellite_alignment contour_max_vertices must be >= 3"
+            )
+        return self
+
+
+class EE4TracePolygon(BaseModel):
+    """Stage 9 — one hand/vector-traced EE-4 polygon in site feet."""
+    name: str = ""
+    vertices: list[tuple[float, float]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_polygon(self) -> "EE4TracePolygon":
+        if len(self.vertices) < 3:
+            raise ValueError("EE4 trace polygon needs >=3 vertices")
+        if _polygon_self_intersects(self.vertices):
+            raise ValueError("EE4 trace polygon self-intersects")
+        if _signed_polygon_area(self.vertices) <= 0:
+            raise ValueError("EE4 trace polygon vertices must be CCW")
+        return self
+
+
+class EE4TraceLine(BaseModel):
+    """Stage 9 — roof ridge/hip/valley/equipment trace line."""
+    kind: Literal["ridge", "hip", "valley", "eave", "edge", "dormer"] = "edge"
+    points: list[tuple[float, float]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_points(self) -> "EE4TraceLine":
+        if len(self.points) < 2:
+            raise ValueError("EE4 trace line needs >=2 points")
+        return self
+
+
+class EE4TraceSymbol(BaseModel):
+    """Stage 9 — traced roof obstruction symbol in site feet."""
+    kind: Literal[
+        "roof_vent", "plumbing", "ac", "satellite", "mast", "chimney",
+    ] = "roof_vent"
+    x_ft: float
+    y_ft: float
+
+
+class EE4Trace(BaseModel):
+    """Stage 9 — vector-traced EE-4 site-plan layer.
+
+    This is the layer that can visually match a permit drafter's site
+    plan: full roof outline, roof planes/facets, ridge/hip/valley lines,
+    fire pathway polygons, and traced obstruction symbols. It is
+    additive and opt-in; projects without it keep the K.13 auto layout.
+    """
+    enabled: bool = False
+    roof_outline: Optional[EE4TracePolygon] = None
+    roof_facets: list[EE4TracePolygon] = Field(default_factory=list)
+    roof_lines: list[EE4TraceLine] = Field(default_factory=list)
+    fire_pathways: list[EE4TracePolygon] = Field(default_factory=list)
+    symbols: list[EE4TraceSymbol] = Field(default_factory=list)
+
+    @property
+    def has_geometry(self) -> bool:
+        return bool(
+            self.roof_outline
+            or self.roof_facets
+            or self.roof_lines
+            or self.fire_pathways
+        )
+
+
+class PropertyContextLine(BaseModel):
+    """Stage 9.9 — site-context linework such as fences or survey ties.
+
+    Coordinates are in the same site-plan feet frame used by EE-4 trace:
+    +x right on sheet, +y up sheet. This keeps hand-surveyed context,
+    traced roof linework, and module rectangles in one frame.
+    """
+    label: str = ""
+    kind: Literal["fence", "property", "setback", "utility", "other"] = "other"
+    points: list[tuple[float, float]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_points(self) -> "PropertyContextLine":
+        if len(self.points) < 2:
+            raise ValueError("property_context line needs >=2 points")
+        return self
+
+
+class PropertyDimension(BaseModel):
+    """Stage 9.9 — explicit survey-style dimension annotation.
+
+    If `label` is blank, the renderer computes the feet/inches text from
+    start/end. A non-empty label preserves survey strings such as 98'-10".
+    `offset_ft` moves the dimension line normal to the measured segment.
+    """
+    label: str = ""
+    start: tuple[float, float]
+    end: tuple[float, float]
+    offset_ft: float = 3.0
+
+
+class PropertyContext(BaseModel):
+    """Stage 9.9 — data-driven EE-4A property context layer.
+
+    This block replaces the Stage 9.8 visual fallback with true input
+    geometry when survey / GIS / satellite-reviewed context is available.
+    Every field is optional; an empty block preserves the generated
+    rectangle / driveway fallback used by older projects.
+    """
+    lot_outline: list[tuple[float, float]] = Field(default_factory=list)
+    driveway_polygon: list[tuple[float, float]] = Field(default_factory=list)
+    fence_lines: list[PropertyContextLine] = Field(default_factory=list)
+    property_dimensions: list[PropertyDimension] = Field(default_factory=list)
+    note: str = ""
+
+    @model_validator(mode="after")
+    def _check_polygons(self) -> "PropertyContext":
+        for name, vertices in (
+            ("lot_outline", self.lot_outline),
+            ("driveway_polygon", self.driveway_polygon),
+        ):
+            if not vertices:
+                continue
+            if len(vertices) < 3:
+                raise ValueError(f"property_context.{name} needs >=3 vertices")
+            if _polygon_self_intersects(vertices):
+                raise ValueError(f"property_context.{name} self-intersects")
+            if _signed_polygon_area(vertices) <= 0:
+                raise ValueError(
+                    f"property_context.{name} vertices must be CCW"
+                )
+        return self
+
+    @property
+    def has_data(self) -> bool:
+        return bool(
+            self.lot_outline
+            or self.driveway_polygon
+            or self.fence_lines
+            or self.property_dimensions
+        )
+
+
 class Site(BaseModel):
     """Phase F: physical layout for the site plan (EE-4)."""
     roof_pitch_deg: float = 22.0            # typical residential pitch
@@ -708,6 +919,11 @@ class Site(BaseModel):
     # Phase J: per-roof-face data for attachment plan (PV-4) + string plan (PV-6)
     roof_sections: list[RoofSection] = Field(default_factory=list)
     mounting: Mounting = Field(default_factory=Mounting)
+    satellite_alignment: SatelliteAlignment = Field(
+        default_factory=SatelliteAlignment
+    )
+    ee4_trace: EE4Trace = Field(default_factory=EE4Trace)
+    property_context: PropertyContext = Field(default_factory=PropertyContext)
 
     @model_validator(mode="after")
     def _check_house_polygon(self) -> "Site":

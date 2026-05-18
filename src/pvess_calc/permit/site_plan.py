@@ -33,12 +33,27 @@ _PV_COLOR = colors.HexColor("#FFE680")
 _HOUSE_COLOR = colors.HexColor("#E8E8E8")
 
 
+def _sheet_label(result: CalculationResult, default_code: str = "EE-4") -> str:
+    code = getattr(result, "_active_sheet_display_code", default_code)
+    title = getattr(result, "_active_sheet_title", "Site Plan")
+    return f"{code} · {title.upper()}"
+
+
 def render_site_plan(result: CalculationResult, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(out_path), pagesize=landscape(letter))
     W, H = landscape(letter)
     i = result.inputs
     site = i.site
+
+    # Stage 2 — projects with real roof_sections now render as a
+    # permit-style EE-4 sheet (left schedules + large roof plan). The
+    # legacy lot/setback schematic below remains the fallback for old
+    # yamls that do not carry roof geometry yet.
+    if site.roof_sections:
+        _render_permit_style_site_plan(c, result, W, H)
+        c.save()
+        return
 
     c.setLineWidth(1.0)
     c.rect(0.4 * inch, 0.4 * inch, W - 0.8 * inch, H - 0.8 * inch)
@@ -48,7 +63,7 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
     # with ~0.10" of breathing room. Pre-K.11.7b polish had the title
     # at H-0.55", which let the ascenders cross the frame border.
     c.setFont("Helvetica-Bold", 18)
-    c.drawCentredString(W / 2, H - 0.70 * inch, "EE-4 · SITE PLAN")
+    c.drawCentredString(W / 2, H - 0.70 * inch, _sheet_label(result))
     if i.project.site_address:
         c.setFont("Helvetica", 9)
         c.drawCentredString(W / 2, H - 0.90 * inch,
@@ -377,6 +392,1358 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
                   "site survey before bid.")
     c.drawString(0.5 * inch, 0.25 * inch, footer)
     c.save()
+
+
+def _render_permit_style_site_plan(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    W: float,
+    H: float,
+) -> None:
+    """Stage 2 — Wyssling-style EE-4 composition.
+
+    This path intentionally frames the roof/equipment geometry, not the
+    full lot rectangle. The full lot fallback is still useful when a
+    project has no roof_sections, but once roof data exists reviewers
+    need a large array/site-plan drawing plus the familiar schedules,
+    legends, notes, and module dimension callout.
+    """
+    margin = 0.28 * inch
+    left_x = 0.32 * inch
+    left_w = 2.18 * inch
+    drawing_x = 2.85 * inch
+    drawing_y = 1.72 * inch
+    drawing_w = W - drawing_x - 0.38 * inch
+    drawing_h = H - drawing_y - 0.55 * inch
+
+    c.setLineWidth(0.8)
+    c.setStrokeColor(colors.black)
+    c.rect(margin, margin, W - 2 * margin, H - 2 * margin)
+
+    _draw_ee4_left_column(c, result, left_x, H - 0.36 * inch, left_w)
+    _draw_ee4_roof_plan(
+        c, result,
+        x=drawing_x, y=drawing_y, w=drawing_w, h=drawing_h,
+    )
+    _draw_ee4_site_notes(c, result, x=0.32 * inch, y=0.36 * inch,
+                         w=7.25 * inch, h=1.12 * inch)
+    _draw_ee4_module_callout(
+        c, result,
+        x=W - 1.22 * inch, y=0.62 * inch,
+        w=0.90 * inch, h=0.86 * inch,
+    )
+
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(W * 0.73, 0.44 * inch, 'SCALE: 3/32" = 1\'-0"')
+    c.setFont("Helvetica-Bold", 9)
+    c.drawRightString(W - 0.38 * inch, 0.30 * inch, _sheet_label(result))
+
+
+def _draw_ee4_left_column(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    x: float,
+    top_y: float,
+    w: float,
+) -> None:
+    i = result.inputs
+    pv = i.pv_array
+    mod = pv.module
+    inv_count = i.inverter.count(i.battery.quantity)
+    opt_count = (
+        i.optimizer.effective_count(pv.modules, pv.strings)
+        if i.optimizer.brand else 0
+    )
+    mod_area_sqft = (mod.length_in * mod.width_in) / 144.0
+    weight_psf = mod.weight_lbs / mod_area_sqft if mod_area_sqft else 0.0
+
+    rows = [
+        ("MODULE\nCOUNT/TYPE",
+         f"({pv.modules}) {mod.brand.upper()} {mod.model}"),
+        ("INVERTER\nCOUNT/TYPE",
+         f"({inv_count}) {i.inverter.brand.upper()} {i.inverter.model}"),
+        ("MODULE\nWEIGHT", f"{mod.weight_lbs:.2f} LBS"),
+        ("MODULE\nDIMENSIONS", f'{mod.length_in:.2f}" x {mod.width_in:.2f}"'),
+        ("UNIT WEIGHT\nOF ARRAY", f"{weight_psf:.2f} PSF"),
+    ]
+    y = top_y - 1.62 * inch
+    _draw_key_value_table(c, x, y, w, 1.62 * inch, rows)
+
+    legend_top = y - 0.34 * inch
+    _draw_ee4_legend(c, x, legend_top, w)
+
+    summary_top = legend_top - 2.22 * inch
+    _draw_ee4_equipment_summary(
+        c, result, x, summary_top, w,
+        optimizer_count=opt_count,
+    )
+
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 7.2)
+    footer_y = 1.60 * inch
+    c.drawString(x, footer_y,
+                 f"MODULE: ({pv.modules}) {mod.brand.upper()} {mod.model}")
+    c.drawString(x, footer_y - 0.12 * inch,
+                 f"INVERTER: ({inv_count}) {i.inverter.brand.upper()} "
+                 f"{i.inverter.model}")
+
+
+def _draw_key_value_table(
+    c: canvas.Canvas,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    rows: list[tuple[str, str]],
+) -> None:
+    left_w = 0.72 * inch
+    row_h = h / len(rows)
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.55)
+    c.rect(x, y, w, h)
+    c.line(x + left_w, y, x + left_w, y + h)
+    for idx in range(1, len(rows)):
+        yy = y + idx * row_h
+        c.line(x, yy, x + w, yy)
+
+    for idx, (label, value) in enumerate(rows):
+        row_y = y + h - (idx + 1) * row_h
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 7.0)
+        lines = label.split("\n")
+        for line_idx, line in enumerate(lines):
+            c.drawCentredString(
+                x + left_w / 2,
+                row_y + row_h / 2 + (len(lines) - 1) * 4
+                - line_idx * 8 - 2,
+                line,
+            )
+        c.setFont("Helvetica", 7.2)
+        c.drawCentredString(
+            x + left_w + (w - left_w) / 2,
+            row_y + row_h / 2 - 2,
+            fit(value, "Helvetica", 7.2, w - left_w - 0.08 * inch),
+        )
+
+
+def _draw_ee4_legend(
+    c: canvas.Canvas,
+    x: float,
+    top_y: float,
+    w: float,
+) -> None:
+    rows = [
+        ("LEGEND", ""),
+        ("ROOF VENT (TYP.)", "roof_vent"),
+        ("PLUMBING VENT (TYP.)", "plumbing"),
+        ("A/C UNIT", "ac"),
+        ("SATELLITE DISH", "satellite"),
+        ("ELECTRICAL MAST", "mast"),
+        ("CHIMNEY", "chimney"),
+        ("FIRECODE PATHWAY", "fire"),
+    ]
+    row_h = 0.18 * inch
+    h = len(rows) * row_h
+    y = top_y - h
+    sym_w = 0.70 * inch
+    c.setLineWidth(0.55)
+    c.rect(x, y, w, h)
+    c.line(x + w - sym_w, y, x + w - sym_w, y + h - row_h)
+    for idx in range(1, len(rows)):
+        yy = y + idx * row_h
+        c.line(x, yy, x + w, yy)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawCentredString(x + w / 2, y + h - row_h + 0.055 * inch, "LEGEND")
+    c.setFont("Helvetica", 7.1)
+    for idx, (label, kind) in enumerate(rows[1:], 1):
+        cy = y + h - (idx + 0.5) * row_h
+        c.drawCentredString(x + (w - sym_w) / 2, cy - 2, label)
+        _draw_ee4_legend_symbol(c, x + w - sym_w / 2, cy, kind)
+
+
+def _draw_ee4_legend_symbol(
+    c: canvas.Canvas,
+    cx: float,
+    cy: float,
+    kind: str,
+) -> None:
+    c.setLineWidth(0.45)
+    c.setStrokeColor(colors.black)
+    c.setFillColor(colors.white)
+    if kind == "roof_vent":
+        c.rect(cx - 4, cy - 4, 8, 8, fill=0, stroke=1)
+    elif kind == "plumbing":
+        c.circle(cx, cy, 4, fill=0, stroke=1)
+    elif kind == "ac":
+        c.rect(cx - 7, cy - 5, 14, 10, fill=0, stroke=1)
+        c.setFont("Helvetica-Bold", 5.8)
+        c.drawCentredString(cx, cy - 2, "A/C")
+    elif kind == "satellite":
+        c.arc(cx - 8, cy - 7, cx + 8, cy + 5, 200, 140)
+        c.line(cx, cy - 2, cx, cy - 7)
+    elif kind == "mast":
+        c.rect(cx - 2, cy - 5, 4, 8, fill=0, stroke=1)
+        c.line(cx - 5, cy + 5, cx + 5, cy + 5)
+    elif kind == "chimney":
+        c.rect(cx - 7, cy - 5, 14, 10, fill=0, stroke=1)
+        c.circle(cx, cy, 1.3, fill=0, stroke=1)
+    elif kind == "fire":
+        c.setFillColor(colors.HexColor("#FDBA74"))
+        c.rect(cx - 7, cy - 6, 14, 12, fill=1, stroke=0)
+        c.setStrokeColor(colors.HexColor("#EA580C"))
+        for off in range(-12, 13, 4):
+            c.line(cx - 8 + off, cy - 7, cx - 1 + off, cy + 7)
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+
+
+def _draw_ee4_equipment_summary(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    x: float,
+    top_y: float,
+    w: float,
+    *,
+    optimizer_count: int,
+) -> None:
+    i = result.inputs
+    inv_count = i.inverter.count(i.battery.quantity)
+    lines = [
+        "EQUIPMENT SUMMARY:",
+        f"PV MODULE: ({i.pv_array.modules}) {i.pv_array.module.brand.upper()} "
+        f"{i.pv_array.module.model}",
+        f"INVERTER: ({inv_count}) {i.inverter.brand.upper()} {i.inverter.model}",
+    ]
+    if i.optimizer.brand:
+        lines.append(
+            f"OPTIMIZER: ({optimizer_count}) {i.optimizer.brand.upper()} "
+            f"{i.optimizer.model}"
+        )
+    if i.service.sub_panels:
+        lines.append(
+            "CONTROL PANEL: "
+            + ", ".join(sp.name.upper() for sp in i.service.sub_panels[:2])
+        )
+    meter = i.project.meter_info
+    lines += [
+        "",
+        f"UTILITY: {i.project.utility or '—'}",
+        f"ONCOR METER NUMBER: {meter.number or '—'}",
+        f"ESID: {meter.esid or '—'}",
+    ]
+
+    h = 1.30 * inch
+    y = top_y - h
+    c.setLineWidth(0.55)
+    c.rect(x, y, w, h)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 7.5)
+    yy = top_y - 0.13 * inch
+    for idx, line in enumerate(lines):
+        if not line:
+            yy -= 0.08 * inch
+            continue
+        c.setFont("Helvetica-Bold" if idx == 0 else "Helvetica", 7.0)
+        c.drawString(x + 0.04 * inch, yy,
+                     fit(line, "Helvetica", 7.0, w - 0.08 * inch))
+        yy -= 0.12 * inch
+
+
+def _draw_ee4_site_notes(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    *,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> None:
+    i = result.inputs
+    from ..calc.site_layout import house_bbox
+
+    hx0, hy0, hx1, hy1 = house_bbox(i.site)
+    front_ft = max(0.0, i.site.lot_depth_ft - hy1)
+    rear_ft = max(0.0, hy0)
+    side_ft = max(0.0, min(hx0, i.site.lot_width_ft - hx1))
+
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(x, y + h - 0.18 * inch, "SITE PLAN NOTES")
+    c.setFont("Helvetica", 7.0)
+    notes = [
+        "ALL OBSTRUCTIONS MUST BE VERIFIED BEFORE WORK COMMENCES",
+        "CONDUIT TO BE RUN IN ATTIC IF POSSIBLE",
+        "VISIBLE / LOCKABLE / LABELED UTILITY AC DISCONNECT WILL BE INSTALLED",
+        "AC DISCONNECT SHALL BE READILY ACCESSIBLE 24/7",
+        "REQUIRED ELECTRICAL CLEARANCE TO BE MAINTAINED",
+        "METER / SERVICE PANEL LOCATION TO BE FIELD VERIFIED",
+        f"Front yard setback {front_ft:.0f}' / Rear yard setback "
+        f"{rear_ft:.0f}' / Side yard setback {side_ft:.0f}'",
+    ]
+    yy = y + h - 0.33 * inch
+    for idx, note in enumerate(notes, 1):
+        c.drawString(x + 0.08 * inch, yy, f"{idx}.")
+        c.drawString(x + 0.27 * inch, yy,
+                     fit(note, "Helvetica", 7.0, w - 0.35 * inch))
+        yy -= 0.105 * inch
+    c.setFont("Helvetica-Oblique", 6.6)
+    c.drawString(
+        x, y + 0.02 * inch,
+        "NOTE: EQUIPMENT LOCATIONS ARE DEFINED BUT MAY BE APPROXIMATE "
+        "DUE TO EXISTING CONDITIONS",
+    )
+
+
+def _draw_ee4_module_callout(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    *,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> None:
+    mod = result.inputs.pv_array.module
+    c.setStrokeColor(colors.HexColor("#1F5BD7"))
+    c.setLineWidth(0.8)
+    box_w = min(w * 0.58, 0.40 * inch)
+    box_h = min(h * 0.78, 0.64 * inch)
+    bx = x + w - box_w - 0.02 * inch
+    by = y + 0.10 * inch
+    c.rect(bx, by, box_w, box_h)
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.55)
+    # Dimension ticks.
+    c.line(bx, by + box_h + 0.10 * inch, bx + box_w, by + box_h + 0.10 * inch)
+    c.line(bx, by + box_h + 0.05 * inch, bx, by + box_h + 0.15 * inch)
+    c.line(bx + box_w, by + box_h + 0.05 * inch,
+           bx + box_w, by + box_h + 0.15 * inch)
+    c.line(bx - 0.13 * inch, by, bx - 0.13 * inch, by + box_h)
+    c.line(bx - 0.18 * inch, by, bx - 0.08 * inch, by)
+    c.line(bx - 0.18 * inch, by + box_h, bx - 0.08 * inch, by + box_h)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 6.6)
+    c.drawCentredString(bx + box_w / 2, by + box_h + 0.16 * inch,
+                        f'{mod.width_in:.2f}"')
+    c.saveState()
+    c.translate(bx - 0.19 * inch, by + box_h / 2)
+    c.rotate(90)
+    c.drawCentredString(0, 0, f'{mod.length_in:.2f}"')
+    c.restoreState()
+    c.drawCentredString(x + w / 2, y - 0.02 * inch,
+                        f"{mod.brand.upper()} {mod.model}")
+    c.drawCentredString(x + w / 2, y - 0.13 * inch, "MODULES")
+    c.setStrokeColor(colors.black)
+
+
+def _draw_ee4_roof_plan(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    *,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> None:
+    from ..calc.site_layout import house_bbox
+    from ..calc.wire_routing import _face_local_to_site
+
+    i = result.inputs
+    sections = i.site.roof_sections
+    bounds = _ee4_drawing_bounds(result)
+    if bounds is None:
+        return
+    min_x, min_y, max_x, max_y = bounds
+    bw = max(max_x - min_x, 1.0)
+    bh = max(max_y - min_y, 1.0)
+    pad_ft = max(bw, bh) * 0.08
+    min_x -= pad_ft
+    min_y -= pad_ft
+    max_x += pad_ft
+    max_y += pad_ft
+    bw = max_x - min_x
+    bh = max_y - min_y
+    scale = min(w / bw, h / bh)
+    ox = x + (w - bw * scale) / 2
+    oy = y + (h - bh * scale) / 2
+
+    def to_pt(pt: tuple[float, float]) -> tuple[float, float]:
+        return (ox + (pt[0] - min_x) * scale,
+                oy + (pt[1] - min_y) * scale)
+
+    trace_active = _ee4_trace_active(i.site)
+    trace = i.site.ee4_trace
+    satellite_drawn, mask_candidate = _draw_ee4_satellite_underlay(
+        c, result, to_pt, clip_rect=(x, y, w, h),
+    )
+    if mask_candidate is not None:
+        _draw_ee4_mask_contour_candidate(
+            c, mask_candidate,
+            to_pt=to_pt,
+            clip_rect=(x, y, w, h),
+            label_x=x + 0.08 * inch,
+            label_y=y + h - 0.41 * inch,
+            draw_label=False,
+        )
+
+    # Light house footprint context, cropped to the roof/equipment view.
+    hx0, hy0, hx1, hy1 = house_bbox(i.site)
+    if not trace_active:
+        c.setFillColor(colors.white)
+        c.setStrokeColor(colors.HexColor("#CBD5E1"))
+        c.setLineWidth(0.35)
+        if i.site.house_outline_vertices:
+            path = c.beginPath()
+            p0 = to_pt(i.site.house_outline_vertices[0])
+            path.moveTo(*p0)
+            for p in i.site.house_outline_vertices[1:]:
+                path.lineTo(*to_pt(p))
+            path.close()
+            c.drawPath(path, stroke=1, fill=0 if satellite_drawn else 1)
+        else:
+            p0 = to_pt((hx0, hy0))
+            p1 = to_pt((hx1, hy1))
+            c.rect(p0[0], p0[1], p1[0] - p0[0], p1[1] - p0[1],
+                   stroke=1, fill=0 if satellite_drawn else 1)
+
+    # Small property-line cue, enough for plan semantics without letting
+    # the full lot rectangle dominate the page. The main drawing is
+    # cropped to roof/equipment extents, so drawing the true 90x125 ft
+    # lot box here would spill off the sheet.
+    c.setDash(5, 3)
+    c.setStrokeColor(colors.HexColor("#94A3B8"))
+    c.line(x + 0.08 * inch, y + h - 0.16 * inch,
+           x + 1.55 * inch, y + h - 0.16 * inch)
+    c.setDash()
+    c.setFillColor(colors.HexColor("#475569"))
+    c.setFont("Helvetica-Oblique", 6.6)
+    c.drawString(x + 0.08 * inch, y + h - 0.10 * inch,
+                 "PROPERTY LINE (dashed)")
+
+    # Street/address label along the left property edge.
+    if i.project.site_address:
+        c.saveState()
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 11)
+        c.translate(x - 0.14 * inch, y + h * 0.52)
+        c.rotate(90)
+        c.drawCentredString(0, 0, i.project.site_address.upper())
+        c.restoreState()
+
+    if trace_active:
+        _draw_ee4_trace_roof(c, trace, to_pt, fill_outline=True)
+        _draw_ee4_trace_fire_pathways(c, trace, to_pt)
+        _draw_ee4_trace_roof(c, trace, to_pt, fill_outline=False)
+    else:
+        # Fire offset bands under roof outlines.
+        for section in sections:
+            if section.site_anchor_x_ft is None or section.shape != "rect":
+                continue
+            outer = _ee4_section_points(section)
+            if len(outer) < 4:
+                continue
+            eave = section.edge_setback_for("eave")
+            ridge = section.edge_setback_for("ridge")
+            rake = section.edge_setback_for("rake")
+            inset_w = section.width_ft - 2 * rake
+            inset_h = section.height_ft - eave - ridge
+            if inset_w <= 0 or inset_h <= 0:
+                continue
+            inner_local = [
+                (rake, eave),
+                (rake + inset_w, eave),
+                (rake + inset_w, eave + inset_h),
+                (rake, eave + inset_h),
+            ]
+            inner = [
+                _face_local_to_site(section, px, py)
+                for px, py in inner_local
+            ]
+            inner = [p for p in inner if p is not None]
+            _draw_fire_path_band(
+                c,
+                [to_pt(p) for p in outer],
+                [to_pt(p) for p in inner],
+            )
+
+        # Roof outlines + simple hip/ridge facets.
+        for section in sections:
+            pts = _ee4_section_points(section)
+            if len(pts) < 3:
+                continue
+            pt_pts = [to_pt(p) for p in pts]
+            _draw_poly(c, pt_pts, stroke=colors.black, fill=None, width=0.75)
+            cx = sum(p[0] for p in pt_pts) / len(pt_pts)
+            cy = sum(p[1] for p in pt_pts) / len(pt_pts)
+            c.setStrokeColor(colors.black)
+            c.setLineWidth(0.45)
+            for px, py in pt_pts:
+                c.line(cx, cy, px, py)
+
+    # Real modules.
+    module_bounds: list[tuple[float, float, float, float]] = []
+    c.setStrokeColor(colors.HexColor("#1F5BD7"))
+    c.setFillColor(colors.HexColor("#EEF4FF"))
+    c.setLineWidth(0.55)
+    for section in sections:
+        for m in result.module_placements.get(section.name, []):
+            corners_local = [
+                (m.x_ft, m.y_ft),
+                (m.x_ft + m.width_ft, m.y_ft),
+                (m.x_ft + m.width_ft, m.y_ft + m.height_ft),
+                (m.x_ft, m.y_ft + m.height_ft),
+            ]
+            corners = [
+                _face_local_to_site(section, px, py)
+                for px, py in corners_local
+            ]
+            corners = [p for p in corners if p is not None]
+            if len(corners) < 4:
+                continue
+            pts = [to_pt(p) for p in corners]
+            _draw_poly(c, pts, stroke=colors.HexColor("#1F5BD7"),
+                       fill=colors.HexColor("#EEF4FF"), width=0.55)
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
+            module_bounds.append((min(xs), min(ys), max(xs), max(ys)))
+
+    if trace_active:
+        _draw_ee4_trace_symbols(c, trace, to_pt)
+    else:
+        # Common rooftop obstruction symbols. These are schematic, but the
+        # legend now has matching shapes and the plan no longer looks empty.
+        _draw_ee4_roof_symbols(c, result, to_pt)
+
+    if mask_candidate is not None:
+        _draw_ee4_mask_contour_candidate(
+            c, mask_candidate,
+            to_pt=to_pt,
+            clip_rect=(x, y, w, h),
+            label_x=x + 0.08 * inch,
+            label_y=y + h - 0.41 * inch,
+            satellite_label=_ee4_satellite_underlay_label(
+                result.inputs.site.satellite_alignment.mode
+            ),
+            draw_path=False,
+        )
+
+    # Fire offset labels.
+    label_section = next((s for s in sections if s.site_anchor_x_ft is not None),
+                         None)
+    if label_section is not None:
+        start = to_pt((
+            label_section.site_anchor_x_ft + label_section.width_ft * 0.55,
+            label_section.site_anchor_y_ft + label_section.height_ft + 0.7,
+        ))
+        end = (start[0] + 0.55 * inch, start[1] + 0.62 * inch)
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(0.45)
+        c.line(start[0], start[1], start[0], end[1])
+        c.line(start[0], end[1], end[0], end[1])
+        c.setFont("Helvetica", 7)
+        c.setFillColor(colors.white)
+        c.setStrokeColor(colors.white)
+        c.rect(end[0] + 0.01 * inch, end[1] - 0.045 * inch,
+               1.24 * inch, 0.13 * inch, fill=1, stroke=0)
+        c.setFillColor(colors.black)
+        c.drawString(end[0] + 0.02 * inch, end[1] - 2,
+                     '18" FIRE OFFSET (NEC 690.12)')
+
+    c.setFont("Helvetica", 7)
+    label36_x, label36_y = _ee4_36_fire_offset_label_position(x, y, w, h)
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.white)
+    c.rect(label36_x - 0.04 * inch, label36_y - 0.045 * inch,
+           0.92 * inch, 0.13 * inch, fill=1, stroke=0)
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+    c.drawString(label36_x, label36_y, '36" FIRE OFFSET')
+    c.line(label36_x - 0.18 * inch, label36_y + 2,
+           label36_x - 0.02 * inch, label36_y + 2)
+
+    # Routed conduit overlay.
+    wr = result.wire_routing
+    if wr is not None and wr.routed:
+        c.setStrokeColor(colors.HexColor("#EA580C"))
+        c.setLineWidth(1.4)
+        c.setDash(5, 3)
+        for seg in wr.segments:
+            if len(seg.waypoints_ft) < 2 or seg.label.startswith("A "):
+                continue
+            pts = _decompose_manhattan(seg.waypoints_ft)
+            path = c.beginPath()
+            path.moveTo(*to_pt(pts[0]))
+            for p in pts[1:]:
+                path.lineTo(*to_pt(p))
+            c.drawPath(path, stroke=1, fill=0)
+        c.setDash()
+        c.setStrokeColor(colors.black)
+
+    _draw_ee4_equipment_leaders(c, result, to_pt, x, y, w, h)
+    _draw_ee4_optimizer_callout(c, result, module_bounds, x, y, w, h)
+
+    # PV array caption.
+    kw_dc = i.pv_array.modules * i.pv_array.module.power_w / 1000.0
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(x + 0.10 * inch, y + 0.08 * inch,
+                 f"PV ARRAY · {i.pv_array.modules} MODULES · "
+                 f"{kw_dc:.2f} kW DC")
+
+
+def _ee4_drawing_bounds(
+    result: CalculationResult,
+) -> Optional[tuple[float, float, float, float]]:
+    pts: list[tuple[float, float]] = []
+    trace = result.inputs.site.ee4_trace
+    if _ee4_trace_active(result.inputs.site):
+        if trace.roof_outline is not None:
+            pts.extend(trace.roof_outline.vertices)
+        for poly in trace.roof_facets:
+            pts.extend(poly.vertices)
+        for poly in trace.fire_pathways:
+            pts.extend(poly.vertices)
+        for line in trace.roof_lines:
+            pts.extend(line.points)
+        for symbol in trace.symbols:
+            pts.append((symbol.x_ft, symbol.y_ft))
+    for section in result.inputs.site.roof_sections:
+        pts.extend(_ee4_section_points(section))
+        for m in result.module_placements.get(section.name, []):
+            pts.extend(_ee4_module_site_points(section, m))
+    el = result.inputs.site.equipment_locations
+    for item in _ee4_equipment_items(el):
+        pts.append((item[1], item[2]))
+    if el.attic_drop_x_ft is not None and el.attic_drop_y_ft is not None:
+        pts.append((el.attic_drop_x_ft, el.attic_drop_y_ft))
+    if not pts:
+        return None
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _ee4_trace_active(site) -> bool:
+    trace = getattr(site, "ee4_trace", None)
+    return bool(trace is not None and trace.enabled and trace.has_geometry)
+
+
+def _draw_ee4_trace_roof(
+    c: canvas.Canvas,
+    trace,
+    to_pt,
+    *,
+    fill_outline: bool,
+) -> None:
+    """Draw Stage 9 permit-style traced roof linework."""
+    if trace.roof_outline is not None:
+        _draw_poly(
+            c,
+            [to_pt(p) for p in trace.roof_outline.vertices],
+            stroke=colors.black,
+            fill=colors.white if fill_outline else None,
+            width=0.75,
+        )
+    for facet in trace.roof_facets:
+        _draw_poly(
+            c,
+            [to_pt(p) for p in facet.vertices],
+            stroke=colors.black,
+            fill=None,
+            width=0.55,
+        )
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.45)
+    c.setDash()
+    for line in trace.roof_lines:
+        pts = [to_pt(p) for p in line.points]
+        if len(pts) < 2:
+            continue
+        path = c.beginPath()
+        path.moveTo(*pts[0])
+        for p in pts[1:]:
+            path.lineTo(*p)
+        c.drawPath(path, stroke=1, fill=0)
+
+
+def _draw_ee4_trace_fire_pathways(
+    c: canvas.Canvas,
+    trace,
+    to_pt,
+) -> None:
+    for poly in trace.fire_pathways:
+        _draw_fire_path_polygon(c, [to_pt(p) for p in poly.vertices])
+
+
+def _draw_ee4_trace_symbols(
+    c: canvas.Canvas,
+    trace,
+    to_pt,
+) -> None:
+    c.setStrokeColor(colors.black)
+    c.setFillColor(colors.white)
+    c.setLineWidth(0.5)
+    for symbol in trace.symbols:
+        px, py = to_pt((symbol.x_ft, symbol.y_ft))
+        kind = symbol.kind
+        if kind == "roof_vent":
+            c.rect(px - 3, py - 3, 6, 6, fill=0, stroke=1)
+        elif kind == "plumbing":
+            c.circle(px, py, 2.5, fill=0, stroke=1)
+        elif kind == "ac":
+            c.rect(px - 6, py - 4, 12, 8, fill=0, stroke=1)
+        elif kind == "satellite":
+            c.arc(px - 7, py - 5, px + 7, py + 5, 200, 140)
+            c.line(px, py - 2, px, py - 7)
+        elif kind == "mast":
+            c.rect(px - 2, py - 5, 4, 8, fill=0, stroke=1)
+            c.line(px - 5, py + 5, px + 5, py + 5)
+        else:
+            c.rect(px - 6, py - 5, 12, 10, fill=0, stroke=1)
+            c.circle(px, py, 1.2, fill=0, stroke=1)
+
+
+def _ee4_section_points(section) -> list[tuple[float, float]]:
+    from ..calc.wire_routing import _face_local_to_site
+
+    if section.site_anchor_x_ft is None:
+        return []
+    if section.shape == "polygon":
+        local = section.vertices
+    elif section.shape == "tri":
+        local = [
+            (0.0, 0.0),
+            (section.width_ft, 0.0),
+            (section.width_ft * section.apex_x_ratio, section.height_ft),
+        ]
+    else:
+        local = [
+            (0.0, 0.0),
+            (section.width_ft, 0.0),
+            (section.width_ft, section.height_ft),
+            (0.0, section.height_ft),
+        ]
+    pts = [_face_local_to_site(section, px, py) for px, py in local]
+    return [p for p in pts if p is not None]
+
+
+def _ee4_module_site_points(section, module) -> list[tuple[float, float]]:
+    from ..calc.wire_routing import _face_local_to_site
+
+    local = [
+        (module.x_ft, module.y_ft),
+        (module.x_ft + module.width_ft, module.y_ft),
+        (module.x_ft + module.width_ft, module.y_ft + module.height_ft),
+        (module.x_ft, module.y_ft + module.height_ft),
+    ]
+    pts = [_face_local_to_site(section, px, py) for px, py in local]
+    return [p for p in pts if p is not None]
+
+
+def _draw_poly(
+    c: canvas.Canvas,
+    pts: list[tuple[float, float]],
+    *,
+    stroke,
+    fill,
+    width: float,
+) -> None:
+    if len(pts) < 3:
+        return
+    c.setStrokeColor(stroke)
+    if fill is not None:
+        c.setFillColor(fill)
+    c.setLineWidth(width)
+    path = c.beginPath()
+    path.moveTo(*pts[0])
+    for pt in pts[1:]:
+        path.lineTo(*pt)
+    path.close()
+    c.drawPath(path, stroke=1, fill=1 if fill is not None else 0)
+    c.setStrokeColor(colors.black)
+    c.setFillColor(colors.black)
+
+
+def _truthy_env(name: str) -> bool:
+    import os
+    return os.environ.get(name, "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _draw_ee4_satellite_underlay(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    to_pt,
+    *,
+    clip_rect: tuple[float, float, float, float],
+) -> tuple[bool, object | None]:
+    """Stage 6 — optional Google Solar aerial underlay for EE-4.
+
+    Gate behaviour:
+      * `PVESS_EE4_SATELLITE=1` opts the sheet into satellite drawing.
+      * `PVESS_ALLOW_PAID_RENDERS=1` allows a dataLayers network call
+        when the aerial PNG is not already cached.
+      * Without the paid gate, this reads cache only and silently skips.
+
+    The placement is an approximate north-up calibration overlay:
+    Google Solar dataLayers returns a square centred on the project
+    lat/lng; we align that centre to the house bbox centre in the EE-4
+    site coordinate frame. Stage 7 can replace this with mask-derived
+    georeferencing / vector extraction.
+    """
+    if not _truthy_env("PVESS_EE4_SATELLITE"):
+        return False, None
+
+    from .cover_maps import (
+        coordinates_to_lat_lng,
+        fetch_aerial_map_png,
+        fetch_satellite_assets_cached,
+    )
+    from ..calc.site_layout import house_bbox
+
+    lat_lng = coordinates_to_lat_lng(result.inputs.project.coordinates)
+    if lat_lng is None:
+        return False, None
+
+    radius_m = 35.0
+    allow_network = _truthy_env("PVESS_ALLOW_PAID_RENDERS")
+    assets = fetch_satellite_assets_cached(
+        *lat_lng,
+        radius_m=radius_m,
+        cache=True,
+        allow_network=allow_network,
+    )
+    if assets is not None:
+        png_bytes = _rgb_array_to_png_bytes(assets.rgb)
+    else:
+        png_bytes = fetch_aerial_map_png(
+            *lat_lng,
+            radius_m=radius_m,
+            cache=True,
+            allow_network=allow_network,
+        )
+    if png_bytes is None:
+        return False, None
+
+    try:
+        from reportlab.lib.utils import ImageReader
+        import io
+
+        faded = _fade_png_bytes(png_bytes)
+        reader = ImageReader(io.BytesIO(faded))
+    except Exception:
+        return False, None
+
+    hx0, hy0, hx1, hy1 = house_bbox(result.inputs.site)
+    cx = (hx0 + hx1) / 2
+    cy = (hy0 + hy1) / 2
+    alignment = result.inputs.site.satellite_alignment
+    center_site_ft = (
+        alignment.center_x_ft if alignment.center_x_ft is not None else cx,
+        alignment.center_y_ft if alignment.center_y_ft is not None else cy,
+    )
+    radius_ft = radius_m * 3.28084
+    p0 = to_pt((cx - radius_ft, cy - radius_ft))
+    p1 = to_pt((cx + radius_ft, cy + radius_ft))
+    img_x = min(p0[0], p1[0])
+    img_y = min(p0[1], p1[1])
+    img_w = abs(p1[0] - p0[0])
+    img_h = abs(p1[1] - p0[1])
+    if img_w <= 0 or img_h <= 0:
+        return False, None
+
+    clip_x, clip_y, clip_w, clip_h = clip_rect
+    c.saveState()
+    clip = c.beginPath()
+    clip.rect(clip_x, clip_y, clip_w, clip_h)
+    c.clipPath(clip, stroke=0, fill=0)
+    c.drawImage(reader, img_x, img_y, width=img_w, height=img_h,
+                preserveAspectRatio=False, mask="auto")
+    c.setStrokeColor(colors.HexColor("#94A3B8"))
+    c.setLineWidth(0.35)
+    c.rect(img_x, img_y, img_w, img_h, stroke=1, fill=0)
+    mask_candidate = None
+    if assets is not None:
+        from ..calc.mask_contour import contour_from_mask
+        mask_candidate = contour_from_mask(
+            assets.mask,
+            radius_m=radius_m,
+            center_site_ft=center_site_ft,
+            simplify_ft=alignment.contour_simplify_ft,
+            max_vertices=alignment.contour_max_vertices,
+        )
+        mask_candidate = _apply_ee4_mask_alignment(
+            mask_candidate,
+            house_bbox_ft=(hx0, hy0, hx1, hy1),
+            center_site_ft=center_site_ft,
+            alignment=alignment,
+        )
+    if mask_candidate is None:
+        label = _ee4_satellite_underlay_label(alignment.mode)
+        c.setFont("Helvetica-Oblique", 6.5)
+        _draw_white_text_backdrop(c, clip_x + 0.08 * inch,
+                                  clip_y + clip_h - 0.28 * inch,
+                                  label, font="Helvetica-Oblique", size=6.5)
+        c.drawString(clip_x + 0.08 * inch, clip_y + clip_h - 0.28 * inch,
+                     label)
+    c.restoreState()
+    return True, mask_candidate
+
+
+def _apply_ee4_mask_alignment(
+    candidate,
+    *,
+    house_bbox_ft: tuple[float, float, float, float],
+    center_site_ft: tuple[float, float],
+    alignment,
+):
+    if candidate is None:
+        return None
+
+    from ..calc.mask_contour import (
+        fit_candidate_to_bbox,
+        transform_candidate,
+    )
+
+    origin = center_site_ft
+    if alignment.mode == "fit_house_bbox":
+        candidate = fit_candidate_to_bbox(
+            candidate,
+            house_bbox_ft,
+            preserve_aspect=False,
+            source_suffix="fit_house_bbox",
+        )
+        x0, y0, x1, y1 = house_bbox_ft
+        origin = ((x0 + x1) / 2, (y0 + y1) / 2)
+
+    needs_manual_transform = (
+        alignment.mode == "manual"
+        or abs(alignment.scale_x - 1.0) > 1e-9
+        or abs(alignment.scale_y - 1.0) > 1e-9
+        or abs(alignment.rotation_deg) > 1e-9
+        or abs(alignment.x_offset_ft) > 1e-9
+        or abs(alignment.y_offset_ft) > 1e-9
+    )
+    if needs_manual_transform:
+        candidate = transform_candidate(
+            candidate,
+            origin_ft=origin,
+            scale_x=alignment.scale_x,
+            scale_y=alignment.scale_y,
+            rotation_deg=alignment.rotation_deg,
+            offset_ft=(alignment.x_offset_ft, alignment.y_offset_ft),
+            source_suffix="manual",
+        )
+    return candidate
+
+
+def _ee4_satellite_underlay_label(mode: str) -> str:
+    if mode == "fit_house_bbox":
+        return "SATELLITE UNDERLAY (APPROX., FIT HOUSE BBOX)"
+    if mode == "manual":
+        return "SATELLITE UNDERLAY (APPROX., MANUAL ALIGN)"
+    return "SATELLITE UNDERLAY (APPROX., NORTH-UP)"
+
+
+def _rgb_array_to_png_bytes(rgb) -> bytes:
+    import io
+    from PIL import Image
+
+    img = Image.fromarray(rgb.astype("uint8"), mode="RGB")
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _draw_ee4_mask_contour_candidate(
+    c: canvas.Canvas,
+    candidate,
+    *,
+    to_pt,
+    align_center_ft: tuple[float, float] | None = None,
+    clip_rect: tuple[float, float, float, float] | None = None,
+    label_x: float,
+    label_y: float,
+    satellite_label: str = "",
+    draw_path: bool = True,
+    draw_label: bool = True,
+) -> bool:
+    """Draw Stage 7 review-only roof contour from the Solar mask."""
+    if candidate is None or candidate.vertex_count < 3:
+        return False
+
+    vertices = list(candidate.site_vertices_ft)
+    if align_center_ft is not None:
+        xs = [p[0] for p in vertices]
+        ys = [p[1] for p in vertices]
+        bbox_cx = (min(xs) + max(xs)) / 2
+        bbox_cy = (min(ys) + max(ys)) / 2
+        dx = align_center_ft[0] - bbox_cx
+        dy = align_center_ft[1] - bbox_cy
+        vertices = [(px + dx, py + dy) for px, py in vertices]
+
+    if draw_path:
+        pts = [to_pt(p) for p in vertices]
+        if clip_rect is not None:
+            clip_x, clip_y, clip_w, clip_h = clip_rect
+            c.saveState()
+            clip = c.beginPath()
+            clip.rect(clip_x, clip_y, clip_w, clip_h)
+            c.clipPath(clip, stroke=0, fill=0)
+
+        c.setStrokeColor(colors.HexColor("#16A34A"))
+        c.setLineWidth(0.85)
+        c.setDash(4, 2)
+        path = c.beginPath()
+        path.moveTo(*pts[0])
+        for p in pts[1:]:
+            path.lineTo(*p)
+        path.close()
+        c.drawPath(path, stroke=1, fill=0)
+        c.setDash()
+        if clip_rect is not None:
+            c.restoreState()
+
+    if not draw_label:
+        return True
+
+    if satellite_label:
+        c.setFont("Helvetica-Oblique", 6.5)
+        _draw_white_text_backdrop(
+            c, label_x, label_y + 0.13 * inch, satellite_label,
+            font="Helvetica-Oblique", size=6.5,
+        )
+        c.setFillColor(colors.black)
+        c.drawString(label_x, label_y + 0.13 * inch, satellite_label)
+
+    label = (
+        f"MASK CONTOUR CANDIDATE - REVIEW "
+        f"({_ee4_candidate_source_label(candidate.source)}, "
+        f"{candidate.vertex_count} VERTICES, {candidate.area_sqft:.0f} SQFT)"
+    )
+    c.setFont("Helvetica-Oblique", 6.5)
+    _draw_white_text_backdrop(
+        c, label_x, label_y, label,
+        font="Helvetica-Oblique", size=6.5,
+    )
+    c.setFillColor(colors.HexColor("#166534"))
+    c.drawString(label_x, label_y, label)
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+    return True
+
+
+def _ee4_candidate_source_label(source: str) -> str:
+    if "fit_house_bbox" in source:
+        return "FIT HOUSE BBOX"
+    if "manual" in source:
+        return "MANUAL ALIGN"
+    return "RAW MASK"
+
+
+def _fade_png_bytes(png_bytes: bytes) -> bytes:
+    """Blend an aerial PNG toward white so vector lines stay dominant."""
+    import io
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    white = Image.new("RGB", img.size, "white")
+    # 62% white keeps aerial context visible without competing with CAD
+    # linework and blue module outlines.
+    faded = Image.blend(img, white, 0.62)
+    out = io.BytesIO()
+    faded.save(out, format="PNG")
+    return out.getvalue()
+
+
+def _draw_white_text_backdrop(
+    c: canvas.Canvas,
+    x: float,
+    y: float,
+    text: str,
+    *,
+    font: str = "Helvetica",
+    size: float = 7.0,
+    pad_x: float = 2.0,
+    pad_y: float = 1.2,
+) -> None:
+    width = c.stringWidth(text, font, size)
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.white)
+    c.rect(x - pad_x, y - pad_y, width + pad_x * 2,
+           size + pad_y * 2, fill=1, stroke=0)
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+
+
+def _draw_fire_path_band(
+    c: canvas.Canvas,
+    outer_pts: list[tuple[float, float]],
+    inner_pts: list[tuple[float, float]],
+) -> None:
+    """Draw EE-4 fire-access pathway as pale fill plus orange hatch.
+
+    The earlier Stage 2 path used a solid orange band. That was readable
+    but visually heavier than the Wyssling-style reference, where the
+    firecode pathway is an orange hatch texture over a light background.
+    """
+    if len(outer_pts) < 3 or len(inner_pts) < 3:
+        return
+    _draw_poly(c, outer_pts,
+               stroke=colors.HexColor("#EA580C"),
+               fill=colors.HexColor("#FFF7ED"), width=0.35)
+    xs = [p[0] for p in outer_pts]
+    ys = [p[1] for p in outer_pts]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    span = max_y - min_y
+    c.saveState()
+    clip = c.beginPath()
+    clip.moveTo(*outer_pts[0])
+    for pt in outer_pts[1:]:
+        clip.lineTo(*pt)
+    clip.close()
+    c.clipPath(clip, stroke=0, fill=0)
+    c.setStrokeColor(colors.HexColor("#F97316"))
+    c.setLineWidth(0.35)
+    step = 4.0
+    start = min_x - span - 6.0
+    while start < max_x + span + 6.0:
+        c.line(start, min_y, start + span, max_y)
+        start += step
+    c.restoreState()
+    _draw_poly(c, inner_pts,
+               stroke=colors.HexColor("#EA580C"),
+               fill=colors.white, width=0.25)
+
+
+def _draw_fire_path_polygon(
+    c: canvas.Canvas,
+    pts: list[tuple[float, float]],
+) -> None:
+    """Draw a Stage 9 hand-traced fire pathway polygon with hatch."""
+    if len(pts) < 3:
+        return
+    _draw_poly(
+        c, pts,
+        stroke=colors.HexColor("#EA580C"),
+        fill=colors.HexColor("#FFF7ED"),
+        width=0.35,
+    )
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    span = max_y - min_y
+    c.saveState()
+    clip = c.beginPath()
+    clip.moveTo(*pts[0])
+    for pt in pts[1:]:
+        clip.lineTo(*pt)
+    clip.close()
+    c.clipPath(clip, stroke=0, fill=0)
+    c.setStrokeColor(colors.HexColor("#F97316"))
+    c.setLineWidth(0.35)
+    step = 4.0
+    start = min_x - span - 6.0
+    while start < max_x + span + 6.0:
+        c.line(start, min_y, start + span, max_y)
+        start += step
+    c.restoreState()
+    _draw_poly(
+        c, pts,
+        stroke=colors.HexColor("#EA580C"),
+        fill=None,
+        width=0.35,
+    )
+
+
+def _draw_ee4_roof_symbols(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    to_pt,
+) -> None:
+    sections = [s for s in result.inputs.site.roof_sections
+                if s.site_anchor_x_ft is not None]
+    if not sections:
+        return
+    s = sections[0]
+    symbols = [
+        ("roof_vent", s.site_anchor_x_ft + s.width_ft * 0.30,
+         s.site_anchor_y_ft + s.height_ft * 0.58),
+        ("plumbing", s.site_anchor_x_ft + s.width_ft * 0.58,
+         s.site_anchor_y_ft + s.height_ft * 0.46),
+        ("chimney", s.site_anchor_x_ft + s.width_ft * 0.70,
+         s.site_anchor_y_ft + s.height_ft * 0.70),
+        ("satellite", s.site_anchor_x_ft + s.width_ft * 0.50,
+         s.site_anchor_y_ft + s.height_ft * 0.88),
+    ]
+    c.setStrokeColor(colors.black)
+    c.setFillColor(colors.white)
+    c.setLineWidth(0.5)
+    for kind, fx, fy in symbols:
+        px, py = to_pt((fx, fy))
+        if kind == "roof_vent":
+            c.rect(px - 3, py - 3, 6, 6, fill=0, stroke=1)
+        elif kind == "plumbing":
+            c.circle(px, py, 2.5, fill=0, stroke=1)
+        elif kind == "chimney":
+            c.rect(px - 6, py - 5, 12, 10, fill=0, stroke=1)
+            c.circle(px, py, 1.2, fill=0, stroke=1)
+        else:
+            c.arc(px - 7, py - 5, px + 7, py + 5, 200, 140)
+            c.line(px, py - 2, px, py - 7)
+
+
+def _ee4_equipment_items(el) -> list[tuple[str, float, float, str]]:
+    items: list[tuple[str, float, float, str]] = []
+    if el.msp is not None:
+        items.append((el.msp.label or "MAIN SERVICE PANEL",
+                      el.msp.x_ft, el.msp.y_ft, "(N)"))
+    if el.ac_disconnect is not None:
+        items.append((el.ac_disconnect.label or "AC DISCONNECT",
+                      el.ac_disconnect.x_ft, el.ac_disconnect.y_ft, "(N)"))
+    for idx, inv in enumerate(el.inverters, 1):
+        items.append((inv.label or f"INVERTER #{idx}",
+                      inv.x_ft, inv.y_ft, "(N)"))
+    for idx, sp in enumerate(el.sub_panels, 1):
+        items.append((sp.label or f"SUB PANEL #{idx}",
+                      sp.x_ft, sp.y_ft, "(N)"))
+    for idx, ess in enumerate(el.ess_units, 1):
+        items.append((ess.label or f"ESS #{idx}",
+                      ess.x_ft, ess.y_ft, "(N)"))
+    return items
+
+
+def _draw_ee4_equipment_leaders(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    to_pt,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> None:
+    items = _ee4_equipment_items(result.inputs.site.equipment_locations)
+    if not items:
+        return
+    items = sorted(items, key=lambda it: -it[2])
+    label_x, label_y, row_h = _ee4_equipment_label_layout(x, y, w, h)
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.45)
+    c.setFont("Helvetica", 7.0)
+    for idx, (label, fx, fy, mark) in enumerate(items):
+        px, py = to_pt((fx, fy))
+        c.rect(px - 3.5, py - 3.5, 7, 7, fill=1, stroke=1)
+        tx = label_x
+        ty = label_y + (len(items) - 1 - idx) * row_h
+        label_text = f"{mark} {_ee4_equipment_leader_label(label)}"
+        c.line(px, py - 3.5, px, ty + 0.08 * inch)
+        c.line(px, ty + 0.08 * inch, tx - 0.04 * inch, ty + 0.08 * inch)
+        _draw_white_text_backdrop(c, tx, ty, label_text, size=7.0)
+        c.drawString(tx, ty, label_text)
+
+    c.setFont("Helvetica", 7.0)
+    access = "FIRE DEPARTMENT ACCESS"
+    access_y = label_y - 0.18 * inch
+    _draw_white_text_backdrop(c, label_x, access_y, access, size=7.0)
+    c.drawString(label_x, access_y, access)
+
+
+def _ee4_equipment_label_layout(
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> tuple[float, float, float]:
+    """Return the right-side equipment label stack origin.
+
+    Stage 9.5: keep labels near the lower roof edge instead of down at
+    the title-block footer. This shortens leaders while preserving clear
+    separation from the 36" fire-offset callout and module dimension box.
+    """
+    del h
+    return (x + w - 1.32 * inch, y + 0.62 * inch, 0.13 * inch)
+
+
+def _ee4_equipment_leader_label(label: str) -> str:
+    """Return concise permit-style equipment text for leader callouts."""
+    upper = (label or "").upper().strip()
+    if upper == "MSP":
+        return "MAIN SERVICE PANEL"
+    if upper.startswith("INV-"):
+        ident = upper.split()[0].replace("INV-", "").strip("-")
+        if ident:
+            return f"INVERTER #{ident}"
+        return "INVERTER"
+    if upper.startswith("AC DISC"):
+        return "AC DISCONNECT"
+    return upper
+
+
+def _ee4_36_fire_offset_label_position(
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> tuple[float, float]:
+    """Return the 36" fire-offset label position for traced EE-4 sheets."""
+    del h
+    return (x + w - 1.24 * inch, y + 1.18 * inch)
+
+
+def _draw_ee4_optimizer_callout(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    module_bounds: list[tuple[float, float, float, float]],
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> None:
+    optimizer = result.inputs.optimizer
+    if not optimizer.brand or not module_bounds:
+        return
+    if _ee4_trace_active(result.inputs.site):
+        # Stage 9.1: traced EE-4 sheets use the highest module as the
+        # MLPE leader target. Picking the rightmost module produced a
+        # long diagonal across the equipment column after the Frisco
+        # array was shifted into a permit-style main cluster.
+        target = max(module_bounds, key=lambda b: (b[3], -b[0]))
+    else:
+        target = max(module_bounds, key=lambda b: b[2] + b[3])
+    tx = (target[0] + target[2]) / 2
+    ty = (target[1] + target[3]) / 2
+    end_x = x + w - 1.68 * inch
+    end_y = y + h - 0.45 * inch
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.45)
+    if _ee4_trace_active(result.inputs.site):
+        elbow_y = end_y - 0.08 * inch
+        c.line(tx, ty, tx, elbow_y)
+        c.line(tx, elbow_y, end_x, elbow_y)
+    else:
+        c.line(tx, ty, end_x - 0.16 * inch, end_y)
+        c.line(end_x - 0.16 * inch, end_y, end_x, end_y)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica", 7.0)
+    n_opt = optimizer.effective_count(
+        result.inputs.pv_array.modules,
+        result.inputs.pv_array.strings,
+    )
+    ratio = 1
+    if n_opt > 0:
+        ratio = max(1, result.inputs.pv_array.modules // n_opt)
+    line1 = "(N) PV MODULE EQUIPPED W/ (1)"
+    line2 = f"OPTIMIZER PER ({ratio}) MODULES"
+    _draw_white_text_backdrop(c, end_x, end_y + 0.02 * inch, line1, size=7.0)
+    c.drawString(end_x, end_y + 0.02 * inch, line1)
+    _draw_white_text_backdrop(c, end_x, end_y - 0.10 * inch, line2, size=7.0)
+    c.drawString(end_x, end_y - 0.10 * inch, line2)
 
 
 def _draw_conduit_overlay(

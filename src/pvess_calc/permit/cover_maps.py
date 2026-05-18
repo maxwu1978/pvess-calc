@@ -51,6 +51,72 @@ def _cache_path(prefix: str, lat: float, lng: float, **extras) -> Path:
     return _CACHE_ROOT / f"{prefix}-{digest}.png"
 
 
+def _npz_cache_path(prefix: str, lat: float, lng: float, **extras) -> Path:
+    png_path = _cache_path(prefix, lat, lng, **extras)
+    return png_path.with_suffix(".npz")
+
+
+def fetch_satellite_assets_cached(
+    lat: float, lng: float, *,
+    radius_m: float = 25.0,
+    cache: bool = True,
+    allow_network: bool = True,
+):
+    """Return decoded Google Solar satellite assets with an `.npz` cache.
+
+    EE-4 Stage 7 needs both RGB and mask. `fetch_aerial_map_png()` only
+    cached the RGB PNG, so this function stores the decoded arrays once
+    and lets the PDF renderer reuse them without ringing dataLayers on
+    every preview render.
+    """
+    if not get_google_solar_key():
+        return None
+
+    cp = _npz_cache_path("satellite-assets", lat, lng, radius=radius_m)
+    if cache and cp.exists():
+        try:
+            import numpy as np
+            from ..customer.roof_satellite import SatelliteAssets
+
+            data = np.load(cp, allow_pickle=False)
+            return SatelliteAssets(
+                rgb=data["rgb"],
+                annual_flux=data["annual_flux"],
+                mask=data["mask"].astype(bool),
+                imagery_date=str(data["imagery_date"]),
+                imagery_quality=str(data["imagery_quality"]),
+            )
+        except Exception:
+            # Corrupt cache should behave like a miss.
+            pass
+
+    if not allow_network:
+        return None
+
+    try:
+        from ..customer.roof_satellite import fetch_satellite_assets
+        assets = fetch_satellite_assets(lat, lng, radius_m=radius_m)
+    except Exception:
+        return None
+
+    if cache:
+        try:
+            import numpy as np
+
+            cp.parent.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(
+                cp,
+                rgb=assets.rgb,
+                annual_flux=assets.annual_flux,
+                mask=assets.mask.astype("uint8"),
+                imagery_date=assets.imagery_date,
+                imagery_quality=assets.imagery_quality,
+            )
+        except Exception:
+            pass
+    return assets
+
+
 # ─── Aerial map (Google Solar dataLayers RGB) ───────────────────────────
 
 
@@ -58,6 +124,7 @@ def fetch_aerial_map_png(
     lat: float, lng: float, *,
     radius_m: float = 25.0,
     cache: bool = True,
+    allow_network: bool = True,
 ) -> Optional[bytes]:
     """K.12.2 — return PNG bytes of the roof aerial imagery, or None
     when Google Solar key is missing / API fails. Cached on disk.
@@ -73,12 +140,20 @@ def fetch_aerial_map_png(
     cp = _cache_path("aerial", lat, lng, radius=radius_m)
     if cache and cp.exists():
         return cp.read_bytes()
+    if not allow_network:
+        return None
 
     try:
-        from ..customer.roof_satellite import fetch_satellite_assets
         from PIL import Image
         import io
-        assets = fetch_satellite_assets(lat, lng, radius_m=radius_m)
+        assets = fetch_satellite_assets_cached(
+            lat, lng,
+            radius_m=radius_m,
+            cache=cache,
+            allow_network=allow_network,
+        )
+        if assets is None:
+            return None
     except Exception:
         # Any failure (missing key, API down, network) → silent None.
         # Cover renderer surfaces "no aerial available" placeholder.

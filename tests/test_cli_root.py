@@ -56,6 +56,8 @@ EXPECTED_SUBCOMMANDS = {
     "dxf":      "pvess-dxf",
     "labels":   "pvess-labels",
     "render":   "pvess-render",
+    "ee4-trace": "pvess-ee4-trace",
+    "ee4-preview": "pvess-ee4-preview",
     "doctor":   "pvess-doctor",
     "symbols":  "pvess-symbols-preview",
 }
@@ -143,6 +145,7 @@ def test_legacy_cli_imports_still_work():
         "calc_cmd", "render_cmd", "labels_cmd", "permit_cmd",
         "compare_cmd", "dxf_cmd", "init_cmd", "customer_summary_cmd",
         "lookup_check_cmd", "site_checklist_cmd", "symbols_preview_cmd",
+        "ee4_trace_cmd", "ee4_preview_cmd",
     ):
         assert hasattr(cli, attr), f"legacy CLI '{attr}' missing from cli module"
     assert callable(doctor_cmd)

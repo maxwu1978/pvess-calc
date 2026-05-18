@@ -7,17 +7,11 @@ in `ahj/profiles/*.yaml` and load via `get_ahj_profile(name)`.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
-
 import yaml
 from pydantic import BaseModel, Field
 
 
-SheetCode = Literal[
-    "cover", "ee-1", "ee-2", "ee-3", "ee-4", "ee-5",
-    "pv-4", "pv-5", "pv-6",
-    "notes", "labels",
-]
+SheetCode = str
 
 
 class AhjProfile(BaseModel):
@@ -25,7 +19,7 @@ class AhjProfile(BaseModel):
     region: str = ""
     required_sheets: list[SheetCode] = Field(
         default_factory=lambda: [
-            "cover", "ee-1", "ee-2", "ee-3", "ee-4", "ee-5",
+            "cover", "ee-1", "ee-2", "ee-3", "ee-4", "ee-4a", "ee-5",
             "pv-4", "pv-5", "pv-6", "notes", "labels",
         ]
     )

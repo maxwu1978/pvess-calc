@@ -33,6 +33,7 @@ from pvess_calc.permit.sheet_registry import SHEET_REGISTRY, codes
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PHOENIX = PROJECT_ROOT / "projects" / "002-phoenix-25kw"
+FRISCO = PROJECT_ROOT / "projects" / "003-frisco-glasshouse"
 
 
 # ─── Contract tests on Phoenix ────────────────────────────────────────────
@@ -979,3 +980,29 @@ def test_doctor_auto_routed_lengths_fails_when_segment_exceeds_envelope():
     assert "exceeds" in r.detail
     # The hint should mention the underlying frame issue
     assert "frame" in r.detail.lower() or "coords" in r.detail.lower()
+
+
+# ─── Stage 9.9: EE-4A property-context data path ───────────────────────
+
+
+def test_doctor_ee4a_property_context_passes_on_frisco():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.doctor import _check_ee4a_property_context_data_driven
+    from pvess_calc.schema import Inputs
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    [r] = _check_ee4a_property_context_data_driven(result)
+    assert r.status == "PASS", r.detail
+    assert "dimension" in r.detail
+
+
+def test_doctor_ee4a_property_context_skips_legacy_context():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.doctor import _check_ee4a_property_context_data_driven
+    from pvess_calc.schema import Inputs
+
+    inputs = Inputs.from_yaml(PHOENIX / "inputs.yaml")
+    result = run(inputs)
+    [r] = _check_ee4a_property_context_data_driven(result)
+    assert r.status == "PASS"
+    assert "fallback" in r.detail

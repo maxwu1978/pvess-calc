@@ -33,19 +33,33 @@ INVERTERS: dict[str, dict] = {
         ac_output_v=240.0,
         ac_output_a=45.8,            # 11 kW / 240 V — sweet spot for 14 kW DC array
     ),
-    # ─── Growatt MIN 11K hybrid (HV battery compatible) ────────────────
+    # ─── Growatt MIN 11.4K hybrid (HV battery compatible) ─────────────
+    "growatt_min11400tl_xh_us": dict(
+        brand="Growatt",
+        model="MIN 11400TL-XH-US",
+        ac_output_v=240.0,
+        ac_output_a=48.0,            # datasheet max output current @ 240 V
+    ),
+    # Back-compat alias kept for earlier K.4.6 configs.
     "growatt_min11000tl_x": dict(
         brand="Growatt",
         model="MIN 11000TL-X",
         ac_output_v=240.0,
-        ac_output_a=45.8,            # 11 kW / 240 V
+        ac_output_a=45.8,            # legacy 11 kW alias
     ),
-    # ─── Hoymiles HYS-LV-11K (LV battery side, micro alternative) ─────
+    # ─── Hoymiles HYS-LV 11.5K (LV battery side) ─────────────────────
+    "hoymiles_hys_11_5lv_usg1": dict(
+        brand="Hoymiles",
+        model="HYS-11.5LV-USG1",
+        ac_output_v=240.0,
+        ac_output_a=48.0,
+    ),
+    # Back-compat alias kept for earlier K.4.6 configs.
     "hoymiles_hys_lv_11k": dict(
         brand="Hoymiles",
         model="HYS-LV-11K",
         ac_output_v=240.0,
-        ac_output_a=45.8,            # 11 kW / 240 V
+        ac_output_a=45.8,            # legacy 11 kW alias
     ),
     "tesla_powerwall_3": dict(
         brand="Tesla",
@@ -78,7 +92,9 @@ INVERTER_PRICES_USD: dict[str, float] = {
     "sol_ark_12k": 5500,
     "megarevo_r8klna": 1600,    # wholesale (2026-05-17 DFW installer)
     "megarevo_r11klna": 2000,   # wholesale (~25% premium for +3 kW vs R8)
+    "growatt_min11400tl_xh_us": 2500,
     "growatt_min11000tl_x": 2500,
+    "hoymiles_hys_11_5lv_usg1": 2200,
     "hoymiles_hys_lv_11k": 2200,
     "tesla_powerwall_3": 9300,  # retail (integrated battery+inverter)
     "enphase_iq8m": 235,

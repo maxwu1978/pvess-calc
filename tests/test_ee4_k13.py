@@ -108,7 +108,7 @@ def test_doctor_ee4_focuses_check_passes_for_phoenix():
 
 
 def test_doctor_ee4_focuses_check_passes_for_frisco():
-    """5 sections (explicit) + equipment_locations → routed → PASS."""
+    """5 no-overlap sections (explicit) + equipment_locations → routed → PASS."""
     from pvess_calc.doctor import _check_ee4_focuses_on_site_geometry
     result = run(Inputs.from_yaml(FRISCO))
     checks = _check_ee4_focuses_on_site_geometry(result)
@@ -124,8 +124,8 @@ def test_routed_mode_renders_conduit_line(tmp_path: Path):
     callouts visible."""
     text = _ee4_text(tmp_path, Inputs.from_yaml(FRISCO), suffix="fri-r")
     assert "conduit" in text.lower()
-    # Equipment leader callouts include "(N)" or "(E)" markers + label
-    assert "(N) MSP" in text or "MSP" in text
+    # Equipment leader callouts include "(N)" or "(E)" markers + label.
+    assert "(N) MAIN SERVICE PANEL" in text or "(N) MSP" in text
 
 
 def test_anchor_only_mode_skips_conduit(tmp_path: Path):

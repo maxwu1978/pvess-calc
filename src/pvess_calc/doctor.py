@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 
 import click
@@ -27,7 +28,12 @@ import click
 from .ahj.profile import AhjProfile, PROFILES_DIR, get_ahj_profile, list_ahj_profiles
 from .calc.engine import CalculationResult, run
 from .labels.specs import LABEL_CATALOG
-from .permit.sheet_registry import SHEET_REGISTRY, codes as registry_codes
+from .permit.sheet_registry import (
+    PACKAGE_PROFILES,
+    SHEET_REGISTRY,
+    codes as registry_codes,
+    registry_for_profile,
+)
 from .schema import Inputs
 
 
@@ -87,7 +93,9 @@ def _check_ahj_profile_codes() -> list[CheckResult]:
     the Sheet Registry. Closes the loop that lets a profile demand a sheet
     that the builder doesn't know how to emit."""
     results: list[CheckResult] = []
-    registry = set(registry_codes())
+    registry: set[str] = set()
+    for profile_specs in PACKAGE_PROFILES.values():
+        registry.update(spec.code for spec in profile_specs)
     for name in list_ahj_profiles():
         try:
             profile = get_ahj_profile(name)
@@ -142,14 +150,23 @@ def _check_cover_lists_all_sheets(result: CalculationResult,
     the cover to a temp PDF, extracts text, and verifies every registered
     display_code appears.
     """
+    from .permit.builder import _selected_sheets
     from .permit.cover_sheet import render_cover_sheet
 
-    expected_codes = [s.display_code for s in SHEET_REGISTRY]
+    package_profile = result.inputs.project.permit_profile
+    specs = _selected_sheets(
+        result, package_profile=package_profile, ahj_name=None,
+    )
+    expected_codes = [s.display_code for s in specs]
+    sheet_rows = [(s.display_code, s.title) for s in specs]
 
     with TemporaryDirectory() as tmp:
         cover_pdf = Path(tmp) / "cover.pdf"
         try:
-            render_cover_sheet(result, cover_pdf)
+            if package_profile == "internal":
+                render_cover_sheet(result, cover_pdf)
+            else:
+                render_cover_sheet(result, cover_pdf, sheet_rows=sheet_rows)
         except Exception as exc:
             return [CheckResult("cover_index_matches_pipeline", "FAIL",
                                 f"cover render crashed: {exc}")]
@@ -172,9 +189,12 @@ def _check_permit_emits_registry(result: CalculationResult) -> list[CheckResult]
     Catches the case where someone wires a renderer but forgets to add the
     `if "<code>" in required_sheets:` branch in builder.py, or vice versa.
     """
-    from .permit.builder import build_permit_package
+    from .permit.builder import _selected_sheets, build_permit_package
 
-    n_registered = len(SHEET_REGISTRY)
+    package_profile = result.inputs.project.permit_profile
+    n_registered = len(_selected_sheets(
+        result, package_profile=package_profile, ahj_name=None,
+    ))
     # Labels sheet often spans 2 pages (8 labels on US Letter); allow N+1
     # tolerance per multi-page sheet kind. Treat as range, not exact match.
     with TemporaryDirectory() as tmp:
@@ -246,7 +266,8 @@ def _check_dxf_text_no_overflow(result: CalculationResult) -> list[CheckResult]:
 
     from .dxf._textfit import estimate_text_width
     from .dxf.grounding_sheet import render_grounding_dxf
-    from .dxf.render import render_dxf, MARGIN, RIGHT_X0, RIGHT_X1, SHEET_W
+    from .dxf.one_line import render_one_line_dxf
+    from .dxf.render import render_dxf, MARGIN, RIGHT_X0, RIGHT_X1
 
     # (layer_name, x_left_bound, x_right_bound) — the rectangular bounds
     # text on each layer is expected to stay inside. Layers not in this
@@ -266,6 +287,7 @@ def _check_dxf_text_no_overflow(result: CalculationResult) -> list[CheckResult]:
     sheets = [
         ("EE-1", render_dxf),
         ("EE-2", render_grounding_dxf),
+        ("EE-2.1", render_one_line_dxf),
     ]
     offenders: list[str] = []
 
@@ -430,6 +452,7 @@ def _check_dxf_no_text_overlap(result: CalculationResult) -> list[CheckResult]:
 
     from .dxf._textfit import estimate_text_width
     from .dxf.grounding_sheet import render_grounding_dxf
+    from .dxf.one_line import render_one_line_dxf
     from .dxf.render import render_dxf
 
     # Skip these layers when scanning for overlap: their text density is
@@ -474,7 +497,11 @@ def _check_dxf_no_text_overlap(result: CalculationResult) -> list[CheckResult]:
         area_b = (b[2] - b[0]) * (b[3] - b[1])
         return inter / max(1e-9, min(area_a, area_b))
 
-    sheets = [("EE-1", render_dxf), ("EE-2", render_grounding_dxf)]
+    sheets = [
+        ("EE-1", render_dxf),
+        ("EE-2", render_grounding_dxf),
+        ("EE-2.1", render_one_line_dxf),
+    ]
     offenders: list[str] = []
 
     with TemporaryDirectory() as tmp:
@@ -946,6 +973,73 @@ def _check_self_consumption_realistic_for_rep_plan(
         f"self_cons climbs to 0.60+ → adds roughly ${(0.60 - sc) * (1 - ratio) * inputs.pv_array.modules * inputs.pv_array.module.power_w * 1.535:.0f}/yr. "
         "Either raise self_consumption_fraction or switch to a 1:1 REP plan.",
     )]
+
+
+def _check_ee4a_property_context_data_driven(
+    result: CalculationResult,
+) -> list[CheckResult]:
+    """Stage 9.9 guard — EE-4A uses explicit property-context geometry.
+
+    When a project supplies `site.property_context`, the rendered sheet must
+    carry the survey labels that prove the data path is connected. Empty
+    context remains a supported fallback and passes with a skip-style note.
+    """
+    name = "ee4a_property_context_data_driven"
+    context = result.inputs.site.property_context
+    if not context.has_data:
+        return [CheckResult(name, "PASS",
+                            "no property_context block (fallback context)")]
+    try:
+        import pypdf
+        from .permit.property_context import render_property_context_plan
+    except ImportError as exc:
+        return [CheckResult(name, "FAIL", f"import failed: {exc}")]
+
+    with TemporaryDirectory() as tmp:
+        pdf = Path(tmp) / "ee-4a.pdf"
+        try:
+            render_property_context_plan(result, pdf)
+            text = "\n".join(
+                p.extract_text() or "" for p in pypdf.PdfReader(str(pdf)).pages
+            )
+        except Exception as exc:
+            return [CheckResult(name, "FAIL",
+                                f"EE-4A render/text extraction crashed: {exc}")]
+
+    missing = [
+        label for label in ("PROPERTY LINE", "DRIVEWAY", "FENCE", "EE-4A")
+        if label not in text
+    ]
+    for dim in context.property_dimensions:
+        label = dim.label or _feet_label_for_doctor(dim.start, dim.end)
+        if label not in text:
+            missing.append(label)
+    if missing:
+        return [CheckResult(name, "FAIL",
+                            f"EE-4A missing context text: {missing}")]
+    return [CheckResult(
+        name, "PASS",
+        f"{len(context.lot_outline)} lot verts, "
+        f"{len(context.driveway_polygon)} driveway verts, "
+        f"{len(context.property_dimensions)} dimension(s)",
+    )]
+
+
+def _feet_label_for_doctor(
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> str:
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    value = (dx * dx + dy * dy) ** 0.5
+    whole = int(value)
+    inches = int(round((value - whole) * 12))
+    if inches == 12:
+        whole += 1
+        inches = 0
+    if inches:
+        return f"{whole}'-{inches}\""
+    return f"{whole}'"
 
 
 def _check_rsd_label_substitution_wired() -> list[CheckResult]:
@@ -1802,6 +1896,547 @@ def _check_ee4_focuses_on_site_geometry(
     )]
 
 
+def _check_ee4_trace_ready_for_review(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """Stage 9.2 — when EE-4 trace mode is enabled, require useful layers.
+
+    This is intentionally a WARN, not a FAIL: a designer may still be
+    drafting the trace. The check catches the common half-migration state
+    where `enabled: true` is present but the roof outline / fire pathway
+    / roof-line layers were never supplied.
+    """
+    name = "ee4_trace_ready_for_review"
+    trace = calc_result.inputs.site.ee4_trace
+    if not trace.enabled:
+        return [CheckResult(
+            name, "PASS",
+            "trace disabled; EE-4 uses generated site geometry",
+        )]
+
+    missing: list[str] = []
+    if trace.roof_outline is None:
+        missing.append("roof_outline")
+    if not trace.roof_facets and not trace.roof_lines:
+        missing.append("roof_facets or roof_lines")
+    if not trace.fire_pathways:
+        missing.append("fire_pathways")
+
+    if missing:
+        return [CheckResult(
+            name, "WARN",
+            "ee4_trace.enabled=true but missing "
+            + ", ".join(missing)
+            + "; run `pvess ee4-trace <project>` for a paste-ready skeleton "
+            "or finish the trace block before visual review",
+        )]
+
+    return [CheckResult(
+        name, "PASS",
+        f"trace mode active with outline, {len(trace.roof_facets)} facet(s), "
+        f"{len(trace.roof_lines)} line(s), and "
+        f"{len(trace.fire_pathways)} fire-pathway polygon(s)",
+    )]
+
+
+def _check_ee4_preview_visual_lint(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """Stage 9.4 — run non-rendering EE-4 preview visual lint."""
+    name = "ee4_preview_visual_lint"
+    try:
+        from .permit.ee4_lint import lint_ee4_preview
+    except ImportError as exc:
+        return [CheckResult(name, "FAIL", f"import failed: {exc}")]
+
+    results = lint_ee4_preview(calc_result)
+    issues = [r for r in results if r.status != "PASS"]
+    if not issues:
+        return [CheckResult(name, "PASS", f"{len(results)} lint check(s) pass")]
+    detail = "; ".join(f"{r.name}: {r.detail}" for r in issues[:4])
+    status = "FAIL" if any(r.status == "FAIL" for r in issues) else "WARN"
+    return [CheckResult(name, status, detail)]
+
+
+def _check_pv6_string_layout_visual_lint(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """Stage 9.10.5 — run non-rendering PV-6 string-plan visual lint."""
+    name = "pv6_string_layout_visual_lint"
+    try:
+        from .permit.pv6_lint import lint_pv6_string_layout
+    except ImportError as exc:
+        return [CheckResult(name, "FAIL", f"import failed: {exc}")]
+
+    results = lint_pv6_string_layout(calc_result)
+    issues = [r for r in results if r.status != "PASS"]
+    if not issues:
+        return [CheckResult(name, "PASS", f"{len(results)} lint check(s) pass")]
+    detail = "; ".join(f"{r.name}: {r.detail}" for r in issues[:4])
+    status = "FAIL" if any(r.status == "FAIL" for r in issues) else "WARN"
+    return [CheckResult(name, status, detail)]
+
+
+def _check_reference_profile_site_intake_complete(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """9.12 / 9.17 — reference plansets need field-survey context."""
+    name = "reference_profile_site_intake_complete"
+    i = calc_result.inputs
+    if i.project.permit_profile == "internal":
+        return [CheckResult(name, "PASS", "internal profile (skipped)")]
+
+    ri = i.project.roof_info
+    missing: list[str] = []
+    for label, value in (
+        ("project.site_address", i.project.site_address),
+        ("project.coordinates", i.project.coordinates),
+        ("project.utility", i.project.utility),
+        ("project.meter_info.location", i.project.meter_info.location),
+        ("project.roof_info.type", ri.type),
+        ("project.roof_info.height_ft", ri.height_ft),
+        ("project.roof_info.construction/framing", ri.construction or ri.framing),
+        ("project.roof_info.decking_thickness_in", ri.decking_thickness_in),
+    ):
+        if value in ("", 0, 0.0, None):
+            missing.append(label)
+    if ri.condition == "unknown":
+        missing.append("project.roof_info.condition")
+    if ri.attic_access == "unknown":
+        missing.append("project.roof_info.attic_access")
+    if "TX" in (i.project.site_address or i.project.location).upper():
+        if not i.project.meter_info.esid:
+            missing.append("project.meter_info.esid")
+
+    if missing:
+        return [CheckResult(
+            name, "WARN",
+            "reference profile missing field-survey data: "
+            + ", ".join(missing[:10]),
+        )]
+    return [CheckResult(name, "PASS", "reference site-intake fields populated")]
+
+
+def _check_reference_profile_attachments_ready(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """9.13-9.15 — photos/specs/structural packet readiness."""
+    name = "reference_profile_attachments_ready"
+    i = calc_result.inputs
+    if i.project.permit_profile == "internal":
+        return [CheckResult(name, "PASS", "internal profile (skipped)")]
+
+    project_dir = Path.cwd() / "projects" / i.project.id
+
+    def exists(raw: str) -> bool:
+        if not raw:
+            return False
+        p = Path(raw).expanduser()
+        if not p.is_absolute():
+            p = project_dir / p
+        return p.exists()
+
+    issues: list[str] = []
+    if not exists(i.project.structural_letter_pdf):
+        issues.append("signed structural letter missing (draft will be prepended)")
+
+    supplied_photos = {
+        p.kind for p in i.project.site_photos
+        if p.path and exists(p.path)
+    }
+    required_photo_kinds = {
+        "front_elevation", "roof", "meter", "main_panel",
+        "sub_panel", "equipment_location",
+    }
+    missing_photos = sorted(required_photo_kinds - supplied_photos)
+    if missing_photos:
+        issues.append("PV-7 photo placeholders: " + ", ".join(missing_photos))
+
+    explicit_specs = [s for s in i.project.spec_sheets if s.path and exists(s.path)]
+    cut_sheets_dir = project_dir / "cut_sheets"
+    cut_sheets = list(cut_sheets_dir.glob("*.pdf")) if cut_sheets_dir.exists() else []
+    if not explicit_specs and not cut_sheets:
+        issues.append("SPEC manufacturer PDFs missing (placeholder will be appended)")
+
+    if issues:
+        return [CheckResult(name, "WARN", "; ".join(issues))]
+    return [CheckResult(name, "PASS", "structural letter, PV-7 photos, and SPEC PDFs present")]
+
+
+def _mounting_family(value: str) -> str:
+    norm = re.sub(r"[^a-z0-9]+", "", value.lower())
+    if "flashvue" in norm:
+        return "flashvue"
+    if "flashfoot" in norm:
+        return "flashfoot"
+    return norm
+
+
+def _check_mounting_data_consistent(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """Reference packages must not mix mounting product assumptions.
+
+    This catches the failure mode surfaced by visual review: PV-5 drew
+    FlashFoot while the project roof-info block said FlashVue, and the
+    structural draft used a different embedment than the mounting detail.
+    """
+    name = "mounting_data_consistent"
+    i = calc_result.inputs
+    if i.project.permit_profile == "internal":
+        return [CheckResult(name, "PASS", "internal profile (skipped)")]
+
+    m = i.site.mounting
+    ri = i.project.roof_info
+    problems: list[str] = []
+    if m.flashing and ri.flashing:
+        m_family = _mounting_family(m.flashing)
+        ri_family = _mounting_family(ri.flashing)
+        if m_family and ri_family and m_family != ri_family:
+            problems.append(
+                f"site.mounting.flashing={m.flashing!r} conflicts with "
+                f"project.roof_info.flashing={ri.flashing!r}"
+            )
+    if "embedment" in m.fastener.lower():
+        problems.append(
+            "site.mounting.fastener includes embedment; use "
+            "site.mounting.min_embedment_in as the single source of truth"
+        )
+    for label, value in (
+        ("max_x_spacing_in", m.max_x_spacing_in),
+        ("max_y_spacing_in", m.max_y_spacing_in),
+        ("max_cantilever_in", m.max_cantilever_in),
+        ("lag_screw_length_in", m.lag_screw_length_in),
+        ("min_embedment_in", m.min_embedment_in),
+        ("max_roof_surface_gap_in", m.max_roof_surface_gap_in),
+    ):
+        if value <= 0:
+            problems.append(f"site.mounting.{label} must be > 0")
+    if problems:
+        return [CheckResult(name, "FAIL", "; ".join(problems))]
+    return [CheckResult(
+        name, "PASS",
+        f"{m.rail_system} / {m.flashing}; embedment {m.min_embedment_in:g}\"",
+    )]
+
+
+def _check_pv5_mounting_detail_complete(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """PV-5 must read like a mounting detail sheet, not a placeholder."""
+    name = "pv5_mounting_detail_complete"
+    i = calc_result.inputs
+    if i.project.permit_profile == "internal":
+        return [CheckResult(name, "PASS", "internal profile (skipped)")]
+
+    from .permit.structural import render_mounting_details
+
+    with TemporaryDirectory() as tmp:
+        out = Path(tmp) / "pv5.pdf"
+        try:
+            render_mounting_details(calc_result, out)
+        except Exception as exc:
+            return [CheckResult(name, "FAIL", f"PV-5 render crashed: {exc}")]
+        text = " ".join(_pdf_text(out).split())
+
+    required = [
+        "GENERAL ROOF MOUNT DETAIL",
+        "ROOF MOUNT CROSS SECTION DETAIL",
+        "ROOF MOUNT PLAN VIEW DETAIL",
+        "ROOF MOUNT DETAIL",
+        "PV MODULES",
+        "RAIL",
+        "MOUNTING HARDWARE",
+        "ROOF SHEATHING",
+        "FINISHED ROOF",
+        "FLASHING PROVIDED BY MANUFACTURER",
+        "MAX SPACE FROM ROOF SURFACE",
+        "MIN EMBEDMENT DEPTH SEE TABLE ON PV-4",
+        "ROOF FRAMING SEE TABLE ON PV-4",
+        i.site.mounting.flashing.upper(),
+    ]
+    missing = [token for token in required if token not in text.upper()]
+    if missing:
+        return [CheckResult(
+            name, "FAIL",
+            "PV-5 missing reference-detail content: " + ", ".join(missing),
+        )]
+    return [CheckResult(name, "PASS", f"{len(required)} PV-5 detail tokens present")]
+
+
+def _should_have_ee21(calc_result: CalculationResult) -> bool:
+    from .permit.builder import _should_emit_one_line
+    return _should_emit_one_line(calc_result)
+
+
+def _dxf_modelspace_text(path: Path) -> str:
+    import ezdxf
+
+    doc = ezdxf.readfile(str(path))
+    texts: list[str] = []
+    for entity in doc.modelspace():
+        if entity.dxftype() == "TEXT":
+            texts.append(entity.dxf.text)
+        elif entity.dxftype() == "INSERT":
+            texts.extend(attr.dxf.text for attr in entity.attribs)
+    return " ".join(" ".join(texts).split())
+
+
+def _render_ee21_text(calc_result: CalculationResult) -> str:
+    from .dxf.one_line import render_one_line_dxf
+
+    with TemporaryDirectory() as tmp:
+        out = Path(tmp) / "ee21.dxf"
+        render_one_line_dxf(calc_result, out)
+        return _dxf_modelspace_text(out)
+
+
+def _check_ee21_one_line_complete(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """EE-2.1 must be an electrical one-line, not an unlabeled flow chart."""
+    name = "ee21_one_line_complete"
+    if not _should_have_ee21(calc_result):
+        return [CheckResult(name, "PASS", "one-line not selected (skipped)")]
+    try:
+        text = _render_ee21_text(calc_result)
+    except Exception as exc:
+        return [CheckResult(name, "FAIL", f"EE-2.1 render crashed: {exc}")]
+    required = [
+        "PV ARRAY",
+        "MLPE / RSD",
+        "PV DC OCPD",
+        "INVERTER",
+        "AC DISC",
+        "LINE SIDE TAP",
+        "UTILITY METER",
+        "UTILITY SOURCE",
+        "MSP / MAIN",
+        "SUPPLY-SIDE CONNECTION AHEAD OF MAIN SERVICE DISCONNECT",
+        "CONDUCTOR / OCPD SCHEDULE",
+        "RACEWAY",
+        "SUPPLY TAP",
+        "NEC 705.11",
+    ]
+    missing = [token for token in required if token not in text.upper()]
+    if missing:
+        return [CheckResult(
+            name, "FAIL",
+            "EE-2.1 missing one-line content: " + ", ".join(missing),
+        )]
+    return [CheckResult(name, "PASS", f"{len(required)} one-line tokens present")]
+
+
+def _check_ee21_no_phantom_ocpd(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """Every OCPD value printed in the EE-2.1 schedule needs a device node."""
+    name = "ee21_no_phantom_ocpd"
+    if not _should_have_ee21(calc_result):
+        return [CheckResult(name, "PASS", "one-line not selected (skipped)")]
+    from .electrical.topology import build_electrical_topology
+    topo = build_electrical_topology(calc_result)
+    node_kinds = {n.kind for n in topo.nodes}
+    problems: list[str] = []
+    for row in topo.schedule:
+        if row.ocpd_a == calc_result.pv_ocpd_a and row.kind == "DC":
+            if "dc_ocpd" not in node_kinds:
+                problems.append(f"{row.tag} {row.ocpd_a}A DC OCPD has no dc_ocpd node")
+        if row.ocpd_a == calc_result.ess.ac_disconnect_ocpd_a and row.kind == "AC":
+            if "ac_disconnect" not in node_kinds:
+                problems.append(f"{row.tag} {row.ocpd_a}A AC OCPD has no ac_disconnect node")
+    if problems:
+        return [CheckResult(name, "FAIL", "; ".join(problems))]
+    return [CheckResult(name, "PASS", "OCPD schedule values have matching device nodes")]
+
+
+def _check_ee21_topology_consistent(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """EE-2.1 conductor rows must map to real topology edges."""
+    name = "ee21_topology_consistent"
+    if not _should_have_ee21(calc_result):
+        return [CheckResult(name, "PASS", "one-line not selected (skipped)")]
+    from .electrical.topology import build_electrical_topology
+    topo = build_electrical_topology(calc_result)
+    schedule = topo.schedule_by_tag()
+    edges = topo.edge_by_schedule_tag()
+    required = {"A", "B", "D"}
+    required.add("C" if "C" in schedule else next((t for t in schedule if t.startswith("C")), "C"))
+    problems: list[str] = []
+    missing_rows = sorted(t for t in required if t not in schedule)
+    if missing_rows:
+        problems.append("missing schedule rows: " + ", ".join(missing_rows))
+    missing_edges = sorted(t for t in schedule if t not in edges)
+    if missing_edges:
+        problems.append("schedule rows without topology edges: " + ", ".join(missing_edges))
+
+    row_a = schedule.get("A")
+    row_d = schedule.get("D")
+    if row_a and row_a.ocpd_a != calc_result.pv_ocpd_a:
+        problems.append(f"A OCPD {row_a.ocpd_a}A != calc PV OCPD {calc_result.pv_ocpd_a}A")
+    if row_d and row_d.ocpd_a != calc_result.ess.ac_disconnect_ocpd_a:
+        problems.append(
+            f"D OCPD {row_d.ocpd_a}A != AC disconnect OCPD "
+            f"{calc_result.ess.ac_disconnect_ocpd_a}A"
+        )
+    if row_d and row_d.size != f"{calc_result.ess_conductor.size} AWG":
+        problems.append(
+            f"D conductor {row_d.size} != aggregate conductor "
+            f"{calc_result.ess_conductor.size} AWG"
+        )
+    if problems:
+        return [CheckResult(name, "FAIL", "; ".join(problems))]
+    return [CheckResult(name, "PASS", f"{len(topo.nodes)} nodes / {len(topo.schedule)} schedule rows")]
+
+
+def _check_ee21_dxf_cad_geometry(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """EE-2.1 must contain CAD devices, conductor callouts, and a schedule."""
+    name = "ee21_dxf_cad_geometry"
+    if not _should_have_ee21(calc_result):
+        return [CheckResult(name, "PASS", "one-line not selected (skipped)")]
+    import ezdxf
+    from .dxf.one_line import render_one_line_dxf
+    with TemporaryDirectory() as tmp:
+        out = Path(tmp) / "ee21.dxf"
+        try:
+            render_one_line_dxf(calc_result, out)
+        except Exception as exc:
+            return [CheckResult(name, "FAIL", f"EE-2.1 render crashed: {exc}")]
+        doc = ezdxf.readfile(str(out))
+        text = _dxf_modelspace_text(out).upper()
+    msp = doc.modelspace()
+    inserts = list(msp.query("INSERT"))
+    forbidden_wire_layers = {
+        "WIRE_DC_POS", "WIRE_DC_NEG", "WIRE_AC_L1", "WIRE_AC_L2", "WIRE_AC_N",
+    }
+    phased_segments = [
+        e for e in msp.query("LWPOLYLINE LINE")
+        if e.dxf.layer in forbidden_wire_layers
+    ]
+    single_segments = [
+        e for e in msp.query("LWPOLYLINE LINE")
+        if e.dxf.layer == "WIRE_ONE_LINE"
+    ]
+    required = ["PV-1", "DC-COMB-1", "INV-1", "AC-DISC-1", "TAP-1", "METER", "CONDUCTOR / OCPD SCHEDULE"]
+    missing = [token for token in required if token not in text]
+    if len(inserts) < 8:
+        missing.append(f"expected >=8 device INSERTs, got {len(inserts)}")
+    if phased_segments:
+        layers = sorted({e.dxf.layer for e in phased_segments})
+        missing.append("one-line uses phase-specific conductor layers: " + ", ".join(layers))
+    if len(single_segments) < 8:
+        missing.append(f"expected >=8 WIRE_ONE_LINE segments, got {len(single_segments)}")
+    from .electrical.topology import build_electrical_topology
+    expected_tags = [row.tag for row in build_electrical_topology(calc_result).schedule]
+    for tag in expected_tags:
+        if f" {tag.upper()} " not in f" {text} ":
+            missing.append(f"missing conductor callout/tag {tag}")
+    if missing:
+        return [CheckResult(name, "FAIL", "; ".join(missing))]
+    return [CheckResult(
+        name, "PASS",
+        f"{len(inserts)} device INSERTs, {len(single_segments)} single-line segments with A-D callouts",
+    )]
+
+
+def _check_ee21_no_wire_text_overlap(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """EE-2.1 one-line conductors must not run through labels."""
+    name = "ee21_no_wire_text_overlap"
+    if not _should_have_ee21(calc_result):
+        return [CheckResult(name, "PASS", "one-line not selected (skipped)")]
+    import ezdxf
+    from .dxf._textfit import estimate_text_width
+    from .dxf.one_line import render_one_line_dxf
+    from .electrical.topology import build_electrical_topology
+
+    with TemporaryDirectory() as tmp:
+        out = Path(tmp) / "ee21.dxf"
+        try:
+            render_one_line_dxf(calc_result, out)
+        except Exception as exc:
+            return [CheckResult(name, "FAIL", f"EE-2.1 render crashed: {exc}")]
+        doc = ezdxf.readfile(str(out))
+
+    msp = doc.modelspace()
+    tags = {row.tag.upper() for row in build_electrical_topology(calc_result).schedule}
+    skip_layers = {"SCHEDULE", "TITLE_BLOCK", "NOTES"}
+    wire_pad = 0.035
+
+    def _text_bbox(entity) -> tuple[float, float, float, float]:
+        text = entity.dxf.text
+        height = entity.dxf.height
+        width = estimate_text_width(text, height)
+        halign = entity.dxf.halign
+        if halign == 0:
+            x_min = entity.dxf.insert.x
+            y_baseline = entity.dxf.insert.y
+        else:
+            anchor_x = entity.dxf.align_point.x
+            y_baseline = entity.dxf.align_point.y
+            x_min = anchor_x - width / 2 if halign == 1 else anchor_x - width
+        return (
+            x_min,
+            y_baseline - height * 0.25,
+            x_min + width,
+            y_baseline + height * 0.85,
+        )
+
+    def _segment_boxes(entity) -> list[tuple[float, float, float, float]]:
+        if entity.dxftype() == "LINE":
+            pts = [
+                (entity.dxf.start.x, entity.dxf.start.y),
+                (entity.dxf.end.x, entity.dxf.end.y),
+            ]
+        else:
+            pts = [(p[0], p[1]) for p in entity.get_points("xy")]
+        boxes = []
+        for a, b in zip(pts, pts[1:]):
+            boxes.append((
+                min(a[0], b[0]) - wire_pad,
+                min(a[1], b[1]) - wire_pad,
+                max(a[0], b[0]) + wire_pad,
+                max(a[1], b[1]) + wire_pad,
+            ))
+        return boxes
+
+    def _overlaps(a, b) -> bool:
+        return min(a[2], b[2]) > max(a[0], b[0]) and min(a[3], b[3]) > max(a[1], b[1])
+
+    texts = []
+    for entity in msp.query("TEXT"):
+        text = entity.dxf.text.strip()
+        if not text or entity.dxf.layer in skip_layers:
+            continue
+        if text.upper() in tags:
+            continue
+        texts.append((text, _text_bbox(entity)))
+
+    wire_boxes = []
+    for entity in msp.query("LWPOLYLINE LINE"):
+        if entity.dxf.layer == "WIRE_ONE_LINE":
+            wire_boxes.extend(_segment_boxes(entity))
+
+    offenders: list[str] = []
+    for text, text_box in texts:
+        for wire_box in wire_boxes:
+            if _overlaps(text_box, wire_box):
+                offenders.append(text)
+                break
+        if len(offenders) >= 8:
+            break
+    if offenders:
+        return [CheckResult(
+            name, "FAIL",
+            "WIRE_ONE_LINE overlaps label text: " + ", ".join(offenders),
+        )]
+    return [CheckResult(name, "PASS", f"{len(wire_boxes)} wire segment(s) clear of labels")]
+
+
 def _check_face_value_score_distinguishes_east_west() -> list[CheckResult]:
     """K.8.2 — math contract: the `face_value_weighted_derate` function
     MUST score East and West differently when the REP buyback is sub-1:1.
@@ -1936,6 +2571,25 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
     results.extend(_check_auto_routed_lengths_sane(calc_result))
     # K.13 / Stage D — EE-4 abstract-grid regression guard
     results.extend(_check_ee4_focuses_on_site_geometry(calc_result))
+    # Stage 9.2 — hand/vector trace block completeness hint
+    results.extend(_check_ee4_trace_ready_for_review(calc_result))
+    # Stage 9.4 — geometry/text-placement lints for the EE-4 preview
+    results.extend(_check_ee4_preview_visual_lint(calc_result))
+    # Stage 9.9 — EE-4A data-driven property context guard
+    results.extend(_check_ee4a_property_context_data_driven(calc_result))
+    # Stage 9.10.5 — PV-6 string plan callout / label visual lint
+    results.extend(_check_pv6_string_layout_visual_lint(calc_result))
+    # 9.12-9.17 — reference-profile package data/readiness guards
+    results.extend(_check_reference_profile_site_intake_complete(calc_result))
+    results.extend(_check_reference_profile_attachments_ready(calc_result))
+    # Stage 10.1 — reference PV-5 / EE-2.1 content quality guards
+    results.extend(_check_mounting_data_consistent(calc_result))
+    results.extend(_check_pv5_mounting_detail_complete(calc_result))
+    results.extend(_check_ee21_one_line_complete(calc_result))
+    results.extend(_check_ee21_no_phantom_ocpd(calc_result))
+    results.extend(_check_ee21_topology_consistent(calc_result))
+    results.extend(_check_ee21_dxf_cad_geometry(calc_result))
+    results.extend(_check_ee21_no_wire_text_overlap(calc_result))
     # K.12.5 — cover sheet governing codes completeness
     results.extend(_check_cover_has_governing_codes(calc_result))
     # K.12.5+ — cover sheet vertical layout no-overlap

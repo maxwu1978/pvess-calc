@@ -92,6 +92,12 @@ GENERAL_NOTES: list[str] = [n for _, _, notes in GENERAL_NOTE_GROUPS for n in no
 ELECTRICAL_NOTES: list[str] = [n for _, _, notes in ELECTRICAL_NOTE_GROUPS for n in notes]
 
 
+def _sheet_label(result: CalculationResult) -> str:
+    code = getattr(result, "_active_sheet_display_code", "PV-N")
+    title = getattr(result, "_active_sheet_title", "General & Electrical Notes")
+    return f"{code} · {title.upper()}"
+
+
 def render_general_notes(result: CalculationResult, out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(out_path), pagesize=landscape(letter))
@@ -101,7 +107,7 @@ def render_general_notes(result: CalculationResult, out_path: Path) -> None:
     c.rect(0.4 * inch, 0.4 * inch, W - 0.8 * inch, H - 0.8 * inch)
 
     c.setFont("Helvetica-Bold", 18)
-    c.drawCentredString(W / 2, H - 0.8 * inch, "PV-N · GENERAL & ELECTRICAL NOTES")
+    c.drawCentredString(W / 2, H - 0.8 * inch, _sheet_label(result))
     c.setFont("Helvetica-Oblique", 9)
     c.drawCentredString(
         W / 2, H - 1.05 * inch,

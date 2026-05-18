@@ -43,9 +43,17 @@ fi
 # ─── macOS quirk: unhide .pth files in venv ────────────────────────────────
 # Editable install drops .pth files with UF_HIDDEN set inside the venv on
 # macOS, which breaks site-packages discovery. Strip the flag every time.
-chflags nohidden .venv/lib/python3.13/site-packages/*.pth 2>/dev/null || true
+for candidate in .venv venv; do
+  chflags nohidden "$candidate"/lib/python*/site-packages/*.pth 2>/dev/null || true
+done
 
-VENV="$REPO_ROOT/.venv/bin"
+if [[ -x "$REPO_ROOT/.venv/bin/pvess-calc" ]]; then
+  VENV="$REPO_ROOT/.venv/bin"
+elif [[ -x "$REPO_ROOT/venv/bin/pvess-calc" ]]; then
+  VENV="$REPO_ROOT/venv/bin"
+else
+  VENV="$REPO_ROOT/.venv/bin"
+fi
 if [[ ! -x "$VENV/pvess-calc" ]]; then
   echo "✗ venv not set up. Run: python -m venv .venv && .venv/bin/pip install -e ."
   exit 2

@@ -1,7 +1,7 @@
 """K.7 — `pvess` unified root CLI.
 
 Single entry point that groups every existing `pvess-*` CLI command
-plus three workflow `pipeline` shortcuts. Keeps all 11 legacy
+plus three workflow `pipeline` shortcuts. Keeps legacy
 commands working (additive compatibility) — the root is just a
 nicer surface area for new users + a place for pipeline composition.
 
@@ -19,6 +19,8 @@ Subcommand layout mirrors the natural customer workflow phases:
                           pvess dxf         EE-1 + EE-2 DXF
                           pvess labels      NEC labels PDF
                           pvess render      QET single-line diagram
+                          pvess ee4-trace   EE-4 trace skeleton YAML
+                          pvess ee4-preview EE-4 PDF/PNG preview
 
   Phase 4 — VERIFY        pvess doctor      structural self-checks
                           pvess symbols     symbols preview
@@ -40,6 +42,8 @@ from .cli import (
     compare_cmd,
     customer_summary_cmd,
     dxf_cmd,
+    ee4_preview_cmd,
+    ee4_trace_cmd,
     init_cmd,
     labels_cmd,
     lookup_check_cmd,
@@ -62,7 +66,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
         "Workflow phases (run in order for a new project):\n\n"
         "  1. INTAKE   :  `pvess init`, `pvess survey`, `pvess lookup`, `pvess roof-vis`\n"
         "  2. DESIGN   :  `pvess calc`, `pvess customer`, `pvess compare`\n"
-        "  3. SUBMIT   :  `pvess permit`, `pvess dxf`, `pvess labels`, `pvess render`\n"
+        "  3. SUBMIT   :  `pvess permit`, `pvess dxf`, `pvess labels`, "
+        "`pvess render`, `pvess ee4-trace`, `pvess ee4-preview`\n"
         "  4. VERIFY   :  `pvess doctor`, `pvess symbols`\n\n"
         "Or skip the choreography and use a pipeline:\n"
         "  `pvess pipeline customer projects/<id>/`   "
@@ -101,6 +106,8 @@ pvess.add_command(permit_cmd, name="permit")
 pvess.add_command(dxf_cmd, name="dxf")
 pvess.add_command(labels_cmd, name="labels")
 pvess.add_command(render_cmd, name="render")
+pvess.add_command(ee4_trace_cmd, name="ee4-trace")
+pvess.add_command(ee4_preview_cmd, name="ee4-preview")
 
 
 # ─── Phase 4: VERIFY ────────────────────────────────────────────────
@@ -156,7 +163,11 @@ def pipeline_customer(project_dir: Path, address: str | None) -> None:
                 type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--ahj", type=str, default=None,
               help="AHJ profile (e.g. phoenix_az, austin_tx).")
-def pipeline_submit(project_dir: Path, ahj: str | None) -> None:
+@click.option("--profile", "package_profile", type=str, default=None,
+              help="Permit package profile (internal / tx_residential_pv / wyssling_like).")
+def pipeline_submit(
+    project_dir: Path, ahj: str | None, package_profile: str | None,
+) -> None:
     """Full AHJ-submission pipeline. Runs every artifact needed for a
     real permit package + the structural doctor self-check at the end
     so you never submit a package with broken invariants.
@@ -168,8 +179,14 @@ def pipeline_submit(project_dir: Path, ahj: str | None) -> None:
     ctx.invoke(calc_cmd, project_dir=project_dir)
 
     _echo_step(2, total, f"pvess permit {project_dir}"
-                         + (f" --ahj {ahj}" if ahj else ""))
-    ctx.invoke(permit_cmd, project_dir=project_dir, ahj=ahj)
+                         + (f" --ahj {ahj}" if ahj else "")
+                         + (f" --profile {package_profile}" if package_profile else ""))
+    ctx.invoke(
+        permit_cmd,
+        project_dir=project_dir,
+        ahj=ahj,
+        package_profile=package_profile,
+    )
 
     _echo_step(3, total, f"pvess dxf --preview {project_dir}")
     ctx.invoke(dxf_cmd, project_dir=project_dir, preview=True)
@@ -199,12 +216,21 @@ def pipeline_submit(project_dir: Path, ahj: str | None) -> None:
                 type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--ahj", type=str, default=None,
               help="AHJ profile (e.g. phoenix_az).")
-def pipeline_review(project_dir: Path, ahj: str | None) -> None:
+@click.option("--profile", "package_profile", type=str, default=None,
+              help="Permit package profile (internal / tx_residential_pv / wyssling_like).")
+def pipeline_review(
+    project_dir: Path, ahj: str | None, package_profile: str | None,
+) -> None:
     """Run the full submit pipeline then open the permit PDF in the
     default macOS PDF viewer (Preview / Acrobat / whatever is bound to
     .pdf). On other platforms, prints the file path."""
     ctx = click.get_current_context()
-    ctx.invoke(pipeline_submit, project_dir=project_dir, ahj=ahj)
+    ctx.invoke(
+        pipeline_submit,
+        project_dir=project_dir,
+        ahj=ahj,
+        package_profile=package_profile,
+    )
 
     proj_id = project_dir.name
     permit_pdf = (project_dir / "output"

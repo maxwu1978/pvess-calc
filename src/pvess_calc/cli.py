@@ -10,6 +10,7 @@ from .calc.engine import run
 from .compare.report import write_outputs as write_compare_outputs
 from .compare.scenarios import run_scenarios
 from .dxf.grounding_sheet import render_grounding_dxf
+from .dxf.one_line import render_one_line_dxf
 from .dxf.render import export_preview_png, render_for_result as render_dxf_for_result
 from .labels.render import render_for_result as render_labels_for_result
 from .qet.inject import inject_from_result
@@ -87,13 +88,21 @@ def labels_cmd(project_dir: Path) -> None:
 @click.command(name="pvess-permit")
 @click.argument("project_dir", type=click.Path(exists=True, file_okay=False, path_type=Path))
 @click.option("--ahj", default=None, help="AHJ profile name (Phase G).")
-def permit_cmd(project_dir: Path, ahj: str | None) -> None:
+@click.option(
+    "--profile",
+    "package_profile",
+    default=None,
+    help="Permit package profile: internal / tx_residential_pv / wyssling_like.",
+)
+def permit_cmd(project_dir: Path, ahj: str | None, package_profile: str | None) -> None:
     """Generate a complete permit submittal PDF (Phase F)."""
     from .permit.builder import build_permit_package
     inputs = _load(project_dir)
     result = run(inputs)
     out = project_dir / "output" / f"permit-package-{inputs.project.id}.pdf"
-    n_pages = build_permit_package(result, out, ahj_name=ahj)
+    n_pages = build_permit_package(
+        result, out, ahj_name=ahj, package_profile=package_profile,
+    )
     click.echo(f"wrote {out} ({n_pages} pages)")
 
 
@@ -133,12 +142,14 @@ def dxf_cmd(project_dir: Path, preview: bool) -> None:
     \b
       • output/sheet-EE-1.dxf — three-line diagram
       • output/sheet-EE-2.dxf — grounding & bonding (NEC 250 + 690.41–50)
+      • output/sheet-EE-2.1.dxf — one-line diagram when line-side tap applies
     """
     inputs = _load(project_dir)
     result = run(inputs)
 
     sheet1 = project_dir / "output" / "sheet-EE-1.dxf"
     sheet2 = project_dir / "output" / "sheet-EE-2.dxf"
+    sheet_paths = [sheet1, sheet2]
 
     n_devices = render_dxf_for_result(result, sheet1)
     click.echo(f"wrote {sheet1} ({n_devices} devices)")
@@ -146,8 +157,15 @@ def dxf_cmd(project_dir: Path, preview: bool) -> None:
     render_grounding_dxf(result, sheet2)
     click.echo(f"wrote {sheet2} (grounding & bonding)")
 
+    from .permit.builder import _should_emit_one_line
+    if _should_emit_one_line(result):
+        sheet21 = project_dir / "output" / "sheet-EE-2.1.dxf"
+        render_one_line_dxf(result, sheet21)
+        sheet_paths.append(sheet21)
+        click.echo(f"wrote {sheet21} (one-line)")
+
     if preview:
-        for path in [sheet1, sheet2]:
+        for path in sheet_paths:
             png_path = path.with_suffix(".png")
             export_preview_png(path, png_path)
             click.echo(f"wrote {png_path}")
@@ -232,6 +250,182 @@ def customer_summary_cmd(project_dir: Path, address: str | None) -> None:
     out = project_dir / "output" / "customer-summary.pdf"
     render_customer_summary(result, out, lookup_fields=lookup_fields)
     click.echo(f"wrote {out}")
+
+
+@click.command(name="pvess-ee4-trace")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--output", "-o",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Output YAML snippet path. Default: "
+        "<project>/output/ee4-trace-skeleton.yaml"
+    ),
+)
+@click.option(
+    "--stdout", "to_stdout",
+    is_flag=True,
+    help="Print the YAML snippet instead of writing a file.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Overwrite the output file if it already exists.",
+)
+def ee4_trace_cmd(
+    project_dir: Path,
+    output: Path | None,
+    to_stdout: bool,
+    force: bool,
+) -> None:
+    """Generate a paste-ready `site.ee4_trace` skeleton for EE-4.
+
+    The generated block is a first-pass vector trace scaffold derived
+    from roof_sections, module placements, and known obstructions. Paste
+    it into `inputs.yaml`, then adjust points against the EE-4 preview.
+
+    \b
+      pvess ee4-trace projects/003-frisco-glasshouse/
+      pvess ee4-trace --stdout projects/<id>/
+    """
+    from .permit.ee4_trace import build_ee4_trace_skeleton, ee4_trace_yaml
+
+    inputs = _load(project_dir)
+    result = run(inputs)
+    text = ee4_trace_yaml(build_ee4_trace_skeleton(result))
+
+    if to_stdout:
+        click.echo(text, nl=False)
+        return
+
+    out = output or project_dir / "output" / "ee4-trace-skeleton.yaml"
+    if out.exists() and not force:
+        click.echo(
+            f"error: {out} already exists; pass --force to overwrite",
+            err=True,
+        )
+        raise SystemExit(2)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    click.echo(f"wrote {out}")
+    click.echo(
+        "paste the `site.ee4_trace` block into inputs.yaml, then tune points"
+    )
+
+
+@click.command(name="pvess-ee4-preview")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--pdf-output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output PDF path. Default: <project>/output/ee4-preview.pdf",
+)
+@click.option(
+    "--png-output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Output PNG path. Default: <project>/output/ee4-preview.png",
+)
+@click.option(
+    "--png/--no-png",
+    default=True,
+    show_default=True,
+    help="Rasterize the PDF to a PNG preview with pdftoppm.",
+)
+@click.option(
+    "--dpi",
+    type=int,
+    default=180,
+    show_default=True,
+    help="PNG preview resolution.",
+)
+@click.option(
+    "--open",
+    "open_preview",
+    is_flag=True,
+    help="Open the PNG/PDF in the default macOS viewer after writing.",
+)
+@click.option(
+    "--lint/--no-lint",
+    default=True,
+    show_default=True,
+    help="Run Stage 9.4 visual lint checks for the EE-4 preview.",
+)
+@click.option(
+    "--strict-lint",
+    is_flag=True,
+    help="Exit non-zero when visual lint emits WARN/FAIL.",
+)
+def ee4_preview_cmd(
+    project_dir: Path,
+    pdf_output: Path | None,
+    png_output: Path | None,
+    png: bool,
+    dpi: int,
+    open_preview: bool,
+    lint: bool,
+    strict_lint: bool,
+) -> None:
+    """Render a fast EE-4-only preview PDF/PNG for trace review."""
+    import subprocess
+
+    from .doctor import _check_ee4_trace_ready_for_review
+    from .permit.ee4_lint import lint_ee4_preview
+    from .permit.ee4_review import render_ee4_review
+
+    inputs = _load(project_dir)
+    result = run(inputs)
+    output_dir = project_dir / "output"
+    pdf_path = pdf_output or output_dir / "ee4-preview.pdf"
+    png_path = png_output or output_dir / "ee4-preview.png"
+
+    [trace_check] = _check_ee4_trace_ready_for_review(result)
+    click.echo(
+        f"trace-check: {trace_check.status}"
+        + (f" — {trace_check.detail}" if trace_check.detail else "")
+    )
+    lint_has_warning = False
+    if lint:
+        lint_results = lint_ee4_preview(result)
+        lint_issues = [r for r in lint_results if r.status != "PASS"]
+        lint_has_warning = bool(lint_issues)
+        if lint_issues:
+            for item in lint_issues:
+                click.echo(
+                    f"visual-lint: {item.status} {item.name}"
+                    + (f" — {item.detail}" if item.detail else "")
+                )
+        else:
+            click.echo(f"visual-lint: PASS ({len(lint_results)} checks)")
+
+    try:
+        artifacts = render_ee4_review(
+            result,
+            pdf_path,
+            png_path=png_path if png else None,
+            dpi=dpi,
+        )
+    except RuntimeError as exc:
+        click.echo(click.style(f"warning: {exc}", fg="yellow"), err=True)
+        artifacts = render_ee4_review(result, pdf_path, png_path=None, dpi=dpi)
+
+    click.echo(f"wrote {artifacts.pdf_path}")
+    if artifacts.png_path is not None:
+        click.echo(f"wrote {artifacts.png_path}")
+
+    if open_preview:
+        target = artifacts.png_path or artifacts.pdf_path
+        if sys.platform == "darwin":
+            subprocess.run(["open", str(target)], check=False)
+        else:
+            click.echo(f"preview: {target}")
+
+    if strict_lint and lint_has_warning:
+        raise SystemExit(1)
 
 
 @click.command(name="pvess-lookup-check")

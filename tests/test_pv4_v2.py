@@ -94,6 +94,21 @@ def test_pv4_renders_for_frisco_k3c_init_path(tmp_path: Path):
     assert out.stat().st_size > 3_500
 
 
+def test_stage97_frisco_pv4_uses_traced_roof_attachment_overlay(tmp_path: Path):
+    """Stage 9.7: traced Frisco PV-4 should read like a structural
+    attachment sheet, not five isolated roof-section thumbnails."""
+    result = run(Inputs.from_yaml(FRISCO))
+    out = tmp_path / "frisco-stage97-pv4.pdf"
+    render_attachment_plan(result, out)
+
+    text = _pdf_text(out)
+    assert "ROOF ATTACHMENT PLAN" in text
+    assert "48\" MAX SPACING" in text
+    assert "24\" FRAMING SPACING" in text
+    assert "RED SQUARES = ATTACHMENT POINTS" in text
+    assert "TOTAL\n36\n72" in text
+
+
 # ─── Module dimension callout ──────────────────────────────────────────
 
 

@@ -8,6 +8,8 @@ Pipeline:
 """
 from __future__ import annotations
 
+import importlib
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -19,14 +21,22 @@ from ..dxf.render import render_dxf
 from ..labels.render import render_for_result as render_labels
 from .compliance import render_compliance_checklist
 from .cover_sheet import render_cover_sheet
-from .general_notes import render_general_notes
-from .panel_schedule import render_panel_schedule
-from .site_plan import render_site_plan
-from .structural import (
-    render_attachment_plan,
-    render_mounting_details,
-    render_string_plan,
+from .sheet_registry import (
+    SheetSpec,
+    cover_index_rows,
+    registry_for_profile,
 )
+
+
+def _project_dir(result) -> Path:
+    return Path.cwd() / "projects" / result.inputs.project.id
+
+
+def _resolve_project_path(result, path: str) -> Path:
+    p = Path(path).expanduser()
+    if p.is_absolute():
+        return p
+    return _project_dir(result) / p
 
 
 def _collect_cut_sheets(result) -> list[Path]:
@@ -38,15 +48,137 @@ def _collect_cut_sheets(result) -> list[Path]:
     package. Common order:
       01-module.pdf · 02-inverter.pdf · 03-optimizer.pdf · 04-battery.pdf · ...
     """
-    project_id = result.inputs.project.id
-    candidates = [
-        Path.cwd() / "projects" / project_id / "cut_sheets",
-    ]
+    candidates = [_project_dir(result) / "cut_sheets"]
     out: list[Path] = []
     for d in candidates:
         if d.exists() and d.is_dir():
             out.extend(sorted(d.glob("*.pdf")))
     return out
+
+
+def _selected_sheets(
+    result: CalculationResult,
+    *,
+    package_profile: str,
+    ahj_name: str | None,
+) -> list[SheetSpec]:
+    from ..ahj.profile import get_ahj_profile
+
+    registry = list(registry_for_profile(package_profile))
+    if ahj_name:
+        required = set(get_ahj_profile(ahj_name).required_sheets)
+        registry = [s for s in registry if s.code in required]
+
+    if not _should_emit_one_line(result):
+        registry = [s for s in registry if s.code != "one-line"]
+    return registry
+
+
+def _should_emit_one_line(result: CalculationResult) -> bool:
+    methods = set(result.inputs.service.interconnection_methods)
+    return bool(
+        result.interconnect.recommended == "supply_side_tap"
+        or "supply_side_tap" in methods
+        or "service_intercept" in methods
+        or "line_side_tap" in methods
+    )
+
+
+def _render_sheet(
+    result: CalculationResult,
+    spec: SheetSpec,
+    out_path: Path,
+    *,
+    sheet_rows: list[tuple[str, str]],
+) -> list[Path]:
+    with _sheet_context(result, spec):
+        if spec.code == "cover":
+            render_cover_sheet(result, out_path, sheet_rows=sheet_rows)
+            return [out_path]
+
+        if spec.code == "spec":
+            return _render_or_collect_specs(result, out_path)
+
+        module_name, _, callable_name = spec.renderer.partition(":")
+        if not module_name or not callable_name:
+            raise ValueError(f"bad renderer path: {spec.renderer}")
+        renderer = getattr(importlib.import_module(module_name), callable_name)
+
+        if spec.output_kind == "dxf":
+            dxf_path = out_path.with_suffix(".dxf")
+            renderer(result, dxf_path)
+            _dxf_to_pdf(dxf_path, out_path)
+            return [out_path]
+
+        # Labels renderer returns a label count; PDF renderers return None.
+        renderer(result, out_path)
+        return [out_path]
+
+
+@contextmanager
+def _sheet_context(result: CalculationResult, spec: SheetSpec):
+    sentinel = object()
+    old_code = getattr(result, "_active_sheet_display_code", sentinel)
+    old_title = getattr(result, "_active_sheet_title", sentinel)
+    result._active_sheet_display_code = spec.display_code
+    result._active_sheet_title = spec.title
+    try:
+        yield
+    finally:
+        if old_code is sentinel:
+            delattr(result, "_active_sheet_display_code")
+        else:
+            result._active_sheet_display_code = old_code
+        if old_title is sentinel:
+            delattr(result, "_active_sheet_title")
+        else:
+            result._active_sheet_title = old_title
+
+
+def _render_or_collect_specs(result: CalculationResult, placeholder: Path) -> list[Path]:
+    from .spec_sheets import render_spec_placeholder
+
+    explicit: list[Path] = []
+    for ref in result.inputs.project.spec_sheets:
+        if not ref.path:
+            continue
+        p = _resolve_project_path(result, ref.path)
+        if p.exists() and p.suffix.lower() == ".pdf":
+            explicit.append(p)
+    cut_sheets = _collect_cut_sheets(result)
+    if explicit or cut_sheets:
+        out: list[Path] = []
+        seen: set[Path] = set()
+        for p in explicit + cut_sheets:
+            key = p.resolve()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(p)
+        return out
+    render_spec_placeholder(result, placeholder)
+    return [placeholder]
+
+
+def _prepend_structural_packet(
+    result: CalculationResult,
+    tmp_dir: Path,
+    *,
+    package_profile: str,
+) -> list[Path]:
+    if package_profile == "internal":
+        return []
+
+    src = result.inputs.project.structural_letter_pdf
+    if src:
+        p = _resolve_project_path(result, src)
+        if p.exists() and p.suffix.lower() == ".pdf":
+            return [p]
+
+    from .structural_letter import render_structural_letter_draft
+    out = tmp_dir / "00-structural-letter-draft.pdf"
+    render_structural_letter_draft(result, out)
+    return [out]
 
 
 def _dxf_to_pdf(dxf_path: Path, pdf_path: Path) -> None:
@@ -82,106 +214,42 @@ def build_permit_package(
     out_path: Path,
     *,
     ahj_name: str | None = None,
+    package_profile: str | None = None,
 ) -> int:
     """Build the full permit PDF. Returns the number of pages."""
-    # Phase G hook: if an AHJ name is provided, filter sheets accordingly.
-    # For now we always emit every sheet; AHJ profiles will refine later.
-    from ..ahj.profile import get_ahj_profile
-
-    profile = get_ahj_profile(ahj_name) if ahj_name else None
-    required_sheets = (
-        profile.required_sheets if profile
-        else [
-            "cover", "ee-1", "ee-2", "ee-3", "ee-4", "ee-5",
-            "pv-4", "pv-5", "pv-6",   # attachment / mounting / string plan
-            "notes", "labels",
-        ]
-    )
+    package_profile = package_profile or result.inputs.project.permit_profile
 
     with TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         pdfs: list[Path] = []
+        specs = _selected_sheets(
+            result, package_profile=package_profile, ahj_name=ahj_name,
+        )
+        sheet_rows = [(s.display_code, s.title) for s in specs]
 
-        # EE-0 cover
-        if "cover" in required_sheets:
-            p = tmp_dir / "ee-0-cover.pdf"
-            render_cover_sheet(result, p)
-            pdfs.append(p)
-
-        # EE-1 three-line (DXF → PDF)
-        if "ee-1" in required_sheets:
-            dxf = tmp_dir / "sheet-EE-1.dxf"
-            render_dxf(result, dxf)
-            p = tmp_dir / "ee-1.pdf"
-            _dxf_to_pdf(dxf, p)
-            pdfs.append(p)
-
-        # EE-2 grounding (DXF → PDF)
-        if "ee-2" in required_sheets:
-            dxf = tmp_dir / "sheet-EE-2.dxf"
-            render_grounding_dxf(result, dxf)
-            p = tmp_dir / "ee-2.pdf"
-            _dxf_to_pdf(dxf, p)
-            pdfs.append(p)
-
-        # EE-3 panel schedules
-        if "ee-3" in required_sheets:
-            p = tmp_dir / "ee-3-panels.pdf"
-            render_panel_schedule(result, p)
-            pdfs.append(p)
-
-        # EE-4 site plan
-        if "ee-4" in required_sheets:
-            p = tmp_dir / "ee-4-site.pdf"
-            render_site_plan(result, p)
-            pdfs.append(p)
-
-        # PV-4 attachment plan
-        if "pv-4" in required_sheets:
-            p = tmp_dir / "pv-4-attachment.pdf"
-            render_attachment_plan(result, p)
-            pdfs.append(p)
-
-        # PV-5 mounting details
-        if "pv-5" in required_sheets:
-            p = tmp_dir / "pv-5-mounting.pdf"
-            render_mounting_details(result, p)
-            pdfs.append(p)
-
-        # PV-6 string layout plan
-        if "pv-6" in required_sheets:
-            p = tmp_dir / "pv-6-strings.pdf"
-            render_string_plan(result, p)
-            pdfs.append(p)
-
-        # EE-5 NEC compliance checklist
-        if "ee-5" in required_sheets:
-            p = tmp_dir / "ee-5-compliance.pdf"
-            render_compliance_checklist(result, p)
-            pdfs.append(p)
-
-        # PV-N general + electrical notes
-        if "notes" in required_sheets:
-            p = tmp_dir / "pv-n-notes.pdf"
-            render_general_notes(result, p)
-            pdfs.append(p)
-
-        # EE-6 labels
-        if "labels" in required_sheets:
-            p = tmp_dir / "ee-6-labels.pdf"
-            render_labels(result, p)
-            pdfs.append(p)
-
-        # Cut sheets — append any datasheet PDFs the project ships
-        cut_sheets = _collect_cut_sheets(result)
-        pdfs.extend(cut_sheets)
+        pdfs.extend(_prepend_structural_packet(
+            result, tmp_dir, package_profile=package_profile,
+        ))
+        for idx, spec in enumerate(specs, 1):
+            safe_code = spec.display_code.lower().replace(".", "-")
+            p = tmp_dir / f"{idx:02d}-{safe_code}.pdf"
+            pdfs.extend(_render_sheet(result, spec, p, sheet_rows=sheet_rows))
 
         # Combine all PDFs into one
         writer = PdfWriter()
         page_count = 0
         for pdf in pdfs:
             reader = PdfReader(str(pdf))
-            for page in reader.pages:
+            if pdf in _spec_paths_with_page_subset(result):
+                # Page-subset handling is performed below by path lookup.
+                pass
+            page_subset = _page_subset_for_spec(result, pdf)
+            pages = (
+                [reader.pages[i - 1] for i in page_subset
+                 if 1 <= i <= len(reader.pages)]
+                if page_subset else reader.pages
+            )
+            for page in pages:
                 writer.add_page(page)
                 page_count += 1
 
@@ -190,3 +258,18 @@ def build_permit_package(
             writer.write(f)
 
         return page_count
+
+
+def _spec_paths_with_page_subset(result) -> set[Path]:
+    return {
+        _resolve_project_path(result, ref.path)
+        for ref in result.inputs.project.spec_sheets
+        if ref.path and ref.pages
+    }
+
+
+def _page_subset_for_spec(result, pdf: Path) -> list[int]:
+    for ref in result.inputs.project.spec_sheets:
+        if ref.path and _resolve_project_path(result, ref.path) == pdf:
+            return ref.pages
+    return []

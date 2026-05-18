@@ -48,7 +48,12 @@ from .sheet_registry import cover_index_rows
 # ─── Public entry ──────────────────────────────────────────────────────
 
 
-def render_cover_sheet(result: CalculationResult, out_path: Path) -> None:
+def render_cover_sheet(
+    result: CalculationResult,
+    out_path: Path,
+    *,
+    sheet_rows: list[tuple[str, str]] | None = None,
+) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(out_path), pagesize=landscape(letter))
     W, H = landscape(letter)
@@ -82,7 +87,8 @@ def render_cover_sheet(result: CalculationResult, out_path: Path) -> None:
     sheet_w = 1.6 * inch
     _draw_sheet_index(c,
                       x=right_top_x, y=right_top_y,
-                      w=sheet_w, h=map_height)
+                      w=sheet_w, h=map_height,
+                      sheet_rows=sheet_rows)
     _draw_scope_of_work(c,
                         x=right_top_x + sheet_w + 0.20 * inch,
                         y=right_top_y,
@@ -343,10 +349,13 @@ def _draw_map_placeholder(c, x: float, y: float, w: float, h: float,
     c.setFillColor(colors.black)
 
 
-def _draw_sheet_index(c, *, x: float, y: float, w: float, h: float) -> None:
+def _draw_sheet_index(
+    c, *, x: float, y: float, w: float, h: float,
+    sheet_rows: list[tuple[str, str]] | None = None,
+) -> None:
     """Sheet codes + titles from SHEET_REGISTRY."""
     _draw_section_box(c, x, y - h, w, h, "SHEET INDEX")
-    sheets = cover_index_rows()
+    sheets = sheet_rows if sheet_rows is not None else cover_index_rows()
     n = max(1, len(sheets))
     row_h = min(0.13 * inch, (h - 0.4 * inch) / n)
     c.setFont("Helvetica", 7)

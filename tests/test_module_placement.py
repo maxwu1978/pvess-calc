@@ -290,9 +290,9 @@ def test_engine_run_empty_placements_for_austin_legacy_yaml():
 
 
 def test_engine_run_uses_face_distribution_for_k3c_init_state():
-    """K.9.2 closing contract: when yaml has roof_sections with all
-    module_count=0 (K.3c init state, Frisco case), the engine runs
-    the LRM auto-distribute internally so PV-4 has counts to draw.
+    """K.9.2 closing contract: when roof_sections have all module_count=0
+    (K.3c init state), the engine runs the LRM auto-distribute internally so
+    PV-4 has counts to draw.
     Without this, K.3c-init projects would have empty placements
     (the original 2026-05-17 engine bug)."""
     from pathlib import Path
@@ -302,7 +302,14 @@ def test_engine_run_uses_face_distribution_for_k3c_init_state():
     project_root = Path(__file__).resolve().parents[1]
     frisco_yaml = project_root / "projects" / "003-frisco-glasshouse" / "inputs.yaml"
     inputs = Inputs.from_yaml(frisco_yaml)
-    # Frisco yaml has all module_count=0 (K.3c init)
+    zero_sections = [
+        s.model_copy(update={"module_count": 0})
+        for s in inputs.site.roof_sections
+    ]
+    inputs = inputs.model_copy(
+        update={"site": inputs.site.model_copy(update={"roof_sections": zero_sections})}
+    )
+    # The copied Frisco geometry mimics the K.3c init state.
     assert all(s.module_count == 0 for s in inputs.site.roof_sections)
     result = run(inputs)
     # K.9.2 must have populated placements via the LRM auto-distribute

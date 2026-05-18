@@ -52,6 +52,10 @@ pvess-lookup-check = "pvess_calc.cli:lookup_check_cmd"
 pvess-customer-summary = "pvess_calc.cli:customer_summary_cmd"
 # K.3c sidekick: address-only rooftop visualization.
 pvess-roof-vis = "pvess_calc.cli:roof_vis_cmd"
+# Stage 9.2: editable EE-4 vector trace skeleton.
+pvess-ee4-trace = "pvess_calc.cli:ee4_trace_cmd"
+# Stage 9.3: fast EE-4 PDF/PNG review loop.
+pvess-ee4-preview = "pvess_calc.cli:ee4_preview_cmd"
 # K.7: unified root CLI — `pvess <subcommand>` covers all the
 # legacy `pvess-*` commands plus 3 pipeline shortcuts. Old commands
 # remain registered above for backward compatibility.
