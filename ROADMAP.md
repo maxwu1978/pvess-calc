@@ -13,6 +13,194 @@ When a K-phase ships:
 
 ## Planned
 
+### Stage 9.8/9.9 — EE-4A property context plan ✅ DONE 2026-05-18
+
+Stage 9.8 added a separate `EE-4A · PROPERTY CONTEXT PLAN` sheet so
+contractor-style property line / driveway / fence / dimension context no
+longer crowds EE-4. Stage 9.9 moved that sheet from visual fallback to
+data-driven geometry via `site.property_context`.
+
+Closing standards met:
+
+- EE-4 remains roof-array/equipment focused; EE-4A owns property context
+- `lot_outline`, `driveway_polygon`, `fence_lines`, and
+  `property_dimensions` render directly when present
+- Empty `property_context` remains backward-compatible with the generated
+  Stage 9.8 fallback
+- Frisco package rebuilds with 13 pages and doctor passing
+
+Follow-up candidate: Stage 9.10 should add a lightweight EE-4A visual lint
+for label/dimension collisions and optional satellite/GIS import helpers
+for the property-context block.
+
+### Stage 9.10.1-9.10.5 — PV-6 traced string layout ✅ DONE 2026-05-18
+
+PV-6 now supports the competitor-style string layout reference: full traced
+roof linework, saturated module fills by `string_index`, per-module string
+numbers, left-side string legend, north arrow, top-right equipment summary,
+and automatic `STRING N` leader callouts around the roof. The legacy
+per-section PV-6 fallback remains active when trace geometry is unavailable.
+
+Closing standards met:
+
+- One external leader callout per non-empty string
+- `STRING N` labels remain inside the sheet frame and do not overlap each
+  other or module rectangles
+- PV-6 rollup total equals placed modules; declared strings cannot silently
+  disappear
+- New doctor check `pv6_string_layout_visual_lint` guards missing strings,
+  bad rollups, missing callouts, and label collisions
+- Frisco package rebuilds with doctor passing
+
+### Reference planset parity roadmap — address + site info → full package ✅ DONE 2026-05-18
+
+Goal: from address lookup, site-survey inputs, selected equipment, and
+optional signed engineering/spec PDFs, emit a Wyssling/Texas Green Eco style
+residential PV permit package similar to the two reference plansets reviewed
+on 2026-05-18.
+
+Stages 9.11-9.17 are implemented:
+
+- `tx_residential_pv` / `wyssling_like` package profiles with contractor-style
+  PV/EE numbering and cover-index parity
+- Extended field-survey schema for roof/framing/attic/decking, meter/ESID,
+  structural letter, PV-7 photos, and SPEC PDFs
+- New reference sheets: conditional EE-2.1 one-line, EE-5 placard, PV-6
+  design notes, PV-7 site photos, SPEC placeholder/appendix, and unsigned
+  structural-review draft when no signed PDF is supplied
+- Doctor guards for reference-profile intake completeness and attachment
+  readiness
+- Frisco reference package builds as 17 pages with doctor PASS and expected
+  WARNs for missing signed/photo/spec source files
+
+#### 9.11 — Package profile and sheet numbering
+
+Scope:
+- Add a `tx_residential_pv` / `wyssling_like` permit profile
+- Map internal sheets to reference numbering:
+  `PV-1 Cover`, `PV-2 Site Plan`, `PV-3 Property Plan`, `PV-4 Attachment`,
+  `PV-5 Mounting Details`, `EE-1 String Plan`, `EE-2 Three-Line`,
+  conditional `EE-2.1 One-Line`, `EE-3 Notes`, `EE-4 Labels`,
+  `EE-5 Placard`, `PV-6 Design Notes`, `PV-7 Site Photos`, `SPEC`
+- Keep existing AHJ profiles backward-compatible
+
+Closing standards:
+- Sheet index exactly matches emitted pages
+- Glasshouse-style project emits a reference-profile package without
+  changing the existing internal profile
+- Missing optional pages are omitted intentionally, not as registry drift
+
+Test plan:
+- Unit tests for sheet-code mapping and profile selection
+- Positive + regression-bait doctor tests for sheet-index/profile parity
+- Full `pvess-review` on Frisco and one legacy project
+
+#### 9.12 — Site intake and field-survey data model
+
+Scope:
+- Extend inputs / wizard for roof stories, roof height, roof condition,
+  roof construction, attic access, framing, decking, roof layers, meter
+  number, ESID, disconnect location, service/sub-panel locations, and
+  photo paths
+- Mark address-derived or satellite-derived fields as review-needed when
+  confidence is low
+
+Closing standards:
+- Address + site-survey fields populate PV-1/PV-2/PV-3/PV-4/EE pages
+- Unknown fields degrade to explicit blanks or review notes, not invented
+  permit facts
+
+Test plan:
+- Schema compatibility tests for old YAML
+- Wizard/intake tests for complete and partial survey payloads
+- Doctor check for required field completeness under the reference profile
+
+#### 9.13 — PV-7 site photos
+
+Scope:
+- Render owner/installer site photos into a PV-7 sheet: front elevation,
+  roof, meter, MSP, sub-panel, attic/framing, proposed equipment area
+- Use stable captions sourced from the site-survey model
+
+Closing standards:
+- Photo pages preserve aspect ratio and never crop away the primary subject
+- Missing photos render checklist placeholders with required-shot labels
+
+Test plan:
+- Golden PDF text checks for captions
+- Raster smoke checks for image presence and nonblank placeholders
+- Frisco package review with and without photos
+
+#### 9.14 — SPEC sheet attachment library
+
+Scope:
+- Equipment library stores manufacturer PDF references for module,
+  inverter, optimizer, racking/flashing, disconnect, and battery when present
+- Permit builder appends selected spec pages after the drawing set
+
+Closing standards:
+- SPEC pages match selected equipment and are listed in the sheet index
+- Missing spec PDF is surfaced as WARN with the exact equipment key
+
+Test plan:
+- Unit tests for equipment → spec-page resolution
+- PDF merge tests for page count and order
+- Doctor check for required spec coverage under the reference profile
+
+#### 9.15 — Structural letter packet
+
+Scope:
+- Support prepending a signed structural letter PDF when supplied
+- Generate an unsigned structural-review draft from system/site inputs when
+  no signed letter is available
+
+Closing standards:
+- Signed PDFs are preserved verbatim and placed before PV-1
+- Unsigned drafts are clearly marked as draft / engineer-review only
+- The system never fabricates PE signature, stamp, or license attestation
+
+Test plan:
+- PDF prepend tests preserving page count and order
+- Text checks for draft watermark / signed-source metadata
+- Doctor WARN when reference profile lacks signed structural PDF
+
+#### 9.16 — One-line / three-line conditional electrical pages
+
+Scope:
+- Add conditional EE-2.1 one-line page for line-side tap or complex
+  service-intercept cases
+- Keep EE-2 three-line as the default electrical plan
+
+Closing standards:
+- Service topology selects the correct electrical page set
+- Conductor schedule, OCPD, grounding, VLLD, and tap labels remain
+  calculation-backed
+
+Test plan:
+- Fixture matrix: service intercept, line-side tap, backfeed breaker,
+  SPAN/main-panel upgrade
+- Doctor checks for page presence by interconnection method
+- Visual review for text/wire collisions
+
+#### 9.17 — Reference-profile visual QA
+
+Scope:
+- Unify title block, right-side engineer/client/project column, revision
+  table, signature area, scale notes, and page labels across CAD sheets
+- Add package-level visual lint for nonblank pages, expected colors/text,
+  and obvious label collisions
+
+Closing standards:
+- Contact sheet reads as one coherent permit package
+- `pytest`, `mkdocs build --strict`, `pvess-doctor`, and `pvess-review`
+  all pass on Frisco reference-profile output
+
+Test plan:
+- Raster/contact-sheet smoke tests for key pages
+- Doctor check for reference-profile package completeness
+- Manual visual review against the two reference PDFs before moving into
+  Phase H / regional-rule work
+
 ### K.4.6 — Equipment library + cost overrides + battery-optional + TX REP picker ✅ DONE 2026-05-17
 
 All 6 sub-tasks complete; 31/31 doctor; +37 tests landed across the

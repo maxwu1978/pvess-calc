@@ -100,14 +100,19 @@ Where `<scenarios-dir>` contains subdirectories each with their own
 ### `pvess permit`
 
 ```bash
-pvess permit <project-dir> [--ahj NAME]
+pvess permit <project-dir> [--ahj NAME] [--profile PROFILE]
 ```
 
-Generates `output/permit-package-<id>.pdf` — 12 pages.
+Generates `output/permit-package-<id>.pdf`.
 
 | Option | Notes |
 |---|---|
 | `--ahj` | AHJ profile name. Defaults to "all sheets". Available: `austin_tx`, `phoenix_az`, `california_generic`, `hawaii_generic` |
+| `--profile` | Permit package profile. Defaults to `project.permit_profile` or `internal`. Available: `internal`, `tx_residential_pv`, `wyssling_like` |
+
+`tx_residential_pv` / `wyssling_like` emit a reference-style PV/EE drawing
+set with PV-1 cover, PV-7 site photos, SPEC appendix, EE-5 placard, and a
+conditional EE-2.1 one-line diagram for supply-side / service-intercept paths.
 
 ### `pvess dxf`
 
@@ -116,7 +121,9 @@ pvess dxf <project-dir> [--preview]
 ```
 
 Outputs `output/sheet-EE-1.dxf` + `output/sheet-EE-2.dxf` (AutoCAD R2018,
-ACADE-compatible). `--preview` also emits PNG rasterizations.
+ACADE-compatible). When the selected interconnection is supply-side /
+service-intercept, it also emits `output/sheet-EE-2.1.dxf`. `--preview`
+also emits PNG rasterizations.
 
 ### `pvess labels`
 
@@ -135,6 +142,39 @@ pvess render <project-dir> [--template PATH]
 Outputs `output/system.qet` (QElectroTech v0.90). Template defaults to
 `library/templates/residential-ess-v1.qet`.
 
+### `pvess ee4-trace`
+
+```bash
+pvess ee4-trace <project-dir> [-o PATH] [--stdout] [--force]
+```
+
+Generates a paste-ready `site.ee4_trace` YAML skeleton for EE-4 from
+`roof_sections`, module placements, and known obstructions. Default output:
+`output/ee4-trace-skeleton.yaml`.
+
+Use this when a project needs the permit-style traced roof layer rather
+than the generated roof geometry alone.
+
+### `pvess ee4-preview`
+
+```bash
+pvess ee4-preview <project-dir> [--pdf-output PATH] [--png-output PATH]
+pvess ee4-preview <project-dir> --no-png
+pvess ee4-preview <project-dir> --strict-lint
+```
+
+Renders only the EE-4 site-plan sheet for fast trace review. Default
+outputs:
+
+- `output/ee4-preview.pdf`
+- `output/ee4-preview.png` (requires Poppler `pdftoppm`)
+
+It prints the `ee4_trace_ready_for_review` status before writing files.
+Visual lint is enabled by default and checks module-rectangle overlaps,
+module/roof/fire-pathway geometry, plus leader/callout text placement.
+`--strict-lint` turns any lint WARN/FAIL into a non-zero exit after
+artifacts are written.
+
 ## VERIFY
 
 ### `pvess doctor`
@@ -143,7 +183,7 @@ Outputs `output/system.qet` (QElectroTech v0.90). Template defaults to
 pvess doctor <project-dir> [--quiet]
 ```
 
-Runs 28 structural self-checks. Exits non-zero on any FAIL. `--quiet`
+Runs structural self-checks. Exits non-zero on any FAIL. `--quiet`
 suppresses PASS lines (CI-friendly).
 
 ### `pvess symbols`
@@ -170,7 +210,7 @@ NEC report.
 ### `pvess pipeline submit`
 
 ```bash
-pvess pipeline submit <project-dir> [--ahj NAME]
+pvess pipeline submit <project-dir> [--ahj NAME] [--profile PROFILE]
 ```
 
 `calc + permit + dxf + doctor` — the full AHJ-submission bundle. Exits
@@ -179,7 +219,7 @@ non-zero on doctor FAIL.
 ### `pvess pipeline review`
 
 ```bash
-pvess pipeline review <project-dir> [--ahj NAME]
+pvess pipeline review <project-dir> [--ahj NAME] [--profile PROFILE]
 ```
 
 Same as `submit` + opens the permit PDF in the default viewer (macOS

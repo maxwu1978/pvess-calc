@@ -8,6 +8,71 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-18 — Stage 9.11-9.17: reference-style planset profile
+
+Completed the Wyssling/Texas Green Eco style package path:
+
+- Added `tx_residential_pv` / `wyssling_like` permit profiles with PV-1/PV-7,
+  EE-1/EE-5, conditional EE-2.1, and SPEC numbering
+- Extended `inputs.yaml` schema for roof/framing/attic/decking survey data,
+  meter/ESID, site photos, signed structural-letter PDFs, and manufacturer
+  spec sheets
+- Added new renderers for EE-2.1 one-line, EE-5 placard, PV-6 design notes,
+  PV-7 site photos, SPEC placeholder/appendix, and unsigned structural-review
+  draft
+- Updated the permit builder so reference profiles can prepend signed/draft
+  structural packets, append selected SPEC PDFs, and keep the cover sheet index
+  in sync with emitted sheets
+- Added doctor guards `reference_profile_site_intake_complete` and
+  `reference_profile_attachments_ready`
+- Added regression tests for profile sheet order, conditional one-line
+  emission, draft/photo/spec placeholder output, and reference-profile doctor
+  behavior
+
+### 2026-05-18 — Stage 9.8/9.9: EE-4A property-context plan
+
+Stage 9.8 split the competitor-style property context out of EE-4 into a
+new `EE-4A · PROPERTY CONTEXT PLAN` sheet. EE-4 now stays focused on roof
+array geometry and equipment callouts; EE-4A carries property line,
+driveway, fence, north arrow, dimensions, and the traced roof overlay.
+
+Stage 9.9 makes EE-4A data-driven:
+
+- Added `site.property_context` schema with `lot_outline`,
+  `driveway_polygon`, `fence_lines`, and `property_dimensions`
+- Renderer now uses those survey / GIS / satellite-reviewed geometries
+  when present, with the 9.8 generated rectangle / driveway kept as a
+  backward-compatible fallback
+- Frisco fixture now supplies explicit context geometry, so the top and
+  right dimension callouts render from YAML rather than inferred bounds
+- Added regression tests for registry wiring, polygon validation, and
+  rendered EE-4A survey dimension text
+
+### 2026-05-18 — Stage 9.10.1-9.10.3: PV-6 traced string layout
+
+Started the reference-style string layout sheet:
+
+- PV-6 now uses the whole traced roof plan when `site.ee4_trace` and
+  per-module placements are present
+- Each module is filled by actual `string_index` with saturated string
+  colors and a small per-module string number
+- Added the left-side module/inverter/optimizer summary, string legend
+  swatches, north arrow, scale note, and top-right equipment summary
+- Legacy projects without trace geometry keep the previous per-section
+  string layout fallback
+
+### 2026-05-18 — Stage 9.10.4/9.10.5: PV-6 callouts and visual lint
+
+Completed the PV-6 string-plan closeout:
+
+- Added automatic external `STRING N` leader callouts around the traced roof
+- Shared the PV-6 trace transform / callout layout between renderer and lint
+- Added `permit/pv6_lint.py` with checks for rollup completeness, missing
+  callouts, label-label collisions, and label-module collisions
+- Added doctor check `pv6_string_layout_visual_lint`
+- Added regression tests for callout count, missing string assignments, and
+  doctor-detected label collisions
+
 ---
 
 ## 2026-05-17 — K.13.1: EE-4 visual-collision polish
@@ -136,7 +201,7 @@ Landed in 4 staged passes:
     with anchors patched; never mutates input
   - `house_bbox(site)` — uses polygon outline when present, else
     centred rect from `house_width_ft × house_depth_ft`
-- Hooked into [`engine.run()`](src/pvess_calc/calc/engine.py) at
+- Hooked into `engine.run()` at
   entry so all downstream code (wire_routing, EE-4 renderer,
   doctor) sees fully-anchored sections without behaviour changes
 - Phoenix (2 faces, no explicit anchors) now renders multi-face
@@ -150,7 +215,7 @@ Landed in 4 staged passes:
 5 layout adjustments to fix overlap + missing-data signalling:
 
 1. **Aerial inset radius 25 m → 35 m** in
-   [`_draw_aerial_inset`](src/pvess_calc/permit/site_plan.py) — at
+   `_draw_aerial_inset` — at
    25 m, suburban ≥80 ft lots cropped past the neighbour buildings
 2. **Rotated address offset 0.30" → 0.50"** off the lot's left
    property line (was visually pressed against the lot dashed line)

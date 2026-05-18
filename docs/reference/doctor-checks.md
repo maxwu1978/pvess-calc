@@ -1,6 +1,6 @@
 # Doctor checks reference
 
-The doctor runs 28 structural self-checks. Every check has a name, an
+The doctor runs structural self-checks. Every check has a name, an
 implementation function in `src/pvess_calc/doctor.py`, and a
 regression-bait test in `tests/test_doctor.py` that synthesises the
 broken state and asserts the check FAILs.
@@ -93,6 +93,23 @@ broken state and asserts the check FAILs.
 |---|---|---|
 | `site_checklist_covers_schema` | `_check_site_checklist_covers_schema` | Every `yaml_path` on the site-checklist PDF resolves to a real `Inputs` field |
 
+## EE-4 site plan review
+
+| Check | Function | What it catches |
+|---|---|---|
+| `ee4_focuses_on_site_geometry` | `_check_ee4_focuses_on_site_geometry` | EE-4 no longer renders the legacy abstract PV grid |
+| `ee4_trace_ready_for_review` | `_check_ee4_trace_ready_for_review` | Trace mode is enabled but missing outline / roof-line / fire-pathway layers |
+| `ee4_preview_visual_lint` | `_check_ee4_preview_visual_lint` | Stage 9.4 geometry / leader / callout lints for the EE-4 preview |
+| `ee4a_property_context_data_driven` | `_check_ee4a_property_context_data_driven` | Stage 9.9 EE-4A renders explicit lot / driveway / fence / dimension context when supplied |
+| `pv6_string_layout_visual_lint` | `_check_pv6_string_layout_visual_lint` | Stage 9.10.5 PV-6 string rollups, leader callouts, and label collisions |
+
+## Stage 9.11-9.17 — reference planset profile
+
+| Check | Function | What it catches |
+|---|---|---|
+| `reference_profile_site_intake_complete` | `_check_reference_profile_site_intake_complete` | `tx_residential_pv` / `wyssling_like` package missing address, coordinates, meter, ESID, roof/framing, or attic/decking survey fields |
+| `reference_profile_attachments_ready` | `_check_reference_profile_attachments_ready` | Missing signed structural letter, PV-7 site photos, or SPEC manufacturer PDFs. These are WARN because the builder emits clear draft/placeholder pages |
+
 ---
 
 ## Status semantics
@@ -101,7 +118,7 @@ broken state and asserts the check FAILs.
 |---|---|
 | `PASS` | OK — no action |
 | `FAIL` | doctor exits non-zero; CI / pipeline blocks |
-| (`WARN`) | Reported inside `PASS` detail text — no exit-code change. Used when data is missing but not invalid (e.g. ESS install location set to `unknown`) |
+| `WARN` | Non-blocking; used when data is missing but not invalid |
 
 ## What doctor does NOT cover
 

@@ -1,8 +1,10 @@
 # pvess-calc
 
 Parameter-driven NEC calculation + permit-package generator for residential
-PV + ESS designs. One `inputs.yaml` → full 12-page AHJ submittal package,
-homeowner one-pager, NEC labels, ACADE-compatible DXF.
+PV + ESS designs. One `inputs.yaml` → AHJ submittal package, homeowner
+one-pager, NEC labels, ACADE-compatible DXF. Projects can use the default
+internal sheet set or a reference-style `tx_residential_pv` /
+`wyssling_like` package with PV-1/PV-7/SPEC pages.
 
 ## 5-minute install + run
 
@@ -11,12 +13,22 @@ git clone <repo> && cd 11CAD家庭储能
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# Single command: NEC math + permit PDF + DXF + 28 structural checks
+# Single command: NEC math + permit PDF + DXF + structural checks
 pvess pipeline submit projects/002-phoenix-25kw/
 ```
 
 Result: `projects/002-phoenix-25kw/output/permit-package-002-phoenix-25kw.pdf`
-(12 pages, ~800 KB) + DXF schematics + 28/28 doctor PASS.
+(12 pages, ~800 KB) + DXF schematics + all doctor checks PASS.
+
+Reference-style package:
+
+```bash
+pvess pipeline submit projects/003-frisco-glasshouse/ --profile tx_residential_pv
+```
+
+That profile emits the contractor-style PV/EE sheet numbering, conditional
+EE-2.1 one-line diagram, PV-7 site-photo sheet, SPEC attachment section, and
+an unsigned structural-review draft when no signed engineering PDF is supplied.
 
 ## Documentation
 
@@ -49,10 +61,10 @@ Or read the markdown directly under [`docs/`](docs/):
 
 ## Tooling
 
-- **`pvess <subcommand>`** — unified CLI; 12 subcommands + 3 pipelines.
-- **`pvess doctor`** — 28 structural self-checks; CI-ready.
+- **`pvess <subcommand>`** — unified CLI; subcommands + pipelines.
+- **`pvess doctor`** — structural self-checks; CI-ready.
 - **MkDocs Material** site under `docs/`.
-- **359 tests** under `tests/`; `pytest -q` runs in ~30 s.
+- **Pytest suite** under `tests/`; `pytest -q` runs in ~30 s.
 
 ## Changelog
 

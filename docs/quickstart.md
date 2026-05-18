@@ -61,6 +61,7 @@ ls projects/002-phoenix-25kw/output/
 | `calculation.json` | Machine-readable calc dump | ~15 KB |
 | `sheet-EE-1.dxf` / `.png` | Three-line diagram | ~135 KB / 75 KB |
 | `sheet-EE-2.dxf` / `.png` | Grounding & bonding | ~75 KB / 60 KB |
+| `sheet-EE-2.1.dxf` / `.png` | One-line diagram when line-side applies | ~105 KB / 65 KB |
 | `customer-summary.pdf` | Homeowner one-pager (if generated) | ~40 KB |
 | `system.qet` | QElectroTech single-line | ~30 KB |
 

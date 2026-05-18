@@ -1,17 +1,19 @@
 # Submit
 
-Submit phase emits the AHJ-bundle artifacts: 12-page permit PDF, two DXF
-schematics, NEC labels PDF, QET single-line. Four subcommands; pipeline
-shortcut bundles them.
+Submit phase emits the AHJ-bundle artifacts: permit PDF, two DXF schematics,
+NEC labels PDF, QET single-line, plus EE-4 trace helpers. Pipeline shortcut
+bundles the production artifacts.
 
-## `pvess permit` — 12-page AHJ submittal
+## `pvess permit` — AHJ submittal
 
 ```bash
 pvess permit projects/<id>/
 pvess permit --ahj phoenix_az projects/<id>/    # AHJ-specific subset
+pvess permit --profile tx_residential_pv projects/<id>/
 ```
 
-Generates `output/permit-package-<id>.pdf` — one PDF, 12 pages:
+Generates `output/permit-package-<id>.pdf`. The default `internal` package
+profile emits one PDF, 12 pages:
 
 | # | Code | Renderer | Notes |
 |---|---|---|---|
@@ -30,6 +32,108 @@ Generates `output/permit-package-<id>.pdf` — one PDF, 12 pages:
 Order + content of sheets is the single source of truth in
 `permit/sheet_registry.py`. The doctor's `cover_index_matches_pipeline`
 check guarantees cover SHEET INDEX matches the actual emitted pipeline.
+
+### Reference package profile
+
+Use `--profile tx_residential_pv` or `project.permit_profile:
+"tx_residential_pv"` when the target is a contractor / Wyssling-style
+residential plan set. `wyssling_like` is an alias for the same sheet set.
+
+Reference profile page order:
+
+| Code | Sheet |
+|---|---|
+| PV-1 | Cover Page |
+| PV-2 | Site Plan |
+| PV-3 | Property Plan |
+| PV-4 | Attachment Plan |
+| PV-5 | Mounting Details |
+| EE-1 | String Plan |
+| EE-2 | Three Line Diagram |
+| EE-2.1 | One Line Diagram, only for supply-side / service-intercept paths |
+| EE-3 | Electrical Notes |
+| EE-4 | Labels |
+| EE-5 | Placard |
+| PV-6 | Design Notes |
+| PV-7 | Site Photos |
+| SPEC | Specification Sheets |
+
+If `project.structural_letter_pdf` points at a signed engineering PDF, the
+builder prepends it before PV-1. If not, it prepends a clearly marked
+unsigned structural-review draft. PV-7 and SPEC also degrade to explicit
+placeholders when photos or manufacturer PDFs are not yet supplied, and
+`pvess doctor` reports those as WARN rather than FAIL.
+
+### EE-4 trace skeleton
+
+For complex roofs, generate a starter `site.ee4_trace` block before
+manual visual polish:
+
+```bash
+pvess ee4-trace projects/<id>/
+pvess ee4-trace --stdout projects/<id>/      # print instead of writing
+```
+
+Default output is `output/ee4-trace-skeleton.yaml`. Paste the
+`site.ee4_trace` block into `inputs.yaml`, then adjust vertices against
+the rendered EE-4 preview. `pvess doctor` emits a WARN if trace mode is
+enabled but the outline / roof-line / fire-pathway layers are incomplete.
+
+### EE-4 preview loop
+
+Render just EE-4 while tuning trace points:
+
+```bash
+pvess ee4-preview projects/<id>/
+pvess ee4-preview projects/<id>/ --no-png  # PDF only; no Poppler needed
+pvess ee4-preview projects/<id>/ --strict-lint
+```
+
+Default outputs:
+
+- `output/ee4-preview.pdf` — single-page EE-4 sheet
+- `output/ee4-preview.png` — page-1 raster preview via `pdftoppm`
+
+The command also prints the `ee4_trace_ready_for_review` status and visual
+lint before writing artifacts. The lint checks traced roof containment,
+module-rectangle overlaps, module/fire-pathway conflicts, equipment leader
+labels, optimizer callout placement, fire offset labels, and drawing scale.
+Use `--strict-lint` when you want WARN/FAIL to block a scripted review loop.
+
+### PV-4 attachment overlay
+
+When `site.ee4_trace` and per-module placements are available, PV-4 uses the
+same traced roof outline as EE-4 and overlays structural attachment data on a
+single roof plan: pale module rectangles, gray framing guides, red attachment
+points, and spacing callouts. Projects without trace geometry still use the
+legacy per-roof-section fallback.
+
+### PV-6 string layout overlay
+
+Stage 9.10 upgrades PV-6 when `site.ee4_trace` and per-module placements are
+available. The sheet switches from per-section thumbnails to a full traced
+roof plan with saturated module fills by string, small per-module string
+numbers, a left-side string legend, north arrow, top-right equipment
+summary, and automatic external `STRING N` leader callouts. Projects without
+traced geometry continue to use the legacy per-section string table fallback.
+
+`pvess doctor` runs `pv6_string_layout_visual_lint` for traced PV-6 sheets.
+It catches missing string assignments, missing leader callouts, bad rollups,
+and obvious label collisions before the package reaches manual review.
+
+### EE-4A property context
+
+Projects with traced roof geometry also emit `EE-4A · Property Context Plan`
+in the full permit package. EE-4 stays focused on the roof array and
+equipment callouts; EE-4A carries property-line, fence, driveway, and
+dimension context in the style of contractor site plans.
+
+Stage 9.9 makes this layer data-driven through `site.property_context`:
+`lot_outline`, `driveway_polygon`, `fence_lines`, and
+`property_dimensions` are drawn directly when present. If the block is
+empty, EE-4A keeps the Stage 9.8 generated context as a visual fallback.
+Use survey / GIS / satellite-reviewed coordinates in the same local feet
+frame as `site.ee4_trace`.
 
 ### AHJ profiles (`--ahj`)
 
@@ -61,7 +165,9 @@ Outputs:
 
 - `output/sheet-EE-1.dxf` — Three-line diagram, AutoCAD R2018 format
 - `output/sheet-EE-2.dxf` — Grounding & bonding
-- (with `--preview`) `sheet-EE-1.png` + `sheet-EE-2.png` — matplotlib
+- `output/sheet-EE-2.1.dxf` — One-line diagram, only when the project uses a
+  supply-side / service-intercept path
+- (with `--preview`) matching `sheet-EE-*.png` previews — matplotlib
   rasterizations for review w/o opening AutoCAD
 
 The DXF files are ACADE (AutoCAD Electrical)-friendly: every device is

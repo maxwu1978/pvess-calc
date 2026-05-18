@@ -40,7 +40,44 @@ project:
   drawn_by: ""
   revision: "A"
   initial_design_date: ""
+  permit_profile: "internal"          # internal | tx_residential_pv | wyssling_like
+  structural_letter_pdf: ""           # signed engineer PDF to prepend, if supplied
+
+  # Stage 9.13: PV-7 site-photo inputs. Missing paths render placeholders.
+  site_photos:
+    - kind: "front_elevation"         # front_elevation | roof | meter | main_panel | sub_panel | attic | equipment_location | other
+      path: "photos/front.jpg"        # project-relative or absolute
+      caption: "Front elevation"
+
+  # Stage 9.14: manufacturer PDFs appended in the SPEC section.
+  spec_sheets:
+    - equipment: "module"
+      path: "cut_sheets/01-module.pdf"
+      pages: []                       # 1-based subset; empty = all pages
+
+  # K.12 + Stage 9.12: plan-set / field-survey metadata.
+  roof_info:
+    stories: 1
+    type: ""
+    height_ft: 0.0
+    construction: ""
+    condition: "unknown"              # good | fair | poor | unknown
+    being_replaced: false
+    flashing: ""
+    framing: ""
+    attic_access: "unknown"           # accessible | inaccessible | unknown
+    decking_thickness_in: 0.0
+    roof_layers: 0                    # 0 = unknown
+  meter_info:
+    number: ""
+    location: ""
+    esid: ""                          # Texas/ERCOT service identifier
 ```
+
+`tx_residential_pv` and `wyssling_like` switch the permit package to the
+reference-style PV/EE sheet numbering. Missing structural/photo/spec files do
+not block rendering; the package emits draft/placeholder pages and doctor
+reports a WARN so the intake gap is visible before AHJ submission.
 
 ## `pv_array`
 
@@ -188,6 +225,34 @@ site:
   lot_depth_ft: 120.0
   house_width_ft: 50.0
   house_depth_ft: 35.0
+  house_outline_vertices: []          # optional site-ft polygon, CCW
+
+  # Stage 9.9: optional data-driven property context for EE-4A.
+  # Coordinates use the same local ft frame as `ee4_trace`; when omitted,
+  # EE-4A falls back to a generated property rectangle / driveway strip.
+  property_context:
+    lot_outline:
+      - [-7.0, 28.0]
+      - [106.0, 28.0]
+      - [106.0, 94.0]
+      - [-7.0, 94.0]
+    driveway_polygon:
+      - [91.0, 28.0]
+      - [106.0, 28.0]
+      - [106.0, 94.0]
+      - [91.0, 94.0]
+    fence_lines:
+      - label: "FENCE"
+        kind: "fence"                # fence | property | setback | utility | other
+        points: [[91.0, 94.0], [106.0, 94.0]]
+    property_dimensions:
+      - start: [-7.0, 94.0]
+        end: [106.0, 94.0]
+        offset_ft: 8.0               # blank label → renderer computes 113'
+      - label: "66'-0\""             # optional survey string override
+        start: [106.0, 28.0]
+        end: [106.0, 94.0]
+        offset_ft: -3.0
 
   # K.2.6c–K.2.8: per-roof-face geometry (overrides coarse fields)
   roof_sections:
@@ -216,6 +281,46 @@ site:
       obstructions_note: ""
       # K.2.7 polygon vertices (when shape="polygon"):
       vertices: []                   # list[(x, y)], CCW, simple polygon
+      # K.11: map roof-local coordinates into EE-4 site feet:
+      site_anchor_x_ft: 50.0
+      site_anchor_y_ft: 35.0
+      site_anchor_azimuth_deg: 180.0
+
+  # Stage 8: optional satellite/mask review alignment for EE-4 overlays.
+  # `raw` uses the Google Solar raster frame as-is; `fit_house_bbox`
+  # scales the underlay into the drawn house bbox; `manual` applies
+  # center / offset / scale / rotation values directly.
+  satellite_alignment:
+    mode: "raw"                      # raw | fit_house_bbox | manual
+    center_x_ft: null
+    center_y_ft: null
+    x_offset_ft: 0.0
+    y_offset_ft: 0.0
+    scale_x: 1.0
+    scale_y: 1.0
+    rotation_deg: 0.0
+    contour_simplify_ft: 2.0
+    contour_max_vertices: 32
+
+  # Stage 9: optional hand/vector-traced EE-4 layer. Generate a starting
+  # block with `pvess ee4-trace projects/<id>/`, paste it here, then tune
+  # points against the rendered EE-4 preview.
+  ee4_trace:
+    enabled: false
+    roof_outline:
+      name: "main roof outline"
+      vertices: [[0, 0], [80, 0], [80, 40], [0, 40]]
+    roof_facets: []
+    roof_lines:
+      - kind: "ridge"                # ridge | hip | valley | eave | edge | dormer
+        points: [[20, 20], [60, 20]]
+    fire_pathways:
+      - name: "18 in fire offset"
+        vertices: [[20, 10], [70, 10], [70, 16], [20, 16]]
+    symbols:
+      - kind: "plumbing"             # roof_vent | plumbing | ac | satellite | mast | chimney
+        x_ft: 42.0
+        y_ft: 22.0
 
   mounting:
     rail_system: "IronRidge XR100"
