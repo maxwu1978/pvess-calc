@@ -45,6 +45,7 @@ def test_pv_only_report_skips_ess_install_warning(repo_root: Path):
     assert "PV-only project" in md
     assert "install_location_specified" not in md
     assert "Raceway schedule（H.2）" in md
+    assert "区域规则 / Utility 提交（Phase I）" in md
     assert "| B | PV DC OUTPUT |" in md
 
 

@@ -1062,6 +1062,42 @@ def _check_export_tariff_matches_state(
                         f"tariff '{tariff}' (no state-level mandate detected)")]
 
 
+def _check_regional_requirements_consistent(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    name = "regional_requirements_consistent"
+    regional = getattr(calc_result, "regional", None)
+    if regional is None or not regional.checks:
+        return [CheckResult(name, "PASS", "no regional rule overlay")]
+
+    failures = [
+        f"{c.jurisdiction} {c.topic}: {c.detail}"
+        for c in regional.checks if c.status == "FAIL"
+    ]
+    manuals = [
+        f"{c.jurisdiction} {c.topic}: {c.detail}"
+        for c in regional.checks if c.status == "MANUAL"
+    ]
+    warnings = [
+        f"{c.jurisdiction} {c.topic}: {c.detail}"
+        for c in regional.checks if c.status == "WARN"
+    ]
+    if failures:
+        return [CheckResult(name, "FAIL", "; ".join(failures))]
+    if manuals or warnings:
+        return [CheckResult(
+            name,
+            "WARN",
+            f"{len(regional.checks)} regional check(s); review "
+            + "; ".join(manuals + warnings),
+        )]
+    return [CheckResult(
+        name,
+        "PASS",
+        f"{len(regional.checks)} regional check(s) passed",
+    )]
+
+
 _US_STATE_ABBREVS: frozenset[str] = frozenset({
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA",
     "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD",
@@ -2931,6 +2967,7 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
         calc_result, project_dir,
     ))
     results.extend(_check_export_tariff_matches_state(calc_result))
+    results.extend(_check_regional_requirements_consistent(calc_result))
     # K.4.6.6 — TX REP plan picker + smart-meter self-cons sanity
     results.extend(_check_tx_rep_plan_explicitly_chosen(calc_result))
     results.extend(_check_self_consumption_realistic_for_rep_plan(calc_result))

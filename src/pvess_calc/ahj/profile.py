@@ -7,11 +7,29 @@ in `ahj/profiles/*.yaml` and load via `get_ahj_profile(name)`.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 import yaml
 from pydantic import BaseModel, Field
 
 
 SheetCode = str
+
+
+class SpdPolicy(BaseModel):
+    """AHJ-specific surge-protection requirements.
+
+    Profiles may only make the base NEC result stricter. A profile cannot
+    relax NEC 230.67 when the selected NEC edition already requires service
+    SPD protection.
+    """
+
+    service_spd_required: bool | None = None
+    dc_spd_required: bool = False
+    ess_spd_required: bool = False
+    spd_type: Literal["Type 1", "Type 2", "Type 3"] | None = None
+    required_locations: list[str] = Field(default_factory=list)
+    recommended_locations: list[str] = Field(default_factory=list)
+    note: str = ""
 
 
 class AhjProfile(BaseModel):
@@ -26,6 +44,7 @@ class AhjProfile(BaseModel):
     label_set: list[str] = Field(default_factory=list)   # NEC clauses to include
     inspector_checklist: list[str] = Field(default_factory=list)
     form_blanks: list[str] = Field(default_factory=list)
+    spd_policy: SpdPolicy | None = None
     notes: str = ""
 
 

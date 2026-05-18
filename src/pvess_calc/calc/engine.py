@@ -40,6 +40,10 @@ class CalculationResult:
     adjacent: AdjacentResult            # Phase H: AFCI / SPD / ground / conduit
     ess_install: EssInstallCompliance   # K.2.6b: NEC 706.10 + IRC R328
     roof_layout: RoofLayoutResult       # K.2.6c: per-section usable area
+    # Phase I: state/AHJ-specific filing and regional-rule summary.
+    # Populated after the core result exists because regional checks consume
+    # the full CalculationResult.
+    regional: Any = None
     # K.9.1: per-face module placements. Maps roof_section name →
     # list[ModuleInstance]. Empty dict for legacy single-orientation
     # projects (no roof_sections defined) — PV-4 v2 falls back to the
@@ -88,6 +92,9 @@ class CalculationResult:
                 "all_fit": self.roof_layout.all_fit,
                 "sections": [asdict(s) for s in self.roof_layout.sections],
             },
+            "regional": (
+                asdict(self.regional) if self.regional is not None else None
+            ),
             "wire_routing": (
                 {
                     "routed": self.wire_routing.routed,
@@ -122,7 +129,7 @@ def _try_parse_lat(coordinates: str) -> Optional[float]:
         return None
 
 
-def run(inputs: Inputs) -> CalculationResult:
+def run(inputs: Inputs, *, ahj_profile: str | None = None) -> CalculationResult:
     # Stage B — auto-anchor any RoofSection without explicit
     # `site_anchor_x_ft`. Patches `inputs.site.roof_sections` in a
     # fresh copy; downstream code (wire_routing, EE-4 renderer, doctor)
@@ -252,6 +259,7 @@ def run(inputs: Inputs) -> CalculationResult:
         per_inverter_ground_size=grounding.egc_inverter_ac,
         ac_ground_size=grounding.egc_aggregate_ac,
         wire_routing=wire_routing,
+        ahj_profile=ahj_profile,
     )
 
     # K.2.6b: NEC 706.10 + IRC R328 ESS install-location compliance.
@@ -260,7 +268,7 @@ def run(inputs: Inputs) -> CalculationResult:
     # K.2.6c: per-roof-section usable area (setbacks + obstructions).
     roof_layout = compute_roof_layout(inputs)
 
-    return CalculationResult(
+    result = CalculationResult(
         inputs=inputs,
         pv_string=pv,
         pv_conductor=pv_conductor,
@@ -280,6 +288,10 @@ def run(inputs: Inputs) -> CalculationResult:
         module_placements=module_placements,
         wire_routing=wire_routing,
     )
+    from ..regional.summary import evaluate_regional_requirements
+
+    result.regional = evaluate_regional_requirements(result)
+    return result
 
 
 def _compute_module_placements(inputs: Inputs) -> dict[str, list]:

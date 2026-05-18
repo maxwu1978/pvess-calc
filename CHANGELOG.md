@@ -8,6 +8,29 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-18 — Phase I: regional-rule summary closure
+
+- Added a `regional` calculation-result surface that aggregates CA Title 24,
+  Hawaii Rule 14H, Texas/Oncor, and NYC DOB/FDNY ESS filing checks
+- Added NYC stationary ESS filing-readiness screening so NYC ESS projects
+  surface DOB/FDNY manual review instead of falling through generic IRC
+  assumptions
+- Rendered applicable regional checks in `report.md`
+- Added `regional_requirements_consistent` doctor coverage and tests for
+  Frisco regional PASS plus NYC ESS MANUAL review
+
+### 2026-05-18 — Phase H.4: AHJ-specific SPD policy overrides
+
+- Added optional AHJ profile `spd_policy` configuration for stricter service,
+  DC, and ESS surge-protection requirements
+- Added `project.ahj_profile` and wired `pvess permit --ahj` into Phase H
+  surge planning
+- Ensured AHJ SPD policy can only make base NEC results stricter, not relax
+  NEC 230.67 when the selected NEC edition already requires service SPD
+- Surfaced AHJ SPD overrides in EE-5 with a `285 / AHJ` checklist row
+- Added regression tests for strict AHJ SPD policy, profile loading, and
+  permit-builder propagation
+
 ### 2026-05-18 — Phase H.3: configurable raceway types
 
 - Added `routing.pv_raceway_type` and `routing.ac_raceway_type` with EMT

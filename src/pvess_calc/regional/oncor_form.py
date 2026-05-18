@@ -7,16 +7,18 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
-from ..calc.engine import CalculationResult
+if TYPE_CHECKING:
+    from ..calc.engine import CalculationResult
 
 
-def render_oncor_cover_letter(result: CalculationResult, out_path: Path) -> None:
+def render_oncor_cover_letter(result: "CalculationResult", out_path: Path) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     c = canvas.Canvas(str(out_path), pagesize=letter)
     W, H = letter

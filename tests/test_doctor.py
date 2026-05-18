@@ -28,6 +28,7 @@ from pvess_calc.doctor import (
     _check_label_set_codes,
     _check_no_fixed_width_truncation_markers,
     _check_pv5_text_no_overlap,
+    _check_regional_requirements_consistent,
     run_doctor,
 )
 from pvess_calc.permit.sheet_registry import SHEET_REGISTRY, codes
@@ -359,6 +360,31 @@ def test_export_tariff_matches_state_fails_hi_with_1to1():
     [r] = _check_export_tariff_matches_state(result)
     assert r.status == "FAIL"
     assert "hi_self_consumption" in r.detail
+
+
+def test_regional_requirements_guard_passes_on_frisco():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.schema import Inputs
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    [r] = _check_regional_requirements_consistent(result)
+    assert r.status == "PASS"
+    assert "regional check" in r.detail
+
+
+def test_regional_requirements_guard_warns_on_nyc_ess_manual_review():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.schema import Inputs
+
+    inputs = Inputs.from_yaml(PHOENIX / "inputs.yaml").model_copy(deep=True)
+    inputs.project.location = "New York, NY"
+    inputs.project.ahj = "NYC Dept of Buildings (DOB)"
+    inputs.battery.quantity = 1
+    inputs.battery.install_location = "garage"
+    result = run(inputs)
+    [r] = _check_regional_requirements_consistent(result)
+    assert r.status == "WARN"
+    assert "NYC DOB / FDNY" in r.detail
 
 
 def test_rsd_label_substitution_wired_passes_in_current_codebase():

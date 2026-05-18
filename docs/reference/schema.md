@@ -29,6 +29,7 @@ project:
   name: "Jones Residence"            # str, shown on cover
   location: "Phoenix, AZ"            # str, "City, ST" for lookup
   ahj: "City of Phoenix"             # str
+  ahj_profile: ""                    # optional slug in src/pvess_calc/ahj/profiles
   nec_edition: "2023"                # "2023" | "2020" | "2017"
 
   # Phase B (permit metadata) — all optional

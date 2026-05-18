@@ -112,9 +112,29 @@ class SurgeProtectionPlan:
     recommended_locations: list[str] = field(default_factory=list)
     service_spd_required: bool = True
     dc_spd_recommended: bool = True
+    dc_spd_required: bool = False
+    ess_spd_required: bool = False
+    ahj_profile: str = ""
+    ahj_override_applied: bool = False
 
 
-def plan_surge_protection(inputs: Inputs) -> SurgeProtectionPlan:
+def _dedupe_locations(locations: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for loc in locations:
+        key = loc.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(loc)
+    return out
+
+
+def plan_surge_protection(
+    inputs: Inputs,
+    *,
+    ahj_profile: str | None = None,
+) -> SurgeProtectionPlan:
     """Plan service and PV-system surge protection.
 
     NEC 230.67 appears in the 2020 cycle and requires Type 1 or Type 2 SPD
@@ -141,17 +161,54 @@ def plan_surge_protection(inputs: Inputs) -> SurgeProtectionPlan:
 
     if inputs.battery.quantity > 0:
         recommended.append("ESS AC disconnect")
-    locations = required + [loc for loc in recommended if loc not in required]
+    dc_required = False
+    ess_required = False
+    profile_slug = ahj_profile or inputs.project.ahj_profile
+    profile_note = ""
+    spd_type: Literal["Type 1", "Type 2", "Type 3"] = "Type 2"
+    override_applied = False
+    if profile_slug:
+        from ..ahj.profile import get_ahj_profile
+
+        profile = get_ahj_profile(profile_slug)
+        policy = profile.spd_policy
+        if policy is not None:
+            override_applied = True
+            if policy.spd_type is not None:
+                spd_type = policy.spd_type
+            if policy.service_spd_required is True and "Main Service Panel (MSP)" not in required:
+                required.append("Main Service Panel (MSP)")
+                service_required = True
+            if policy.dc_spd_required:
+                dc_required = True
+                required.append("PV DC side at inverter / combiner")
+            if policy.ess_spd_required and inputs.battery.quantity > 0:
+                ess_required = True
+                required.append("ESS AC disconnect")
+            required.extend(policy.required_locations)
+            recommended.extend(policy.recommended_locations)
+            if policy.note:
+                profile_note = f" AHJ {profile.name}: {policy.note}"
+
+    required = _dedupe_locations(required)
+    recommended = _dedupe_locations([
+        loc for loc in recommended if loc not in required
+    ])
+    locations = required + recommended
     return SurgeProtectionPlan(
         locations=locations,
-        spd_type="Type 2",
+        spd_type=spd_type,
         note=(
             basis + " Use UL 1449 listed devices; lightning-prone areas "
-            "should evaluate Type 1+2 combined protection."
+            "should evaluate Type 1+2 combined protection." + profile_note
         ),
         required_locations=required,
         recommended_locations=recommended,
         service_spd_required=service_required,
+        dc_spd_required=dc_required,
+        ess_spd_required=ess_required,
+        ahj_profile=profile_slug or "",
+        ahj_override_applied=override_applied,
     )
 
 
@@ -534,6 +591,7 @@ def compute_adjacent(
     per_inverter_ground_size: str | None = None,
     ac_ground_size: str = "6",
     wire_routing: WireRoutingResult | None = None,
+    ahj_profile: str | None = None,
 ) -> AdjacentResult:
     per_inv_cond = per_inverter_ac_conductor_size or ac_conductor_size
     per_inv_ground = per_inverter_ground_size or ac_ground_size
@@ -549,7 +607,7 @@ def compute_adjacent(
     )
     return AdjacentResult(
         dc_afci=check_dc_afci(inputs),
-        surge=plan_surge_protection(inputs),
+        surge=plan_surge_protection(inputs, ahj_profile=ahj_profile),
         ground_rods=check_ground_rods_from_inputs(inputs),
         pv_conduit=select_conduit(
             [pv_conductor_size] * pv_conductor_count + [pv_ground_size],

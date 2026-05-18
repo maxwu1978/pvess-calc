@@ -156,6 +156,7 @@ class ProjectMeta(BaseModel):
     name: str
     location: str
     ahj: str
+    ahj_profile: str = ""                  # optional slug in ahj/profiles/*.yaml
     nec_edition: Literal["2023", "2020", "2017"] = "2023"
 
     # Optional permit-drawing metadata (Phase B). Defaults keep older

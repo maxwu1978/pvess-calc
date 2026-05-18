@@ -234,6 +234,11 @@ def build_permit_package(
 ) -> int:
     """Build the full permit PDF. Returns the number of pages."""
     package_profile = package_profile or result.inputs.project.permit_profile
+    if ahj_name:
+        from ..calc.adjacent import plan_surge_protection
+        result.adjacent.surge = plan_surge_protection(
+            result.inputs, ahj_profile=ahj_name,
+        )
 
     with TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)

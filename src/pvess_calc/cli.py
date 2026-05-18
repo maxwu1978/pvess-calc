@@ -111,7 +111,7 @@ def permit_cmd(
     """Generate a complete permit submittal PDF (Phase F)."""
     from .permit.builder import build_permit_package
     inputs = _load(project_dir)
-    result = run(inputs)
+    result = run(inputs, ahj_profile=ahj)
     out = project_dir / "output" / f"permit-package-{inputs.project.id}.pdf"
     n_pages = build_permit_package(
         result, out, ahj_name=ahj, package_profile=package_profile,

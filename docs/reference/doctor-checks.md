@@ -55,6 +55,12 @@ broken state and asserts the check FAILs.
 |---|---|---|
 | `phase_h_adjacent_calcs_complete` | `_check_phase_h_adjacent_calcs_complete` | DC AFCI evidence, NEC 230.67 service SPD requirement, H.2 A/B/C/D raceway segments, H.3 configurable raceway Chapter 9 fill, and ground-rod field-proof status |
 
+## Phase I — regional rules
+
+| Check | Function | What it catches |
+|---|---|---|
+| `regional_requirements_consistent` | `_check_regional_requirements_consistent` | CA Title 24, HI Rule 14H, TX/Oncor, and NYC DOB/FDNY ESS regional overlays; FAIL for hard errors and WARN for manual filing review |
+
 ## K.2.6c–K.2.8 — roof layout
 
 | Check | Function | What it catches |

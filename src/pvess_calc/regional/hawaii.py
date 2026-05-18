@@ -12,8 +12,10 @@ MECO, and HELCO. Screening logic (simplified):
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ..calc.engine import CalculationResult
+if TYPE_CHECKING:
+    from ..calc.engine import CalculationResult
 
 
 @dataclass
@@ -25,7 +27,7 @@ class HawaiiRule14HResult:
     notes: list[str]
 
 
-def check_rule_14h(result: CalculationResult) -> HawaiiRule14HResult:
+def check_rule_14h(result: "CalculationResult") -> HawaiiRule14HResult:
     i = result.inputs
     n_inv = i.inverter.count(i.battery.quantity)
     ac_kw = i.inverter.ac_output_v * i.inverter.ac_output_a * n_inv / 1000.0

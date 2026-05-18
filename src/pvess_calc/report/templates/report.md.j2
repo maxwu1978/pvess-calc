@@ -153,7 +153,17 @@ PV-only project：未安装 ESS，NEC 706.10 / IRC R328 安装位置检查不适
 | {{ rw.tag }} | {{ rw.circuit }} | {% if rw.length_ft > 0 %}{{ "%.0f"|format(rw.length_ft) }} ft{% else %}—{% endif %} | {{ rw.wires }} · {{ rw.conductor_sizes|join(" / ") }} AWG | {{ rw.selected_raceway }} | {% if rw.fill %}{{ "%.1f"|format(rw.fill.fill_pct) }}% of 40%{% else %}N/A{% endif %} |
 {% endfor %}
 
-## 7. 简化项与待人工核查
+{% if regional and regional.checks -%}
+## 7. 区域规则 / Utility 提交（Phase I）
+
+| Jurisdiction | Topic | 状态 | 详情 |
+|--------------|-------|------|------|
+{% for c in regional.checks -%}
+| {{ c.jurisdiction }} | {{ c.topic }} | {% if c.status == "PASS" %}✓ PASS{% elif c.status == "FAIL" %}✗ FAIL{% elif c.status == "WARN" %}⚠ WARN{% elif c.status == "MANUAL" %}⚠ MANUAL{% else %}— N/A{% endif %} | {{ c.detail }} |
+{% endfor %}
+
+{% endif -%}
+## 8. 简化项与待人工核查
 
 本报告为内部方案评估，以下项**未自动计算**，需人工或下一阶段处理：
 

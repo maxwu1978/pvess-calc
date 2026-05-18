@@ -106,3 +106,60 @@ def test_california_profile_mentions_title24():
     blob = " ".join(profile.inspector_checklist) + " " + profile.notes
     assert "Title 24" in blob or "CalGreen" in blob
     assert "NEM 3.0" in profile.notes or "Title 24" in profile.notes
+
+
+def test_ahj_profile_loads_spd_policy(tmp_path: Path, monkeypatch):
+    from pvess_calc.ahj import profile as ahj_mod
+
+    fake_dir = tmp_path / "profiles"
+    fake_dir.mkdir()
+    (fake_dir / "strict_spd.yaml").write_text(
+        "name: Strict SPD AHJ\n"
+        "required_sheets: [cover, ee-5, labels]\n"
+        "spd_policy:\n"
+        "  service_spd_required: true\n"
+        "  dc_spd_required: true\n"
+        "  spd_type: Type 1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ahj_mod, "PROFILES_DIR", fake_dir)
+
+    profile = get_ahj_profile("strict_spd")
+    assert profile.spd_policy is not None
+    assert profile.spd_policy.service_spd_required is True
+    assert profile.spd_policy.dc_spd_required is True
+    assert profile.spd_policy.spd_type == "Type 1"
+
+
+def test_permit_builder_applies_ahj_spd_policy_to_existing_result(
+    tmp_path: Path, monkeypatch,
+):
+    from pvess_calc.ahj import profile as ahj_mod
+
+    fake_dir = tmp_path / "profiles"
+    fake_dir.mkdir()
+    (fake_dir / "strict_spd.yaml").write_text(
+        "name: Strict SPD AHJ\n"
+        "required_sheets: [cover, ee-5, labels]\n"
+        "spd_policy:\n"
+        "  service_spd_required: true\n"
+        "  required_locations:\n"
+        "    - Utility service equipment\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ahj_mod, "PROFILES_DIR", fake_dir)
+
+    inputs = make_inputs()
+    inputs.project.nec_edition = "2017"
+    result = run(inputs)
+    assert result.adjacent.surge.service_spd_required is False
+
+    out = tmp_path / "permit.pdf"
+    build_permit_package(result, out, ahj_name="strict_spd")
+
+    assert out.exists()
+    assert result.adjacent.surge.ahj_override_applied is True
+    assert result.adjacent.surge.service_spd_required is True
+    assert "Utility service equipment" in result.adjacent.surge.required_locations
+    checklist = build_checklist(result)
+    assert any(item.nec_clause == "285 / AHJ" for item in checklist)

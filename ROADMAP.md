@@ -795,7 +795,7 @@ Doctor 39 (unchanged — pure visual polish).
 
 ### Phase H — NEC 690.11 DC AFCI + SPD + Conduit fill
 
-Status: **H.1 + H.2 + H.3 complete / H.4 planned**.
+Status: **H.1 + H.2 + H.3 + H.4 complete**.
 
 #### H.1 — Adjacent protection calculation closure
 
@@ -888,14 +888,57 @@ Test plan:
 
 #### H.4 — Remaining adjacent detail work
 
-- AHJ-specific SPD policy overrides where local amendment is stricter than
-  base NEC.
+Development plan:
+- Extend AHJ profiles with optional `spd_policy` fields.
+- Allow profiles to make base NEC SPD results stricter without allowing
+  local profile data to relax a selected NEC edition's requirements.
+- Wire `project.ahj_profile` and `pvess permit --ahj` into Phase H surge
+  planning.
+- Surface AHJ SPD overrides in EE-5 via a separate `285 / AHJ` checklist
+  row.
+
+Closing standard:
+- A NEC 2017 project remains service-SPD recommended by default.
+- A project/profile that declares stricter service SPD policy turns the
+  same NEC 2017 project into service-SPD required.
+- Profile-required DC/ESS SPD locations are deduped into
+  `required_locations`.
+- Permit builder applies `--ahj` SPD policy even when passed an existing
+  CalculationResult created before the AHJ was known.
+
+Test plan:
+- Unit tests cover stricter AHJ SPD policy on NEC 2017.
+- AHJ profile tests cover `spd_policy` schema loading.
+- Permit-builder regression verifies `--ahj` mutates the result's surge
+  plan before rendering EE-5.
 
 ### Phase I — Real regional rules (already in CLAUDE.md)
-- CA Title 24 Part 6 2022 cycle (large-eave setback, ESS disclosure)
-- HI Rule 14H + CSS / Smart Export
-- TX Oncor SOP rebate workflow (auto-fill application from yaml)
-- NYC LL97 / FDNY indoor ESS corridor
+
+Status: **complete**.
+
+Development plan:
+- Keep existing regional modules for CA Title 24, Hawaii Rule 14H, and
+  Texas Oncor cover-letter generation.
+- Add a regional aggregator as the single result surface for JSON, report,
+  and doctor.
+- Add NYC DOB / FDNY stationary ESS filing-readiness screening for projects
+  with NYC location/AHJ metadata.
+
+Closing standard:
+- CA projects show Title 24 PV sizing and ESS-ready / NEM 3 awareness in
+  `regional.checks`.
+- HI projects show Rule 14H fast-track and smart-inverter/CSS review rows.
+- TX/Oncor projects show DG cover-letter availability and ESID readiness.
+- NYC ESS projects are never silently treated as generic IRC residential
+  installs; DOB/FDNY review rows appear as MANUAL.
+- `report.md` includes a Phase I regional table when checks apply.
+- Doctor fails only hard regional failures and warns for MANUAL regional
+  filing work.
+
+Test plan:
+- Phase I tests cover CA, HI, TX/Oncor, and NYC dispatch.
+- Doctor tests cover Frisco regional PASS and NYC ESS MANUAL warning.
+- E2E report test verifies the regional section renders for Frisco.
 
 ### K-future — UX surface (no estimate)
 - Web preview server (`pvess serve` → FastAPI + static front-end)

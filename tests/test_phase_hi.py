@@ -65,6 +65,41 @@ def test_spd_service_requirement_is_nec_2020_plus_only():
     assert not plan.required_locations
 
 
+def test_ahj_spd_policy_can_make_nec_2017_stricter(tmp_path, monkeypatch):
+    from pvess_calc.ahj import profile as ahj_mod
+
+    fake_dir = tmp_path / "profiles"
+    fake_dir.mkdir()
+    (fake_dir / "strict_spd.yaml").write_text(
+        "name: Strict SPD AHJ\n"
+        "required_sheets: [cover, ee-5, labels]\n"
+        "spd_policy:\n"
+        "  service_spd_required: true\n"
+        "  dc_spd_required: true\n"
+        "  spd_type: Type 1\n"
+        "  required_locations:\n"
+        "    - PV AC disconnect\n"
+        "  note: Local amendment requires service and PV-side SPD.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ahj_mod, "PROFILES_DIR", fake_dir)
+
+    inputs = make_inputs()
+    inputs.project.nec_edition = "2017"
+    inputs.project.ahj_profile = "strict_spd"
+    plan = plan_surge_protection(inputs)
+
+    assert plan.ahj_override_applied is True
+    assert plan.ahj_profile == "strict_spd"
+    assert plan.service_spd_required is True
+    assert plan.dc_spd_required is True
+    assert plan.spd_type == "Type 1"
+    assert "Main Service Panel (MSP)" in plan.required_locations
+    assert "PV DC side at inverter / combiner" in plan.required_locations
+    assert "PV AC disconnect" in plan.required_locations
+    assert "Local amendment" in plan.note
+
+
 def test_ground_rod_pass_with_two_rods_8ft():
     chk = check_ground_rods(n_rods=2, spacing_ft=8.0)
     assert chk.status == "PASS"
@@ -239,3 +274,48 @@ def test_oncor_cover_letter_renders_pdf(tmp_path: Path):
     render_oncor_cover_letter(result, out)
     assert out.exists()
     assert out.read_bytes()[:4] == b"%PDF"
+
+
+def test_phase_i_regional_summary_flags_california_title24():
+    inputs = make_inputs(modules=4, battery_qty=0)
+    inputs.project.location = "Los Angeles, CA"
+    inputs.pv_array.modules_per_string = 4
+    inputs.pv_array.strings = 1
+
+    result = run(inputs)
+    checks = {(c.jurisdiction, c.topic): c for c in result.regional.checks}
+
+    assert result.regional.state == "CA"
+    assert checks[("California", "Title 24 PV sizing")].status == "WARN"
+    assert checks[("California", "ESS-ready / NEM 3 awareness")].status == "PASS"
+
+
+def test_phase_i_regional_summary_flags_oncor_esid():
+    from pvess_calc.schema import MeterInfo
+
+    inputs = make_inputs(battery_qty=0)
+    inputs.project.location = "Frisco, TX"
+    inputs.project.utility = "Oncor Electric Delivery"
+    inputs.project.meter_info = MeterInfo(esid="10443720007628433")
+
+    result = run(inputs)
+    checks = {(c.jurisdiction, c.topic): c for c in result.regional.checks}
+
+    assert result.regional.state == "TX"
+    assert checks[("Texas / Oncor", "DG interconnection cover letter")].status == "PASS"
+    assert checks[("Texas / Oncor", "ESID field")].status == "PASS"
+
+
+def test_phase_i_regional_summary_flags_nyc_ess_manual_review():
+    inputs = make_inputs(battery_qty=1, per_unit=False)
+    inputs.project.location = "New York, NY"
+    inputs.project.ahj = "NYC Dept of Buildings (DOB)"
+    inputs.battery.install_location = "garage"
+
+    result = run(inputs)
+    checks = {(c.jurisdiction, c.topic): c for c in result.regional.checks}
+
+    assert result.regional.state == "NY"
+    assert result.regional.overall_status == "MANUAL"
+    assert checks[("NYC DOB / FDNY", "Stationary ESS filing path")].status == "MANUAL"
+    assert checks[("NYC DOB / FDNY", "Required ESS filings")].status == "MANUAL"

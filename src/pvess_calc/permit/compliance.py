@@ -73,6 +73,15 @@ def build_checklist(result: CalculationResult) -> list[ChecklistItem]:
         ) if result.adjacent.surge.service_spd_required
         else "NEC 2017: service SPD recommended, not mandated",
     ))
+    if result.adjacent.surge.ahj_override_applied:
+        items.append(ChecklistItem(
+            "285 / AHJ", "AHJ surge protection policy",
+            "PASS",
+            (
+                f"{result.adjacent.surge.spd_type}; required at "
+                + ", ".join(result.adjacent.surge.required_locations)
+            ),
+        ))
     items.append(ChecklistItem(
         "705.12", "Inverter interconnection method validation",
         "PASS" if result.interconnect.overall_status == "PASS" else "FAIL",

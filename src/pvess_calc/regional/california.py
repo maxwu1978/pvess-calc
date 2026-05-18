@@ -8,9 +8,10 @@ A4.106.8 requires battery-ready provisioning in some construction types.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from ..calc.engine import CalculationResult
+if TYPE_CHECKING:
+    from ..calc.engine import CalculationResult
 
 
 @dataclass
@@ -24,7 +25,7 @@ class CaliforniaTitle24Result:
 
 
 def check_title_24(
-    result: CalculationResult,
+    result: "CalculationResult",
     *,
     climate_zone: int = 10,           # default to LA basin
     annual_load_kwh: float = 6500,    # typical SFH
