@@ -2033,6 +2033,60 @@ def _check_auto_routed_lengths_sane(
     )]
 
 
+def _check_phase_h_adjacent_calcs_complete(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """Phase H — make sure adjacent NEC protections are not silent.
+
+    This check intentionally treats missing field evidence as WARN rather
+    than FAIL. Many early projects used generic inverters and still need a
+    datasheet review; the hard failures are reserved for impossible conduit
+    fill, explicit AFCI non-compliance, or a missing 230.67 service SPD
+    requirement in NEC 2020+ projects.
+    """
+    name = "phase_h_adjacent_calcs_complete"
+    adj = calc_result.adjacent
+
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    if adj.dc_afci.status == "FAIL":
+        failures.append(adj.dc_afci.note)
+    elif adj.dc_afci.status == "MANUAL":
+        warnings.append("DC AFCI listing not confirmed")
+
+    if adj.surge.service_spd_required and not adj.surge.required_locations:
+        failures.append("NEC 230.67 service SPD required but no required location set")
+
+    for label, fill in (
+        ("PV", adj.pv_conduit),
+        ("AC", adj.ac_conduit),
+    ):
+        if fill.fill_pct > 100:
+            failures.append(
+                f"{label} conduit fill {fill.fill_pct:.1f}% exceeds 40% limit"
+            )
+        if fill.selected_conduit.endswith("+"):
+            failures.append(f"{label} conduit exceeds built-in EMT table")
+
+    if adj.ground_rods.status == "MANUAL":
+        warnings.append("ground rod resistance/electrode topology needs field proof")
+
+    if failures:
+        return [CheckResult(name, "FAIL", "; ".join(failures))]
+    detail = (
+        f"AFCI={adj.dc_afci.status}, service SPD="
+        f"{'required' if adj.surge.service_spd_required else 'recommended'}, "
+        f"PV {adj.pv_conduit.selected_conduit} "
+        f"({adj.pv_conduit.fill_pct:.1f}%), "
+        f"AC {adj.ac_conduit.selected_conduit} "
+        f"({adj.ac_conduit.fill_pct:.1f}%)"
+    )
+    if warnings:
+        return [CheckResult(name, "WARN", detail + "; " + "; ".join(warnings))]
+    return [CheckResult(name, "PASS", detail)]
+
+
 def _check_ee4_focuses_on_site_geometry(
     calc_result: CalculationResult,
 ) -> list[CheckResult]:
@@ -2818,6 +2872,7 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
     results.extend(_check_pv4_module_count_matches_yaml(calc_result))
     results.extend(_check_string_balance_within_target(calc_result))
     results.extend(_check_auto_routed_lengths_sane(calc_result))
+    results.extend(_check_phase_h_adjacent_calcs_complete(calc_result))
     # K.13 / Stage D — EE-4 abstract-grid regression guard
     results.extend(_check_ee4_focuses_on_site_geometry(calc_result))
     # Stage 9.2 — hand/vector trace block completeness hint

@@ -793,12 +793,49 @@ All 4 P-level fixes landed:
 +13 tests in `tests/test_ee4_k131_polish.py`. Tests 622 → 635.
 Doctor 39 (unchanged — pure visual polish).
 
-### Phase H — NEC 690.11 DC AFCI + SPD + Conduit fill (already in CLAUDE.md)
-- DC arc-fault detector inclusion at inverter
-- 230.67 SPD requirement (CA / FL effective 2020+)
-- Chapter 9 Table 1 conduit fill (40 % multi-conductor)
-- Annex C conduit diameter lookup
-- Connects to K.11 trunk routing
+### Phase H — NEC 690.11 DC AFCI + SPD + Conduit fill
+
+Status: **H.1 complete / H.2 planned**.
+
+#### H.1 — Adjacent protection calculation closure
+
+Development plan:
+- Make DC AFCI evidence data-driven from selected inverter metadata or
+  datasheet-backed model matching.
+- Split SPD output into 230.67 required service SPD (NEC 2020+) vs
+  PV/ESS-side recommended SPD locations.
+- Turn EMT fill into an auditable Chapter 9 result with conductor area,
+  selected raceway, headroom, and percentage of the 40% fill allowance.
+- Surface the result in `report.md`, EE-5 compliance checklist, and doctor.
+
+Closing standard:
+- Selected Frisco Growatt package reports AFCI PASS from the selected
+  datasheet/listing evidence.
+- NEC 2017 projects do not falsely mark service SPD as required; NEC 2020+
+  residential projects do.
+- Unknown conductor sizes fail loudly instead of silently counting as zero
+  area.
+- Doctor fails only for hard structural problems (explicit AFCI fail,
+  missing required SPD location, overfilled/unsupported conduit) and warns
+  for field-proof items such as unconfirmed AFCI or ground-rod resistance.
+
+Test plan:
+- Unit tests cover known AFCI model recognition, unknown inverter manual
+  state, NEC 2017 vs 2020+ SPD behavior, conduit step-up, fill percentage,
+  and invalid conductor sizes.
+- Doctor tests cover Frisco PASS, generic-inverter WARN, and overfilled
+  conduit FAIL.
+- E2E verification: `pytest -q`, `pvess-doctor projects/003-frisco-glasshouse`,
+  and `pvess calc projects/003-frisco-glasshouse` to confirm report output.
+
+#### H.2 — Remaining adjacent detail work
+
+- Annex C / raceway-type selection beyond EMT (`PVC`, `RMC`, flexible metal)
+  when the project declares installation environment.
+- Conduit-fill grouping from K.11 route segments instead of the current
+  PV/AC aggregate assumption.
+- AHJ-specific SPD policy overrides where local amendment is stricter than
+  base NEC.
 
 ### Phase I — Real regional rules (already in CLAUDE.md)
 - CA Title 24 Part 6 2022 cycle (large-eave setback, ESS disclosure)

@@ -1069,6 +1069,11 @@ class Inverter(BaseModel):
     per_unit: bool = False   # legacy: if true, count = battery.quantity
                              #   (used by integrated inverter-battery systems
                              #    like Tesla Powerwall 3)
+    # Phase H: NEC 690.11 DC arc-fault capability. Device registry entries
+    # can set this directly; inline project YAML may leave it as unknown and
+    # let calc/adjacent.py match known datasheet-backed models.
+    dc_afci: Literal["integrated", "external_required", "unknown"] = "unknown"
+    ul1699b_listed: bool = False
 
     def count(self, battery_quantity: int) -> int:
         """Effective number of inverters. `per_unit=True` forces count to

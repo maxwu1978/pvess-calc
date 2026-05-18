@@ -8,6 +8,21 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-18 — Phase H.1: adjacent protection closure
+
+- Added datasheet-backed DC AFCI recognition for the selected Growatt
+  MIN 11400TL-XH-US path, plus Hoymiles/Megarevo candidate recognition for
+  future scenario swaps
+- Extended inverter metadata with `dc_afci` and `ul1699b_listed` so device
+  refs can carry NEC 690.11 evidence without hard-coded project logic
+- Split SPD planning into NEC 230.67 required service SPD for 2020+ dwelling
+  services and recommended PV/ESS-side SPD locations
+- Added conduit-fill percentage and unknown-conductor validation to the
+  Chapter 9 EMT fill selector
+- Surfaced Phase H outputs in `report.md` and EE-5 compliance checklist
+- Added `phase_h_adjacent_calcs_complete` doctor guard for AFCI evidence,
+  required SPD location, ground-rod field proof, and overfilled conduit
+
 ### 2026-05-18 — Stage 5.1: reference data readiness simulation
 
 - Added `reference_profile_data_readiness` doctor output to separate

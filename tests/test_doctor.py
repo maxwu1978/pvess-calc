@@ -147,6 +147,43 @@ def test_calc_engine_check_handles_none():
     assert "None" in r.detail
 
 
+# ─── Phase H adjacent NEC protections ─────────────────────────────────────
+
+
+def test_phase_h_adjacent_guard_passes_on_frisco():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.doctor import _check_phase_h_adjacent_calcs_complete
+    from pvess_calc.schema import Inputs
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    [r] = _check_phase_h_adjacent_calcs_complete(result)
+    assert r.status == "PASS", r.detail
+    assert "AFCI=PASS" in r.detail
+
+
+def test_phase_h_adjacent_guard_warns_on_unconfirmed_afci():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.doctor import _check_phase_h_adjacent_calcs_complete
+    from pvess_calc.schema import Inputs
+
+    result = run(Inputs.from_yaml(PHOENIX / "inputs.yaml"))
+    [r] = _check_phase_h_adjacent_calcs_complete(result)
+    assert r.status == "WARN"
+    assert "DC AFCI listing not confirmed" in r.detail
+
+
+def test_phase_h_adjacent_guard_fails_on_overfilled_conduit():
+    from pvess_calc.calc.engine import run
+    from pvess_calc.doctor import _check_phase_h_adjacent_calcs_complete
+    from pvess_calc.schema import Inputs
+
+    result = run(Inputs.from_yaml(FRISCO / "inputs.yaml"))
+    result.adjacent.pv_conduit.fill_pct = 101.0
+    [r] = _check_phase_h_adjacent_calcs_complete(result)
+    assert r.status == "FAIL"
+    assert "PV conduit fill" in r.detail
+
+
 # ─── K.2.5 subpanel_slots_sufficient ──────────────────────────────────────
 
 

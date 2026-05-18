@@ -19,6 +19,8 @@ INVERTERS: dict[str, dict] = {
         model="12K-2P-N",
         ac_output_v=240.0,
         ac_output_a=50.0,            # 12 kW / 240 V = 50 A continuous
+        dc_afci="integrated",
+        ul1699b_listed=True,
     ),
     # ─── Megarevo hybrid series (Chinese OEM, DFW installer staple) ───
     "megarevo_r8klna": dict(
@@ -26,6 +28,8 @@ INVERTERS: dict[str, dict] = {
         model="R8KLNA",
         ac_output_v=240.0,
         ac_output_a=33.3,            # 8 kW / 240 V
+        dc_afci="integrated",
+        ul1699b_listed=True,
     ),
     "megarevo_r11klna": dict(
         brand="Megarevo",
@@ -39,6 +43,8 @@ INVERTERS: dict[str, dict] = {
         model="MIN 11400TL-XH-US",
         ac_output_v=240.0,
         ac_output_a=48.0,            # datasheet max output current @ 240 V
+        dc_afci="integrated",
+        ul1699b_listed=True,
     ),
     # Back-compat alias kept for earlier K.4.6 configs.
     "growatt_min11000tl_x": dict(
@@ -53,6 +59,8 @@ INVERTERS: dict[str, dict] = {
         model="HYS-11.5LV-USG1",
         ac_output_v=240.0,
         ac_output_a=48.0,
+        dc_afci="integrated",
+        ul1699b_listed=True,
     ),
     # Back-compat alias kept for earlier K.4.6 configs.
     "hoymiles_hys_lv_11k": dict(
@@ -67,12 +75,16 @@ INVERTERS: dict[str, dict] = {
         ac_output_v=240.0,
         ac_output_a=48.0,            # 11.5 kW continuous backup
         per_unit=True,               # integrated inverter, 1 per battery
+        dc_afci="integrated",
+        ul1699b_listed=True,
     ),
     "enphase_iq8m": dict(
         brand="Enphase",
         model="IQ8M-72-2-US",
         ac_output_v=240.0,
         ac_output_a=1.36,            # microinverter — typically many per project
+        dc_afci="integrated",
+        ul1699b_listed=True,
     ),
     "generic_8k_hybrid": dict(
         brand="Generic",

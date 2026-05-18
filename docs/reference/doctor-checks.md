@@ -49,6 +49,12 @@ broken state and asserts the check FAILs.
 |---|---|---|
 | `grounding_electrode_system_compliant` | `_check_grounding_electrode_system_compliant` | NEC 250.66 GEC sizing + 250.50 electrode count + 250.24 main bonding jumper |
 
+## Phase H — adjacent protections
+
+| Check | Function | What it catches |
+|---|---|---|
+| `phase_h_adjacent_calcs_complete` | `_check_phase_h_adjacent_calcs_complete` | DC AFCI evidence, NEC 230.67 service SPD requirement, Chapter 9 raceway fill, and ground-rod field-proof status |
+
 ## K.2.6c–K.2.8 — roof layout
 
 | Check | Function | What it catches |

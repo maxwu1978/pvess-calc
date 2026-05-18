@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 
 from pvess_calc.calc.adjacent import (
-    check_dc_afci, check_ground_rods, plan_surge_protection, select_conduit,
+    check_dc_afci, check_ground_rods, check_ground_rods_from_inputs,
+    plan_surge_protection, select_conduit,
 )
 from pvess_calc.calc.engine import run
 from pvess_calc.nec import get_rules
@@ -27,6 +28,16 @@ def test_dc_afci_pass_for_known_smart_inverter():
     assert chk.inverter_has_integrated_afci is True
 
 
+def test_dc_afci_pass_for_selected_growatt_datasheet_model():
+    inputs = make_inputs()
+    inputs.inverter.brand = "Growatt"
+    inputs.inverter.model = "MIN 11400TL-XH-US"
+    chk = check_dc_afci(inputs)
+    assert chk.status == "PASS"
+    assert chk.inverter_has_integrated_afci is True
+    assert "UL 1699B" in chk.evidence
+
+
 def test_dc_afci_manual_for_unknown_inverter():
     inputs = make_inputs()
     inputs.inverter.brand = "Obscure"
@@ -41,13 +52,35 @@ def test_spd_plan_covers_all_locations():
     plan = plan_surge_protection(inputs)
     assert "Main Service Panel" in " ".join(plan.locations) or \
            "MSP" in " ".join(plan.locations)
-    assert "PV combiner" in " ".join(plan.locations)
+    assert "PV DC side" in " ".join(plan.locations)
     assert plan.spd_type == "Type 2"
+    assert plan.service_spd_required is True
+
+
+def test_spd_service_requirement_is_nec_2020_plus_only():
+    inputs = make_inputs()
+    inputs.project.nec_edition = "2017"
+    plan = plan_surge_protection(inputs)
+    assert plan.service_spd_required is False
+    assert not plan.required_locations
 
 
 def test_ground_rod_pass_with_two_rods_8ft():
     chk = check_ground_rods(n_rods=2, spacing_ft=8.0)
     assert chk.status == "PASS"
+
+
+def test_ground_rod_spacing_uses_project_survey_text():
+    from pvess_calc.schema import GroundRod
+
+    inputs = make_inputs()
+    inputs.service.grounding_electrode_system.rods = [
+        GroundRod(location="SE corner"),
+        GroundRod(location="6 ft NW of rod #1"),
+    ]
+    chk = check_ground_rods_from_inputs(inputs)
+    assert chk.status == "PASS"
+    assert chk.spacing_ft == 6.0
 
 
 def test_ground_rod_manual_for_single_rod():
@@ -61,6 +94,7 @@ def test_conduit_fill_small_dc_circuit_fits_minimum_emt():
     result = select_conduit(["10", "10", "10"])
     assert result.selected_conduit == '1/2"'
     assert result.headroom_in2 > 0
+    assert 0 < result.fill_pct < 100
 
 
 def test_conduit_fill_step_up_when_many_conductors():
@@ -75,6 +109,11 @@ def test_conduit_fill_picks_larger_for_4_aug_conductors():
     assert result.selected_conduit in ('1-1/2"', '2"')
 
 
+def test_conduit_fill_rejects_unknown_conductor_size():
+    with pytest.raises(ValueError, match="Unknown THWN-2 conductor"):
+        select_conduit(["10", "bogus"])
+
+
 def test_engine_populates_adjacent_field():
     """End-to-end: run() includes the adjacent block."""
     result = run(make_inputs())
@@ -82,6 +121,7 @@ def test_engine_populates_adjacent_field():
     assert result.adjacent.pv_conduit.selected_conduit
     assert result.adjacent.ac_conduit.selected_conduit
     assert result.adjacent.surge.spd_type == "Type 2"
+    assert result.adjacent.pv_conduit.fill_pct > 0
 
 
 # --- Phase I: NEC 2017 / California / Hawaii / Oncor ----------------------

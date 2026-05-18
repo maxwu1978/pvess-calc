@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Literal
 
 from ..schema import Inputs
@@ -21,31 +22,75 @@ class DcAfciCheck:
     inverter_model: str
     status: Literal["PASS", "FAIL", "MANUAL"]
     note: str
+    evidence: str = ""
 
 
-# Inverter models known to include integrated DC AFCI per UL 1699B.
-INVERTERS_WITH_DC_AFCI: set[str] = {
-    "sol_ark_12k",
-    "tesla_powerwall_3",
-    "enphase_iq8m",       # microinverters — module-level, no DC string
-    "megarevo_r8klna",
+# Inverter models locally verified against the project device registry or
+# downloaded candidate datasheets. Keys are normalized brand+model fragments.
+INVERTER_DC_AFCI_EVIDENCE: dict[str, str] = {
+    "solark12k2pn": "Device registry marks Sol-Ark 12K as UL 1699B AFCI listed.",
+    "teslapowerwall3": "Device registry marks Powerwall 3 as integrated AFCI listed.",
+    "enphaseiq8m722us": "Microinverter architecture; no long DC string homerun.",
+    "megarevor8klna": "Candidate datasheet lists DC arc-fault / UL 1699B.",
+    "growattmin11400tlxhus": "Selected datasheet lists AFCI protection and UL 1699B.",
+    "hoymileshys115lvusg1": "Candidate datasheet lists integrated arc-fault protection and UL 1699B.",
 }
+
+
+def _norm_model(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", text.lower())
 
 
 def check_dc_afci(inputs: Inputs) -> DcAfciCheck:
     inv = inputs.inverter
-    model_id = f"{inv.brand}_{inv.model}".lower().replace(" ", "_").replace("-", "_")
-    has_afci = any(known in model_id for known in INVERTERS_WITH_DC_AFCI)
-    if has_afci:
+    model = f"{inv.brand} {inv.model}"
+    declared = getattr(inv, "dc_afci", "unknown")
+    if declared == "integrated":
         return DcAfciCheck(
             inverter_has_integrated_afci=True,
-            inverter_model=f"{inv.brand} {inv.model}",
+            inverter_model=model,
             status="PASS",
-            note="Inverter datasheet lists UL 1699B integrated DC AFCI.",
+            note="Inverter is marked as integrated DC AFCI capable.",
+            evidence=(
+                "Device registry / inputs.yaml sets dc_afci=integrated"
+                + (" and ul1699b_listed=true." if inv.ul1699b_listed else ".")
+            ),
         )
+    if declared == "external_required":
+        return DcAfciCheck(
+            inverter_has_integrated_afci=False,
+            inverter_model=model,
+            status="FAIL",
+            note=(
+                "This inverter is marked external_required; specify a listed "
+                "DC AFCI device before permit submission."
+            ),
+            evidence="inputs.yaml/device registry sets dc_afci=external_required.",
+        )
+
+    normalized = _norm_model(model)
+    for fragment, evidence in INVERTER_DC_AFCI_EVIDENCE.items():
+        if fragment in normalized:
+            return DcAfciCheck(
+                inverter_has_integrated_afci=True,
+                inverter_model=model,
+                status="PASS",
+                note="Inverter datasheet/listing indicates integrated DC AFCI.",
+                evidence=evidence,
+            )
+
+    if inv.ul1699b_listed:
+        return DcAfciCheck(
+            inverter_has_integrated_afci=True,
+            inverter_model=model,
+            status="PASS",
+            note="Inverter is marked UL 1699B listed for DC AFCI.",
+            evidence="inputs.yaml/device registry sets ul1699b_listed=true.",
+        )
+
     return DcAfciCheck(
         inverter_has_integrated_afci=False,
-        inverter_model=f"{inv.brand} {inv.model}",
+        inverter_model=model,
         status="MANUAL",
         note=(
             "DC AFCI not confirmed for this inverter — verify against the "
@@ -62,22 +107,50 @@ class SurgeProtectionPlan:
     locations: list[str]              # where SPDs must be installed
     spd_type: Literal["Type 1", "Type 2", "Type 3"]
     note: str
+    required_locations: list[str] = field(default_factory=list)
+    recommended_locations: list[str] = field(default_factory=list)
+    service_spd_required: bool = True
+    dc_spd_recommended: bool = True
 
 
 def plan_surge_protection(inputs: Inputs) -> SurgeProtectionPlan:
-    """Per NEC 230.67 (effective 2020+) residential services require Type 1
-    or Type 2 SPD at the service. PV+ESS typically adds DC-side SPD at the
-    array combiner (NEC 690.4(F) + UL 1449)."""
-    locations = ["Main Service Panel (MSP)", "PV combiner (DC side)"]
+    """Plan service and PV-system surge protection.
+
+    NEC 230.67 appears in the 2020 cycle and requires Type 1 or Type 2 SPD
+    for dwelling-unit services. DC-side PV SPD is treated as a design
+    recommendation unless the equipment instructions/AHJ make it mandatory.
+    """
+    edition = int(inputs.project.nec_edition)
+    required: list[str] = []
+    recommended = ["PV DC side at inverter / combiner"]
+
+    service_required = edition >= 2020
+    if service_required:
+        required.append("Main Service Panel (MSP)")
+        basis = (
+            f"NEC {edition} 230.67 requires a Type 1 or Type 2 SPD at "
+            "dwelling-unit services."
+        )
+    else:
+        recommended.insert(0, "Main Service Panel (MSP)")
+        basis = (
+            "NEC 2017 has no 230.67 dwelling-service SPD mandate; service "
+            "SPD remains recommended or AHJ/manufacturer driven."
+        )
+
     if inputs.battery.quantity > 0:
-        locations.append("ESS AC disconnect")
+        recommended.append("ESS AC disconnect")
+    locations = required + [loc for loc in recommended if loc not in required]
     return SurgeProtectionPlan(
         locations=locations,
         spd_type="Type 2",
         note=(
-            "Install Type 2 SPDs at each location. Coastal / lightning-prone "
-            "areas should upgrade to Type 1+2 combined."
+            basis + " Use UL 1449 listed devices; lightning-prone areas "
+            "should evaluate Type 1+2 combined protection."
         ),
+        required_locations=required,
+        recommended_locations=recommended,
+        service_spd_required=service_required,
     )
 
 
@@ -110,6 +183,43 @@ def check_ground_rods(n_rods: int = 1, spacing_ft: float = 8.0) -> GroundRodChec
             "NEC 250.53(A)(2). If >25 Ω, add a second rod at ≥6 ft spacing."
         ),
     )
+
+
+def _infer_rod_spacing_ft(inputs: Inputs) -> float:
+    """Best-effort spacing from survey text.
+
+    The current schema records rod locations as free text. Common survey
+    wording is "6 ft NW of rod #1"; parse that when present so reports don't
+    claim the default spacing when the site data says otherwise.
+    """
+    rods = inputs.service.grounding_electrode_system.rods
+    for rod in rods[1:]:
+        match = re.search(r"(\d+(?:\.\d+)?)\s*ft\b", rod.location.lower())
+        if match:
+            return float(match.group(1))
+    return 6.0 if len(rods) >= 2 else 0.0
+
+
+def check_ground_rods_from_inputs(inputs: Inputs) -> GroundRodCheck:
+    ges = inputs.service.grounding_electrode_system
+    n_rods = len(ges.rods)
+    if n_rods >= 2:
+        return check_ground_rods(
+            n_rods=n_rods,
+            spacing_ft=_infer_rod_spacing_ft(inputs),
+        )
+    if ges.electrode_count >= 2:
+        return GroundRodCheck(
+            n_rods=n_rods,
+            spacing_ft=0.0,
+            status="PASS",
+            note=(
+                f"Grounding electrode system has {ges.electrode_count} "
+                "qualifying electrodes; no single-rod resistance test "
+                "is required."
+            ),
+        )
+    return check_ground_rods(n_rods=n_rods, spacing_ft=0.0)
 
 
 # --- Chapter 9 Table 4/5 Conduit Fill --------------------------------------
@@ -152,12 +262,20 @@ class ConduitFillResult:
     selected_conduit: str
     fill_capacity_in2: float
     headroom_in2: float
+    fill_pct: float
 
 
 def select_conduit(conductor_sizes: list[str]) -> ConduitFillResult:
     """Pick the smallest EMT that can hold the given THWN-2 conductors at
     NEC's 40% fill limit (Chapter 9 Table 1)."""
-    total = sum(THWN2_AREA_IN2.get(s, 0) for s in conductor_sizes)
+    unknown = [s for s in conductor_sizes if s not in THWN2_AREA_IN2]
+    if unknown:
+        raise ValueError(
+            "Unknown THWN-2 conductor size(s) for conduit fill: "
+            + ", ".join(sorted(set(unknown)))
+        )
+
+    total = sum(THWN2_AREA_IN2[s] for s in conductor_sizes)
     for size, capacity in EMT_FILL_40PCT_IN2:
         if capacity >= total:
             return ConduitFillResult(
@@ -165,12 +283,14 @@ def select_conduit(conductor_sizes: list[str]) -> ConduitFillResult:
                 selected_conduit=size,
                 fill_capacity_in2=capacity,
                 headroom_in2=capacity - total,
+                fill_pct=total / capacity * 100,
             )
     return ConduitFillResult(
         total_conductor_area_in2=total,
         selected_conduit=EMT_FILL_40PCT_IN2[-1][0] + "+",
         fill_capacity_in2=EMT_FILL_40PCT_IN2[-1][1],
         headroom_in2=EMT_FILL_40PCT_IN2[-1][1] - total,
+        fill_pct=total / EMT_FILL_40PCT_IN2[-1][1] * 100,
     )
 
 
@@ -198,7 +318,7 @@ def compute_adjacent(
     return AdjacentResult(
         dc_afci=check_dc_afci(inputs),
         surge=plan_surge_protection(inputs),
-        ground_rods=check_ground_rods(n_rods=2, spacing_ft=8.0),
+        ground_rods=check_ground_rods_from_inputs(inputs),
         pv_conduit=select_conduit(
             [pv_conductor_size] * pv_conductor_count + [pv_ground_size]
         ),

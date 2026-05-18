@@ -59,6 +59,21 @@ def build_checklist(result: CalculationResult) -> list[ChecklistItem]:
         "RSD device specified — install per manufacturer",
     ))
     items.append(ChecklistItem(
+        "690.11", "DC arc-fault protection",
+        result.adjacent.dc_afci.status,
+        f"{result.adjacent.dc_afci.inverter_model}: "
+        f"{result.adjacent.dc_afci.note}",
+    ))
+    items.append(ChecklistItem(
+        "230.67", "Dwelling service surge protection",
+        "PASS" if result.adjacent.surge.service_spd_required else "N/A",
+        (
+            f"{result.adjacent.surge.spd_type} at "
+            + ", ".join(result.adjacent.surge.required_locations)
+        ) if result.adjacent.surge.service_spd_required
+        else "NEC 2017: service SPD recommended, not mandated",
+    ))
+    items.append(ChecklistItem(
         "705.12", "Inverter interconnection method validation",
         "PASS" if result.interconnect.overall_status == "PASS" else "FAIL",
         f"Recommended: {result.interconnect.recommended or 'NONE'}",
@@ -86,6 +101,11 @@ def build_checklist(result: CalculationResult) -> list[ChecklistItem]:
         f"AC trunk EGC #{result.grounding.egc_aggregate_ac}",
     ))
     items.append(ChecklistItem(
+        "250.53(A)(2)", "Ground rod resistance / second electrode",
+        result.adjacent.ground_rods.status,
+        result.adjacent.ground_rods.note,
+    ))
+    items.append(ChecklistItem(
         "110.24", "Available fault current vs OCPD AIC rating",
         "PASS" if result.aic.overall_status == "PASS" else "FAIL",
         f"AFC {result.aic.available_fault_current_ka:.2f} kA vs "
@@ -101,6 +121,17 @@ def build_checklist(result: CalculationResult) -> list[ChecklistItem]:
         "310.15(B)", "Temperature / conduit-fill derating applied",
         "PASS" if result.pv_derating_factor < 1.0 else "MANUAL",
         f"PV × {result.pv_derating_factor:.3f}, AC × {result.ac_derating_factor:.3f}",
+    ))
+    items.append(ChecklistItem(
+        "Ch.9 Tbl.1", "Raceway fill within 40% limit",
+        "PASS" if (
+            result.adjacent.pv_conduit.fill_pct <= 100
+            and result.adjacent.ac_conduit.fill_pct <= 100
+        ) else "FAIL",
+        f"PV {result.adjacent.pv_conduit.selected_conduit} "
+        f"({result.adjacent.pv_conduit.fill_pct:.1f}%), "
+        f"AC {result.adjacent.ac_conduit.selected_conduit} "
+        f"({result.adjacent.ac_conduit.fill_pct:.1f}%)",
     ))
     items.append(ChecklistItem(
         "690.13(B)", "PV DC disconnect labeled per requirements",

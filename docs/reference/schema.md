@@ -191,6 +191,8 @@ inverter:
   ac_output_a: 33
   quantity: 3                        # parallel inverters
   per_unit: false                    # true → count = battery.quantity (PW3-style)
+  dc_afci: "unknown"                 # integrated | external_required | unknown
+  ul1699b_listed: false              # Phase H: NEC 690.11 evidence flag
 
   ref: "megarevo_r8klna"             # K.4 device-library ref
 ```
