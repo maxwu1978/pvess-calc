@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ACCOUNT_ID="${CF_ACCOUNT_ID:-343e382e126eecf807cc94b006d8466a}"
+ZONE_ID="${CF_ZONE_ID:-5a32aaf002f59c88fcbdb46be9cb98a0}"
+APP_SCOPE="${CF_ACCESS_APP_SCOPE:-zone}"
 HOSTNAME="${CF_ACCESS_HOSTNAME:-tge.reelamate.com}"
 APP_NAME="${CF_ACCESS_APP_NAME:-TGE Solar Project Generator}"
 TOKEN_FILE="${CF_API_TOKEN_FILE:-$HOME/.pvess/secrets/cloudflare-token}"
@@ -71,7 +73,7 @@ PY
 }
 
 verify_access_permissions() {
-  if ! api GET "/accounts/$ACCOUNT_ID/access/apps" >/dev/null; then
+  if ! api GET "$APP_BASE" >/dev/null; then
     cat >&2 <<EOF
 
 The token can be read, but it cannot manage Cloudflare Access.
@@ -80,6 +82,15 @@ Required Cloudflare token permissions:
   - Access: Service Tokens Write/Edit
 
 Scope it to account: $ACCOUNT_ID
+For this deployment, the Access application endpoint is: $APP_BASE
+EOF
+    exit 3
+  fi
+  if ! api GET "/accounts/$ACCOUNT_ID/access/service_tokens" >/dev/null; then
+    cat >&2 <<EOF
+
+The token can manage Access applications, but it cannot manage Access service
+tokens. Add Access: Service Tokens Write/Edit at account scope: $ACCOUNT_ID
 EOF
     exit 3
   fi
@@ -95,7 +106,7 @@ PY
 
 find_app_id() {
   local apps_json
-  apps_json="$(api GET "/accounts/$ACCOUNT_ID/access/apps")"
+  apps_json="$(api GET "$APP_BASE")"
   python3 -c '
 import json, sys
 hostname = sys.argv[1]
@@ -107,6 +118,18 @@ for app in apps:
 ' "$HOSTNAME" <<< "$apps_json"
 }
 
+case "$APP_SCOPE" in
+  account)
+    APP_BASE="/accounts/$ACCOUNT_ID/access/apps"
+    ;;
+  zone)
+    APP_BASE="/zones/$ZONE_ID/access/apps"
+    ;;
+  *)
+    echo "CF_ACCESS_APP_SCOPE must be account or zone, got: $APP_SCOPE" >&2
+    exit 2
+    ;;
+esac
 verify_access_permissions
 
 app_id="$(find_app_id || true)"
@@ -123,7 +146,7 @@ print(json.dumps({
 }))
 PY
 )"
-  app_id="$(api POST "/accounts/$ACCOUNT_ID/access/apps" "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  app_id="$(api POST "$APP_BASE" "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
   echo "Created Access app for $HOSTNAME"
 else
   echo "Access app already exists for $HOSTNAME"
@@ -173,20 +196,24 @@ else
 fi
 echo "ACCESS_SERVICE_TOKEN_ID=$service_id"
 
-policies_json="$(api GET "/accounts/$ACCOUNT_ID/access/apps/$app_id/policies")"
-policy_exists() {
+POLICY_BASE="$APP_BASE/$app_id/policies"
+policies_json="$(api GET "$POLICY_BASE")"
+policy_id_by_name() {
   python3 - <<'PY' "$policies_json" "$1"
 import json, sys
 policies = json.loads(sys.argv[1])
 name = sys.argv[2]
-print("yes" if any(p.get("name") == name for p in policies) else "no")
+for policy in policies:
+    if policy.get("name") == name:
+        print(policy.get("id", ""))
+        break
 PY
 }
 
 email_policy_name="TGE operator email allow"
-if [[ "$(policy_exists "$email_policy_name")" != "yes" ]]; then
-  include_json="$(email_rules_json "$emails_raw")"
-  body="$(python3 - <<'PY' "$email_policy_name" "$include_json"
+email_policy_id="$(policy_id_by_name "$email_policy_name")"
+include_json="$(email_rules_json "$emails_raw")"
+body="$(python3 - <<'PY' "$email_policy_name" "$include_json"
 import json, sys
 print(json.dumps({
     "name": sys.argv[1],
@@ -196,15 +223,17 @@ print(json.dumps({
 }))
 PY
 )"
-  api POST "/accounts/$ACCOUNT_ID/access/apps/$app_id/policies" "$body" >/dev/null
+if [[ -z "$email_policy_id" ]]; then
+  api POST "$POLICY_BASE" "$body" >/dev/null
   echo "Created email allow policy"
 else
-  echo "Email allow policy already exists"
+  api PUT "$POLICY_BASE/$email_policy_id" "$body" >/dev/null
+  echo "Updated email allow policy"
 fi
 
 service_policy_name="TGE healthcheck service auth"
-if [[ "$(policy_exists "$service_policy_name")" != "yes" ]]; then
-  body="$(python3 - <<'PY' "$service_policy_name" "$service_id"
+service_policy_id="$(policy_id_by_name "$service_policy_name")"
+body="$(python3 - <<'PY' "$service_policy_name" "$service_id"
 import json, sys
 print(json.dumps({
     "name": sys.argv[1],
@@ -213,10 +242,12 @@ print(json.dumps({
 }))
 PY
 )"
-  api POST "/accounts/$ACCOUNT_ID/access/apps/$app_id/policies" "$body" >/dev/null
+if [[ -z "$service_policy_id" ]]; then
+  api POST "$POLICY_BASE" "$body" >/dev/null
   echo "Created service auth policy"
 else
-  echo "Service auth policy already exists"
+  api PUT "$POLICY_BASE/$service_policy_id" "$body" >/dev/null
+  echo "Updated service auth policy"
 fi
 
 echo "Cloudflare Access configuration complete for $HOSTNAME"

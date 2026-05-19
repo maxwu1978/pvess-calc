@@ -18,8 +18,14 @@ Tracked work that's merged but not yet bundled into a tagged release.
 - Extended `pvess web-smoke` with Cloudflare Access service-token options
 - Documented the required Cloudflare token permissions and operator email
   inputs
-- Recorded the current blocker: the provided token verifies and can read the
-  zone, but Cloudflare Access API endpoints return 403
+- Updated the Access automation to support the current Cloudflare shape:
+  zone-scoped Access application plus account-scoped service token
+- Confirmed Cloudflare Access now redirects anonymous `tge.reelamate.com`
+  requests before they reach local Basic Auth
+- Confirmed public smoke passes with Cloudflare service-token headers plus
+  local Basic Auth
+- Remaining P2 closeout is replacing the temporary email allow policy with the
+  final operator email list
 
 ### 2026-05-19 — Web Ops P1: access, backups, and uptime checks
 

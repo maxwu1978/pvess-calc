@@ -22,10 +22,15 @@ Current status:
 
 - The local token file is readable and the token verifies as active.
 - The token can read the `reelamate.com` zone.
-- The token cannot manage Cloudflare Access; account and zone Access endpoints
-  return 403.
-- P2 automation has been added and is ready to run when a token with the
-  required Access permissions is available.
+- Cloudflare Access has been enabled for the account.
+- A zone-scoped Access application exists for `tge.reelamate.com`.
+- A Service Auth token and policy exist for automated health checks.
+- Anonymous public access is redirected to Cloudflare Access before reaching
+  local Basic Auth.
+- Public smoke passes when service-token headers and Basic Auth credentials are
+  sent.
+- The human email allow policy currently needs to be updated from the temporary
+  test value to the final operator email list.
 
 Required token permissions:
 
@@ -37,15 +42,12 @@ Required local input:
 - allowed operator emails in `~/.pvess/secrets/cloudflare-access-emails` or
   `PVESS_ACCESS_EMAILS`
 
-Closing standards:
+Remaining closing standard:
 
-- Cloudflare Access self-hosted application exists for `tge.reelamate.com`.
-- Email Allow policy exists for named operators; no `Include Everyone` policy.
-- Service Auth policy exists for automated health checks.
-- `~/.pvess/secrets/cloudflare-access-service.env` contains the service-token
-  client id/secret with `600` permissions.
-- Anonymous public access is blocked by Cloudflare before Basic Auth.
-- Public smoke passes using Cloudflare service-token headers plus Basic Auth.
+- Replace the temporary email policy with final operator emails in
+  `~/.pvess/secrets/cloudflare-access-emails`, rerun
+  `configure-cloudflare-access.sh`, and confirm browser login works for those
+  emails.
 
 ## Completed Milestones
 
