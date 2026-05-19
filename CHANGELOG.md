@@ -24,8 +24,9 @@ Tracked work that's merged but not yet bundled into a tagged release.
   requests before they reach local Basic Auth
 - Confirmed public smoke passes with Cloudflare service-token headers plus
   local Basic Auth
-- Remaining P2 closeout is replacing the temporary email allow policy with the
-  final operator email list
+- Updated the operator email Allow policy to `wuqxmark@gmail.com`
+- Verified the Access service-token credentials and operator email file are
+  stored locally with `600` permissions
 
 ### 2026-05-19 — Web Ops P1: access, backups, and uptime checks
 

@@ -13,12 +13,18 @@ When a K-phase ships:
 
 ## Planned
 
-### Web Ops P2 — Cloudflare Zero Trust Access
+No active Web ops phases are queued after P2. Next planned engineering work
+should be selected from P3/P4 business workflow priorities or the non-Web
+backlog below.
+
+## Completed Milestones
+
+### Web Ops P2 — Cloudflare Zero Trust Access ✅ DONE 2026-05-20
 
 Goal: put Cloudflare Access in front of `https://tge.reelamate.com` while
 keeping site-level Basic Auth as a fallback layer.
 
-Current status:
+Completed:
 
 - The local token file is readable and the token verifies as active.
 - The token can read the `reelamate.com` zone.
@@ -29,27 +35,19 @@ Current status:
   local Basic Auth.
 - Public smoke passes when service-token headers and Basic Auth credentials are
   sent.
-- The human email allow policy currently needs to be updated from the temporary
-  test value to the final operator email list.
+- The human email Allow policy is updated to `wuqxmark@gmail.com`.
+- `~/.pvess/secrets/cloudflare-access-service.env` and
+  `~/.pvess/secrets/cloudflare-access-emails` are stored with `600`
+  permissions.
 
-Required token permissions:
+Closing standards met:
 
-- `Access: Apps and Policies Write/Edit`
-- `Access: Service Tokens Write/Edit`
-
-Required local input:
-
-- allowed operator emails in `~/.pvess/secrets/cloudflare-access-emails` or
-  `PVESS_ACCESS_EMAILS`
-
-Remaining closing standard:
-
-- Replace the temporary email policy with final operator emails in
-  `~/.pvess/secrets/cloudflare-access-emails`, rerun
-  `configure-cloudflare-access.sh`, and confirm browser login works for those
-  emails.
-
-## Completed Milestones
+- Anonymous `https://tge.reelamate.com/` returns a 302 redirect to the
+  Cloudflare Access login page.
+- Access policies are exactly the operator email Allow policy plus the
+  healthcheck Service Auth policy.
+- Public smoke passes with Cloudflare service-token headers and local Basic
+  Auth.
 
 ### Web Ops P1 — access, backups, and uptime checks ✅ DONE 2026-05-19
 
