@@ -9,7 +9,14 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 import yaml
 
-from pvess_calc.web.server import create_app, default_qet_template
+from pvess_calc.web.server import (
+    GeneratedFile,
+    WebProjectRequest,
+    build_ahj_gate,
+    build_source_materials,
+    create_app,
+    default_qet_template,
+)
 
 
 DFW_SIMULATED_MONTHLY_KWH = [
@@ -62,6 +69,89 @@ def _mansfield_payload(address: str, **overrides):
     )
     payload.update(overrides)
     return payload
+
+
+def _complete_real_payload(**overrides):
+    payload = _light_payload(
+        outputs={
+            "customer": False,
+            "permit": True,
+            "dxf": True,
+            "labels": True,
+            "qet": False,
+        },
+        site_data_source="real",
+        coordinates="32.568900, -97.141000",
+        apn="R-12345",
+        meter_number="153468971",
+        meter_location="Exterior garage wall",
+        meter_esid="10443720007628433",
+        engineer_firm="Wyssling Consulting",
+        engineer_address="76 N Meadowbrook Dr, Alpine UT",
+        engineer_email="engineer@example.com",
+        engineer_phone="(201) 874-3483",
+        engineer_firm_number="20109",
+        installer_company="Texas Green Eco Power",
+        installer_address="2806 Green Cir Dr, Mansfield, TX",
+        roof_info_type="Comp Shingle",
+        roof_info_height_ft=25,
+        roof_construction="Prefabricated trusses",
+        roof_condition="good",
+        roof_framing='2x4 @ 24" O.C.',
+        roof_attic_access="accessible",
+        decking_thickness_in=0.5,
+        roof_layers=1,
+        monthly_kwh=DFW_SIMULATED_MONTHLY_KWH,
+        monthly_kwh_source="utility_file",
+        utility_bill_path="/evidence/utility.csv",
+        structural_letter_path="/evidence/structural.pdf",
+        msp_x_ft=72,
+        msp_y_ft=34,
+        inverter_x_ft=64,
+        inverter_y_ft=34,
+        ac_disconnect_x_ft=68,
+        ac_disconnect_y_ft=34,
+        site_photo_refs=[
+            {"kind": "front_elevation", "path": "/evidence/front.jpg", "caption": "Front elevation"},
+            {"kind": "roof", "path": "/evidence/roof.jpg", "caption": "Roof"},
+            {"kind": "meter", "path": "/evidence/meter.jpg", "caption": "Meter"},
+            {"kind": "main_panel", "path": "/evidence/main.jpg", "caption": "Main panel"},
+            {"kind": "sub_panel", "path": "/evidence/sub.jpg", "caption": "Sub-panel"},
+            {"kind": "equipment_location", "path": "/evidence/equipment.jpg", "caption": "Equipment location"},
+        ],
+        spec_sheet_refs=[
+            {"equipment": "module", "path": "/evidence/module.pdf"},
+            {"equipment": "inverter", "path": "/evidence/inverter.pdf"},
+            {"equipment": "optimizer", "path": "/evidence/optimizer.pdf"},
+            {"equipment": "racking", "path": "/evidence/racking.pdf"},
+        ],
+    )
+    payload.update(overrides)
+    return payload
+
+
+def _gate_files(tmp_path: Path, job_id: str = "gate-job") -> list[GeneratedFile]:
+    project_dir = tmp_path / job_id
+    output_dir = project_dir / "output"
+    output_dir.mkdir(parents=True)
+    paths = {
+        "Permit Package PDF (12 pages)": output_dir / "permit-package.pdf",
+        "NEC Labels PDF (8)": output_dir / "labels.pdf",
+        "EE-1 Three-line DXF": output_dir / "sheet-EE-1.dxf",
+        "EE-1 Three-line PNG Preview": output_dir / "sheet-EE-1.png",
+    }
+    files: list[GeneratedFile] = []
+    for label, path in paths.items():
+        path.write_bytes(b"x")
+        files.append(GeneratedFile(
+            label=label,
+            path=path.relative_to(project_dir).as_posix(),
+            url=f"/files/{job_id}/{path.relative_to(project_dir).as_posix()}",
+            bytes=1,
+            category="Permit" if "PDF" in label else "CAD",
+            kind="pdf" if "PDF" in label else ("preview" if path.suffix == ".png" else "dxf"),
+        ))
+    return files
 
 
 def _submit_and_wait(
@@ -135,6 +225,8 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Growatt" in response.text
     assert "Field intake" in response.text
     assert "Source materials" in response.text
+    assert "Unsorted site photos" in response.text
+    assert "Unsorted spec sheets" in response.text
     assert "Structural letter" in response.text
     assert "Run preflight" in response.text
     assert "Preflight" in response.text
@@ -636,6 +728,44 @@ def test_web_form_upload_injects_site_photos_and_source_manifest(tmp_path: Path)
     ]
 
 
+def test_web_form_parses_utility_csv_and_classifies_unsorted_uploads(tmp_path: Path):
+    client = _client(tmp_path)
+    csv_rows = "month,kwh\n" + "\n".join(
+        f"2025-{idx:02d},{value}"
+        for idx, value in enumerate(DFW_SIMULATED_MONTHLY_KWH, start=1)
+    )
+    state = _submit_form_and_wait(
+        client,
+        _light_payload(
+            site_data_source="real",
+            monthly_kwh=[1] * 12,
+            outputs={
+                "customer": False,
+                "permit": False,
+                "dxf": False,
+                "labels": False,
+                "qet": False,
+            },
+        ),
+        files={
+            "utility_bill": ("smart-meter-usage.csv", csv_rows.encode(), "text/csv"),
+            "site_photos_auto": ("roof-array-photo.jpg", b"image", "image/jpeg"),
+            "spec_sheets_auto": ("growatt-inverter-spec.pdf", b"%PDF", "application/pdf"),
+        },
+    )
+
+    data = state["result"]
+    project_dir = Path(data["project_dir"])
+    inputs = yaml.safe_load((project_dir / "inputs.yaml").read_text(encoding="utf-8"))
+
+    assert inputs["loads"]["monthly_kwh"] == DFW_SIMULATED_MONTHLY_KWH
+    assert data["source_materials"]["monthly_kwh_source"] == "utility_file"
+    assert data["source_materials"]["utility_bill_parse"]["status"] == "parsed"
+    assert data["source_materials"]["site_photo_count"] == 1
+    assert data["source_materials"]["photo_classifications"][0]["classified_kind"] == "roof"
+    assert data["source_materials"]["spec_classifications"][0]["classified_equipment"] == "inverter"
+
+
 def test_web_real_intake_maps_to_inputs_yaml_and_readiness(tmp_path: Path):
     client = _client(tmp_path)
     monthly = [820, 740, 690, 780, 1020, 1350, 1480, 1520, 1380, 1010, 760, 790]
@@ -926,6 +1056,47 @@ def test_web_job_payload_rerun_and_delete(tmp_path: Path):
     assert not Path(state["project_dir"]).exists()
 
 
+def test_web_artifact_reviews_persist_with_job(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(client, _light_payload(project_name="Reviewable Job"))
+    job_id = state["job_id"]
+
+    update = client.post(
+        f"/api/jobs/{job_id}/reviews",
+        json={
+            "path": "inputs.yaml",
+            "status": "approved_internal",
+            "note": "checked",
+        },
+    )
+
+    assert update.status_code == 200, update.text
+    assert update.json()["reviews"]["inputs.yaml"]["status"] == "approved_internal"
+
+    revision = client.post(
+        f"/api/jobs/{job_id}/reviews",
+        json={
+            "path": "inputs.yaml",
+            "status": "needs_revision",
+            "note": "fix inputs",
+        },
+    )
+
+    assert revision.status_code == 200, revision.text
+    assert revision.json()["gate"]["can_submit_to_ahj"] is False
+    assert any(
+        blocker["field"] == "artifact_reviews"
+        for blocker in revision.json()["gate"]["blockers"]
+    )
+
+    reloaded = _client(tmp_path)
+    response = reloaded.get(f"/api/jobs/{job_id}/reviews")
+
+    assert response.status_code == 200
+    assert response.json()["reviews"]["inputs.yaml"]["note"] == "fix inputs"
+    assert (Path(state["project_dir"]) / "review-status.json").exists()
+
+
 def test_web_sync_project_writes_status_json_and_sqlite(tmp_path: Path):
     client = _client(tmp_path)
 
@@ -939,3 +1110,66 @@ def test_web_sync_project_writes_status_json_and_sqlite(tmp_path: Path):
     assert stored is not None
     assert stored["status"] == "done"
     assert stored["result"]["summary"]["project_name"] == "Sync Job"
+
+
+def test_web_ahj_gate_blocks_simulated_source_materials(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(_light_payload(site_data_source="simulated"))
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(payload),
+        readiness={"status": "WARN"},
+        files=[],
+        review_state={},
+    )
+
+    assert gate["level"] == "Estimate only"
+    assert gate["can_submit_to_ahj"] is False
+    assert any(blocker["field"] == "site_data_source" for blocker in gate["blockers"])
+
+
+def test_web_ahj_gate_allows_real_pv_only_candidate(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(
+        _complete_real_payload(
+            battery_choice="none",
+            battery_quantity=0,
+            battery_capacity_kwh_each=0,
+        )
+    )
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(payload),
+        readiness={"status": "PASS"},
+        files=_gate_files(tmp_path),
+        review_state={},
+    )
+
+    assert gate["level"] == "AHJ-ready candidate"
+    assert gate["can_submit_to_ahj"] is True
+    assert gate["blockers"] == []
+
+
+def test_web_ahj_gate_blocks_pv_ess_missing_battery_spec(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(
+        _complete_real_payload(
+            battery_choice="inhouse_16kwh_hv",
+            battery_quantity=1,
+            battery_capacity_kwh_each=16,
+            battery_install_location="garage",
+            distance_to_doorway_ft=4,
+            distance_to_window_ft=4,
+            distance_to_egress_ft=4,
+        )
+    )
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(payload),
+        readiness={"status": "WARN"},
+        files=_gate_files(tmp_path),
+        review_state={},
+    )
+
+    assert gate["level"] == "Internal review"
+    assert any(
+        blocker["field"] == "spec_sheets" and "battery" in blocker["detail"]
+        for blocker in gate["blockers"]
+    )

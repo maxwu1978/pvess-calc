@@ -60,6 +60,10 @@ const batteryQtyInput = document.querySelector('input[name="battery_quantity"]')
 let activePoll = null;
 let currentFiles = [];
 let currentPreviewItems = [];
+let currentJobId = "";
+let currentReadiness = {};
+let artifactReviews = {};
+let lastLookupRoofCandidates = [];
 let runtimeConfig = { auth_required: false };
 
 const numberFields = new Set([
@@ -207,7 +211,9 @@ preflightButton.addEventListener("click", runPreflight);
 fileFilter.addEventListener("change", () => renderFiles(currentFiles));
 saveTokenButton.addEventListener("click", saveAccessToken);
 lookupButton.addEventListener("click", runAddressLookup);
+lookupPanel.addEventListener("click", handleLookupCandidateClick);
 previewPanel.addEventListener("click", handlePreviewClick);
+fileList.addEventListener("change", handleArtifactReviewChange);
 projectTemplate.addEventListener("change", () => applyTemplate(projectTemplate.value));
 addressSample.addEventListener("change", () => applyAddressSample(addressSample.value));
 moduleChoice.addEventListener("change", syncModuleOption);
@@ -474,6 +480,7 @@ function renderLookup(data) {
   const providers = data.providers || [];
   const hits = providers.filter((provider) => provider.hit);
   const roof = data.roof_summary || {};
+  lastLookupRoofCandidates = roof.candidates || [];
   lookupPanel.classList.remove("hidden");
   lookupPanel.innerHTML = `
     <div class="lookup-summary">
@@ -489,7 +496,41 @@ function renderLookup(data) {
     <div class="lookup-sources">
       ${hits.slice(0, 5).map((provider) => `${escapeHtml(provider.source)}:${escapeHtml(provider.confidence)}`).join(" · ") || "No provider hits"}
     </div>
+    ${lastLookupRoofCandidates.length ? `
+      <div class="roof-candidates">
+        ${lastLookupRoofCandidates.slice(0, 6).map((section, index) => `
+          <button type="button" data-roof-candidate="${index}">
+            ${escapeHtml(section.name || `Roof ${index + 1}`)}
+            <span>${escapeHtml(String(section.azimuth_deg ?? "-"))}° · ${escapeHtml(String(section.pitch_deg ?? "-"))}° · ${escapeHtml(String(section.area_sqft ?? "-"))} sq ft</span>
+          </button>
+        `).join("")}
+      </div>
+    ` : ""}
   `;
+}
+
+function handleLookupCandidateClick(event) {
+  const button = event.target.closest("[data-roof-candidate]");
+  if (!button) {
+    return;
+  }
+  const section = lastLookupRoofCandidates[Number(button.dataset.roofCandidate)];
+  if (!section) {
+    return;
+  }
+  const updates = {
+    roof_pitch_deg: section.pitch_deg,
+    roof_azimuth_deg: section.azimuth_deg,
+    roof_width_ft: section.width_ft,
+    roof_height_ft: section.height_ft,
+    roof_info_type: section.roof_type || "Comp Shingle",
+  };
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined && value !== null && value !== "") {
+      setFieldValue(key, value);
+    }
+  }
+  renderValidation([], [`Applied roof candidate: ${section.name || "Roof Section"}.`]);
 }
 
 function renderLookupMessage(message, type) {
@@ -547,6 +588,9 @@ function renderResult(data) {
   if (!data) {
     return;
   }
+  currentJobId = data.job_id || "";
+  currentReadiness = data.readiness || {};
+  artifactReviews = {};
   const summary = data.summary;
   summaryStrip.innerHTML = `
     <div><strong>${summary.system_kw_dc}</strong><span>DC kW</span></div>
@@ -557,11 +601,12 @@ function renderResult(data) {
 
   renderBom(data.bom);
   renderSourceMaterials(data.source_materials || {});
-  renderReadiness(data.readiness || {});
+  renderReadiness(currentReadiness);
   renderDeliveryPackage(data.files || []);
   renderPreviews(data.files || []);
   renderFiles(data.files);
   renderError("");
+  loadArtifactReviews();
 }
 
 function renderPreflight(data) {
@@ -590,7 +635,7 @@ function renderPreflight(data) {
         <li class="${issue.severity}">
           <span>${escapeHtml(issue.severity)}</span>
           <strong>${escapeHtml(issue.field)}</strong>
-          <em>${escapeHtml(issue.message)}</em>
+          <em>${escapeHtml(issue.message)}${issue.blocks_level ? ` · blocks ${escapeHtml(issue.blocks_level)}` : ""}</em>
         </li>
       `).join("") || "<li class=\"pass\"><strong>No blocking issues detected</strong></li>"}
     </ul>
@@ -604,7 +649,9 @@ function appendSiteFiles(request, data) {
     "meter",
     "main_panel",
     "sub_panel",
+    "attic",
     "equipment_location",
+    "site_photos_auto",
     "utility_bill",
     "structural_letter",
     "spec_module",
@@ -612,10 +659,12 @@ function appendSiteFiles(request, data) {
     "spec_battery",
     "spec_racking",
     "spec_optimizer",
+    "spec_sheets_auto",
   ]) {
-    const file = data.get(key);
-    if (file instanceof File && file.size > 0) {
-      request.append(key, file, file.name);
+    for (const file of data.getAll(key)) {
+      if (file instanceof File && file.size > 0) {
+        request.append(key, file, file.name);
+      }
     }
   }
 }
@@ -723,12 +772,92 @@ function renderFiles(files) {
   fileList.innerHTML = "";
   for (const file of shown) {
     const item = document.createElement("li");
+    const review = artifactReviews[file.path] || { status: "not_reviewed" };
     item.innerHTML = `
       <a href="${withAuthUrl(file.url)}" target="_blank" rel="noopener">${escapeHtml(file.label)}</a>
-      <span><em>${escapeHtml(file.category || "Other")}</em>${formatBytes(file.bytes)}</span>
+      <span>
+        <em>${escapeHtml(file.category || "Other")}</em>${formatBytes(file.bytes)}
+        <select data-review-path="${escapeHtml(file.path)}" aria-label="Review status for ${escapeHtml(file.label)}">
+          ${reviewStatusOptions(review.status)}
+        </select>
+      </span>
     `;
     fileList.appendChild(item);
   }
+}
+
+async function loadArtifactReviews() {
+  if (!currentJobId) {
+    return;
+  }
+  try {
+    const response = await apiFetch(`/api/jobs/${currentJobId}/reviews`);
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    artifactReviews = data.reviews || {};
+    if (data.gate && currentReadiness) {
+      currentReadiness.gate = data.gate;
+      renderReadiness(currentReadiness);
+    }
+    renderFiles(currentFiles);
+    renderPreviews(currentFiles);
+  } catch {
+    artifactReviews = {};
+  }
+}
+
+async function handleArtifactReviewChange(event) {
+  const select = event.target.closest("[data-review-path]");
+  if (!select || !currentJobId) {
+    return;
+  }
+  try {
+    const response = await apiFetch(`/api/jobs/${currentJobId}/reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: select.dataset.reviewPath,
+        status: select.value,
+        note: "",
+      }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    artifactReviews = data.reviews || {};
+    if (data.gate && currentReadiness) {
+      currentReadiness.gate = data.gate;
+      renderReadiness(currentReadiness);
+    }
+    renderPreviews(currentFiles);
+    statusEl.textContent = "Review status saved.";
+  } catch (error) {
+    statusEl.textContent = error.message;
+    statusEl.classList.add("error");
+    renderError(error.message);
+  }
+}
+
+function reviewStatusOptions(selected) {
+  const options = [
+    ["not_reviewed", "not reviewed"],
+    ["needs_revision", "needs revision"],
+    ["approved_internal", "approved for internal review"],
+  ];
+  return options.map(([value, label]) => `
+    <option value="${value}" ${selected === value ? "selected" : ""}>${label}</option>
+  `).join("");
+}
+
+function reviewLabel(path) {
+  const status = artifactReviews[path]?.status || "not_reviewed";
+  if (status === "approved_internal") {
+    return "approved for internal review";
+  }
+  return status.replace("_", " ");
 }
 
 function renderDeliveryPackage(files) {
@@ -769,12 +898,7 @@ function renderPreviews(files) {
       `).join("")}
     </div>
     <div class="preview-grid">
-      ${previewImages.map((file) => `
-        <a class="preview-card" href="${withAuthUrl(file.url)}" target="_blank" rel="noopener">
-          <img src="${withAuthUrl(file.url)}" alt="${escapeHtml(file.label)}" loading="lazy" />
-          <span>${escapeHtml(file.label)}</span>
-        </a>
-      `).join("")}
+      ${currentPreviewItems.map((file, index) => renderPreviewCard(file, index)).join("")}
     </div>
   `;
 }
@@ -813,8 +937,30 @@ function renderPreviewViewer(file) {
   `;
 }
 
+function renderPreviewCard(file, index) {
+  const review = reviewLabel(file.path);
+  if (file.kind === "preview") {
+    return `
+      <button type="button" class="preview-card" data-preview-index="${index}">
+        <img src="${withAuthUrl(file.url)}" alt="${escapeHtml(file.label)}" loading="lazy" />
+        <span>${escapeHtml(file.label)}</span>
+        <em>${escapeHtml(review)}</em>
+      </button>
+    `;
+  }
+  return `
+    <button type="button" class="preview-card doc-thumb" data-preview-index="${index}">
+      <strong>${escapeHtml(file.kind.toUpperCase())}</strong>
+      <span>${escapeHtml(file.label)}</span>
+      <em>${escapeHtml(review)}</em>
+    </button>
+  `;
+}
+
 function renderSourceMaterials(source) {
   const photos = source.site_photos || [];
+  const specCoverage = source.spec_coverage || {};
+  const classifications = source.photo_classifications || [];
   const hasDocs = (
     source.utility_bill_uploaded ||
     source.structural_letter_uploaded ||
@@ -833,17 +979,21 @@ function renderSourceMaterials(source) {
     <dt>Source material status</dt><dd>${source.site_data_source === "real" ? "Field-uploaded source materials" : "Simulated source materials"}</dd>
     <dt>PV-7 photos</dt><dd>${source.site_photo_count || 0}/${source.required_site_photo_count || 6}</dd>
     <dt>Utility bill</dt><dd>${source.utility_bill_uploaded ? "uploaded" : "not uploaded"}</dd>
+    <dt>Utility parse</dt><dd>${source.utility_bill_parse?.status || "not parsed"}</dd>
     <dt>Structural letter</dt><dd>${source.structural_letter_uploaded ? "uploaded" : "not uploaded"}</dd>
-    <dt>Spec sheets</dt><dd>${source.spec_sheet_count || 0}</dd>
-    <dt>Monthly usage</dt><dd>${source.monthly_kwh_count || 0}/12</dd>
+    <dt>Spec sheets</dt><dd>${source.spec_sheet_count || 0} (${(specCoverage.missing || []).length ? `missing ${(specCoverage.missing || []).join(", ")}` : "covered"})</dd>
+    <dt>Monthly usage</dt><dd>${source.monthly_kwh_count || 0}/12 · ${source.monthly_kwh_source || "none"}</dd>
     <dt>Equipment coordinates</dt><dd>${source.equipment_locations_ready ? "ready" : "missing"}</dd>
     <dt>Missing photos</dt><dd>${missing.length ? missing.join(", ") : "none"}</dd>
+    <dt>Photo classification</dt><dd>${classifications.length ? classifications.map((item) => `${item.filename}: ${item.classified_kind}`).join("; ") : "none"}</dd>
   `;
 }
 
 function renderReadiness(readiness) {
   const counts = readiness.counts || {};
   const reviewItems = readiness.review_items || [];
+  const gate = readiness.gate || {};
+  const blockers = gate.blockers || [];
   readinessEmpty.classList.toggle("hidden", Boolean(readiness.status));
   readinessPanel.classList.toggle("hidden", !readiness.status);
   if (!readiness.status) {
@@ -855,7 +1005,11 @@ function renderReadiness(readiness) {
   readinessPanel.innerHTML = `
     <div class="readiness-status ${statusClass}">
       <strong>${escapeHtml(readiness.status)}</strong>
-      <span>${readiness.needs_review ? "Review before AHJ submission" : "Ready for strict gate"}</span>
+      <span>${escapeHtml(gate.level || (readiness.needs_review ? "Internal review" : "AHJ-ready candidate"))}</span>
+    </div>
+    <div class="gate-card ${gate.can_submit_to_ahj ? "pass" : "warn"}">
+      <strong>${escapeHtml(gate.level || "Internal review")}</strong>
+      <span>${gate.can_submit_to_ahj ? "Candidate package may proceed to formal AHJ review." : `Next: ${escapeHtml(gate.next_level || "AHJ-ready candidate")}`}</span>
     </div>
     <dl class="readiness-counts">
       <dt>Ready</dt><dd>${counts.ready || 0}</dd>
@@ -863,6 +1017,14 @@ function renderReadiness(readiness) {
       <dt>Missing</dt><dd>${counts.missing || 0}</dd>
       <dt>N/A</dt><dd>${counts.not_applicable || 0}</dd>
     </dl>
+    <ul class="gate-list">
+      ${blockers.slice(0, 6).map((item) => `
+        <li>
+          <span>${escapeHtml(item.field || item.key)}</span>
+          <em>${escapeHtml(item.detail || "")}</em>
+        </li>
+      `).join("") || "<li><span>Gate</span><em>No AHJ-ready blockers detected</em></li>"}
+    </ul>
     <ul class="readiness-list">
       ${reviewItems.slice(0, 6).map((item) => `
         <li>

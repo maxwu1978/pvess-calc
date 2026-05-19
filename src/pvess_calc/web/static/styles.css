@@ -423,6 +423,32 @@ button:disabled {
   color: var(--muted);
 }
 
+.roof-candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.roof-candidates button {
+  min-height: 0;
+  border: 1px solid #d7dee8;
+  border-radius: 5px;
+  padding: 9px 10px;
+  background: #ffffff;
+  color: var(--ink);
+  text-align: left;
+  font-size: 12px;
+}
+
+.roof-candidates span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .lookup-fields {
   display: flex;
   flex-wrap: wrap;
@@ -564,6 +590,31 @@ button:disabled {
   font-size: 12px;
 }
 
+.gate-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 10px 12px;
+  background: #fbfcfd;
+}
+
+.gate-card.pass {
+  border-color: rgba(18, 128, 92, 0.42);
+  background: rgba(18, 128, 92, 0.08);
+}
+
+.gate-card.warn {
+  border-color: rgba(198, 106, 22, 0.42);
+  background: rgba(198, 106, 22, 0.08);
+}
+
+.gate-card span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .readiness-counts {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -594,6 +645,33 @@ button:disabled {
   list-style: none;
   padding: 0;
   margin: 0;
+}
+
+.gate-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.gate-list li {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e1e6ee;
+  font-size: 12px;
+}
+
+.gate-list span {
+  color: var(--warn);
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.gate-list em {
+  color: var(--muted);
+  font-style: normal;
+  overflow-wrap: anywhere;
 }
 
 .readiness-list li {
@@ -769,10 +847,15 @@ button:disabled {
 }
 
 .preview-card {
+  width: 100%;
+  display: block;
   border: 1px solid #e1e6ee;
   border-radius: 5px;
+  padding: 0;
   overflow: hidden;
   background: #ffffff;
+  color: var(--ink);
+  text-align: left;
 }
 
 .preview-card img {
@@ -788,6 +871,39 @@ button:disabled {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+.preview-card em {
+  display: block;
+  padding: 0 8px 8px;
+  color: var(--orange);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 720;
+}
+
+.doc-thumb {
+  min-height: 118px;
+  padding: 14px;
+}
+
+.doc-thumb strong {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d7dee8;
+  background: #f8fafc;
+  color: var(--blue);
+  font-size: 13px;
+}
+
+.doc-thumb span {
+  padding: 10px 0 4px;
+}
+
+.doc-thumb em {
+  padding: 0;
 }
 
 .error-panel {
@@ -995,6 +1111,14 @@ th {
 .file-list span {
   color: var(--muted);
   white-space: nowrap;
+}
+
+.file-list select {
+  width: auto;
+  min-height: 28px;
+  margin-left: 8px;
+  padding: 0 6px;
+  font-size: 11px;
 }
 
 .file-list span em {

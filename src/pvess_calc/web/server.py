@@ -61,6 +61,13 @@ from ..report.json_dump import write_json
 from ..report.markdown import write_markdown
 from ..schema import Inputs
 from .. import __version__
+from .intake import (
+    SPEC_EQUIPMENT,
+    classify_site_photo,
+    classify_spec_sheet,
+    parse_utility_usage,
+    spec_sheet_coverage,
+)
 from .job_store import JobStore
 from .quote import categorize_bom, installed_breakdown, quote_tiers_for_result
 
@@ -168,6 +175,17 @@ class WebSpecSheetRef(BaseModel):
     ] = "other"
     path: str = ""
     pages: list[int] = Field(default_factory=list)
+
+
+class WebIntakeClassification(BaseModel):
+    filename: str
+    provided_kind: str = ""
+    classified_kind: str = ""
+    provided_equipment: str = ""
+    classified_equipment: str = ""
+    confidence: str = ""
+    review_required: bool = True
+    reason: str = ""
 
 
 class OutputOptions(BaseModel):
@@ -297,8 +315,12 @@ class WebProjectRequest(BaseModel):
     site_data_source: Literal["simulated", "real"] = "simulated"
     site_photo_refs: list[WebSitePhotoRef] = Field(default_factory=list)
     utility_bill_path: str = ""
+    monthly_kwh_source: Literal["none", "form", "utility_file"] = "none"
+    utility_bill_parse: dict[str, Any] = Field(default_factory=dict)
     structural_letter_path: str = ""
     spec_sheet_refs: list[WebSpecSheetRef] = Field(default_factory=list)
+    photo_classifications: list[WebIntakeClassification] = Field(default_factory=list)
+    spec_classifications: list[WebIntakeClassification] = Field(default_factory=list)
 
     outputs: OutputOptions = Field(default_factory=OutputOptions)
 
@@ -337,6 +359,9 @@ class PreflightIssue(BaseModel):
     severity: Literal["error", "warning"]
     field: str
     message: str
+    target: str = ""
+    artifact: str = ""
+    blocks_level: str = ""
 
 
 class WebPreflightResponse(BaseModel):
@@ -412,6 +437,12 @@ class WebOperatorCreateResponse(BaseModel):
     display_name: str
     token: str
     created_at: str
+
+
+class WebArtifactReviewUpdate(BaseModel):
+    path: str
+    status: Literal["not_reviewed", "needs_revision", "approved_internal"]
+    note: str = Field(default="", max_length=500)
 
 
 def create_app(
@@ -573,7 +604,9 @@ def create_app(
         meter: UploadFile | None = File(None),
         main_panel: UploadFile | None = File(None),
         sub_panel: UploadFile | None = File(None),
+        attic: UploadFile | None = File(None),
         equipment_location: UploadFile | None = File(None),
+        site_photos_auto: list[UploadFile] | None = File(None),
         utility_bill: UploadFile | None = File(None),
         structural_letter: UploadFile | None = File(None),
         spec_module: UploadFile | None = File(None),
@@ -581,6 +614,7 @@ def create_app(
         spec_battery: UploadFile | None = File(None),
         spec_racking: UploadFile | None = File(None),
         spec_optimizer: UploadFile | None = File(None),
+        spec_sheets_auto: list[UploadFile] | None = File(None),
     ) -> WebJobState:
         try:
             request = WebProjectRequest.model_validate(json.loads(payload))
@@ -592,10 +626,12 @@ def create_app(
                     "meter": meter,
                     "main_panel": main_panel,
                     "sub_panel": sub_panel,
+                    "attic": attic,
                     "equipment_location": equipment_location,
                 }.items()
                 if (material := await _read_upload(upload)) is not None
             }
+            auto_photos = await _read_uploads(site_photos_auto)
             utility = await _read_upload(utility_bill)
             structural = await _read_upload(structural_letter)
             spec_uploads = {
@@ -609,14 +645,17 @@ def create_app(
                 }.items()
                 if (material := await _read_upload(upload)) is not None
             }
+            auto_specs = await _read_uploads(spec_sheets_auto)
             return enqueue_project(
                 request,
                 app,
                 owner_id=_require_auth_context(http_request).operator_id,
                 site_uploads=site_uploads,
+                auto_photo_uploads=auto_photos,
                 utility_bill_upload=utility,
                 structural_upload=structural,
                 spec_uploads=spec_uploads,
+                auto_spec_uploads=auto_specs,
             )
         except json.JSONDecodeError as exc:
             raise HTTPException(status_code=422, detail="invalid payload JSON") from exc
@@ -704,6 +743,35 @@ def create_app(
         if not request_path.exists():
             raise HTTPException(status_code=404, detail="job payload not found")
         return json.loads(request_path.read_text(encoding="utf-8"))
+
+    @app.get("/api/jobs/{job_id}/reviews")
+    def get_artifact_reviews(request: Request, job_id: str) -> dict[str, Any]:
+        project_dir = _job_project_dir(
+            app, job_id, context=_require_auth_context(request),
+        )
+        reviews = read_artifact_reviews(project_dir)
+        return {
+            "job_id": job_id,
+            "reviews": reviews,
+            "gate": refresh_job_gate(app, job_id, project_dir, reviews),
+        }
+
+    @app.post("/api/jobs/{job_id}/reviews")
+    def update_artifact_review(
+        request: Request,
+        job_id: str,
+        payload: WebArtifactReviewUpdate,
+    ) -> dict[str, Any]:
+        project_dir = _job_project_dir(
+            app, job_id, context=_require_auth_context(request),
+        )
+        path = resolve_job_file(app.state.jobs_dir, job_id, payload.path)
+        reviews = write_artifact_review(project_dir, path, payload)
+        return {
+            "job_id": job_id,
+            "reviews": reviews,
+            "gate": refresh_job_gate(app, job_id, project_dir, reviews),
+        }
 
     @app.post("/api/jobs/{job_id}/rerun", response_model=WebJobState)
     def rerun_job(request: Request, job_id: str) -> WebJobState:
@@ -888,9 +956,11 @@ def enqueue_project(
     *,
     owner_id: str = "local",
     site_uploads: dict[str, UploadedMaterial] | None = None,
+    auto_photo_uploads: list[UploadedMaterial] | None = None,
     utility_bill_upload: UploadedMaterial | None = None,
     structural_upload: UploadedMaterial | None = None,
     spec_uploads: dict[str, UploadedMaterial] | None = None,
+    auto_spec_uploads: list[UploadedMaterial] | None = None,
 ) -> WebJobState:
     app.state.jobs_dir.mkdir(parents=True, exist_ok=True)
     job_id = _make_job_id(payload)
@@ -915,9 +985,11 @@ def enqueue_project(
         payload,
         job_id,
         site_uploads or {},
+        auto_photo_uploads or [],
         utility_bill_upload,
         structural_upload,
         spec_uploads or {},
+        auto_spec_uploads or [],
     )
     return state
 
@@ -966,9 +1038,11 @@ def _run_job(
     payload: WebProjectRequest,
     job_id: str,
     site_uploads: dict[str, UploadedMaterial] | None = None,
+    auto_photo_uploads: list[UploadedMaterial] | None = None,
     utility_bill_upload: UploadedMaterial | None = None,
     structural_upload: UploadedMaterial | None = None,
     spec_uploads: dict[str, UploadedMaterial] | None = None,
+    auto_spec_uploads: list[UploadedMaterial] | None = None,
 ) -> None:
     def progress(stage: str, message: str, pct: int) -> None:
         state = load_job_state(app, job_id).model_copy(update={
@@ -987,9 +1061,11 @@ def _run_job(
             app.state.jobs_dir,
             job_id=job_id,
             site_uploads=site_uploads or {},
+            auto_photo_uploads=auto_photo_uploads or [],
             utility_bill_upload=utility_bill_upload,
             structural_upload=structural_upload,
             spec_uploads=spec_uploads or {},
+            auto_spec_uploads=auto_spec_uploads or [],
             progress=progress,
         )
         now = datetime.now(timezone.utc).isoformat()
@@ -1043,9 +1119,11 @@ def generate_project(
     *,
     job_id: str | None = None,
     site_uploads: dict[str, UploadedMaterial] | None = None,
+    auto_photo_uploads: list[UploadedMaterial] | None = None,
     utility_bill_upload: UploadedMaterial | None = None,
     structural_upload: UploadedMaterial | None = None,
     spec_uploads: dict[str, UploadedMaterial] | None = None,
+    auto_spec_uploads: list[UploadedMaterial] | None = None,
     progress=None,
 ) -> WebJobResponse:
     jobs_dir.mkdir(parents=True, exist_ok=True)
@@ -1060,9 +1138,11 @@ def generate_project(
         payload,
         project_dir,
         site_uploads or {},
+        auto_photo_uploads or [],
         utility_bill_upload,
         structural_upload,
         spec_uploads or {},
+        auto_spec_uploads or [],
         create_mock_photos=payload.outputs.permit,
     )
     (project_dir / "request.json").write_text(
@@ -1185,6 +1265,13 @@ def generate_project(
 
     summary = build_summary(result, bom_payload)
     source_materials = build_source_materials(payload)
+    readiness_payload["gate"] = build_ahj_gate(
+        payload=payload,
+        source_materials=source_materials,
+        readiness=readiness_payload,
+        files=files,
+        review_state={},
+    )
     manifest = {
         "job_id": job_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1194,6 +1281,7 @@ def generate_project(
         "installed_cost_usd": bom_payload["installed_cost_usd"],
         "site_data_source": source_materials["site_data_source"],
         "readiness": readiness_payload,
+        "ahj_gate": readiness_payload["gate"],
         "status": "done",
     }
     manifest_path = project_dir / "manifest.json"
@@ -1448,6 +1536,7 @@ def build_address_lookup_response(
         "max_panels": result.fields.get("google_solar_max_panels"),
         "whole_roof_area_m2": result.fields.get("google_solar_whole_roof_area_m2"),
         "selected_section": _best_roof_section(roof_sections) or {},
+        "candidates": _roof_section_candidates(roof_sections),
     }
     providers_payload = [
         WebLookupProvider(
@@ -1531,13 +1620,37 @@ def _best_roof_section(sections: Any) -> dict[str, Any] | None:
         return area * orientation_score
 
     selected = max(candidates, key=score)
+    return _roof_section_candidate(selected)
+
+
+def _roof_section_candidates(sections: Any) -> list[dict[str, Any]]:
+    if not isinstance(sections, list):
+        return []
+    candidates = [
+        _roof_section_candidate(section)
+        for section in sections
+        if isinstance(section, dict)
+        and isinstance(section.get("width_ft"), (int, float))
+        and isinstance(section.get("height_ft"), (int, float))
+    ]
+    return sorted(
+        candidates,
+        key=lambda section: float(section.get("area_sqft") or 0),
+        reverse=True,
+    )
+
+
+def _roof_section_candidate(section: dict[str, Any]) -> dict[str, Any]:
+    width = float(section.get("width_ft") or 0)
+    height = float(section.get("height_ft") or 0)
     return {
-        "name": selected.get("name", "Roof Section"),
-        "pitch_deg": selected.get("pitch_deg"),
-        "azimuth_deg": selected.get("azimuth_deg"),
-        "width_ft": selected.get("width_ft"),
-        "height_ft": selected.get("height_ft"),
-        "roof_type": selected.get("roof_type", "Comp Shingle"),
+        "name": section.get("name", "Roof Section"),
+        "pitch_deg": section.get("pitch_deg"),
+        "azimuth_deg": section.get("azimuth_deg"),
+        "width_ft": width,
+        "height_ft": height,
+        "area_sqft": round(width * height, 1),
+        "roof_type": section.get("roof_type", "Comp Shingle"),
     }
 
 
@@ -1548,14 +1661,38 @@ def _preflight_issues(
 ) -> list[PreflightIssue]:
     issues: list[PreflightIssue] = []
 
-    def warn(field: str, message: str) -> None:
+    def warn(
+        field: str,
+        message: str,
+        *,
+        target: str = "",
+        artifact: str = "",
+        blocks_level: str = "",
+    ) -> None:
         issues.append(PreflightIssue(
-            severity="warning", field=field, message=message,
+            severity="warning",
+            field=field,
+            message=message,
+            target=target or field,
+            artifact=artifact,
+            blocks_level=blocks_level,
         ))
 
-    def error(field: str, message: str) -> None:
+    def error(
+        field: str,
+        message: str,
+        *,
+        target: str = "",
+        artifact: str = "",
+        blocks_level: str = "",
+    ) -> None:
         issues.append(PreflightIssue(
-            severity="error", field=field, message=message,
+            severity="error",
+            field=field,
+            message=message,
+            target=target or field,
+            artifact=artifact,
+            blocks_level=blocks_level,
         ))
 
     if not any(payload.outputs.model_dump().values()):
@@ -1566,9 +1703,17 @@ def _preflight_issues(
             f"Interconnection status is {result.interconnect.overall_status}; review {result.interconnect.recommended}.",
         )
     if payload.site_data_source == "simulated":
-        warn("site_data_source", "Simulated source materials are fine for preview, but not AHJ-ready.")
+        warn(
+            "site_data_source",
+            "Simulated source materials are fine for preview, but not AHJ-ready.",
+            blocks_level="AHJ-ready candidate",
+        )
     if not payload.monthly_kwh:
-        warn("monthly_kwh", "12-month usage is missing; savings and payback use fallback assumptions.")
+        warn(
+            "monthly_kwh",
+            "12-month usage is missing; savings and payback use fallback assumptions.",
+            blocks_level="Internal review",
+        )
     if payload.battery_quantity > 0 and payload.battery_install_location == "unknown":
         warn("battery_install_location", "ESS install location is unknown; IRC/NEC placement review remains open.")
     if payload.battery_quantity > 0 and payload.battery_install_location in {"indoor", "garage"}:
@@ -1596,9 +1741,36 @@ def _preflight_issues(
     if "TX" in (payload.site_address or payload.location).upper() and not payload.meter_esid:
         warn("meter_esid", "Texas ESID is missing.")
     if not payload.structural_letter_path:
-        warn("structural_letter", "No signed structural packet is attached yet.")
-    if len(payload.spec_sheet_refs) == 0:
-        warn("spec_sheets", "No manufacturer spec sheets are attached yet.")
+        warn(
+            "structural_letter",
+            "No signed structural packet is attached yet.",
+            target="project.structural_letter_pdf",
+            artifact="Structural letter",
+            blocks_level="AHJ-ready candidate",
+        )
+    present_spec_equipment = {
+        ref.equipment for ref in payload.spec_sheet_refs if ref.path
+    }
+    if not present_spec_equipment:
+        warn(
+            "spec_sheets",
+            "No manufacturer spec sheets are attached yet.",
+            target="project.spec_sheets",
+            artifact="Spec sheets",
+            blocks_level="AHJ-ready candidate",
+        )
+    coverage = spec_sheet_coverage(
+        present_equipment=present_spec_equipment,
+        battery_installed=payload.battery_quantity > 0 and payload.battery_choice != "none",
+    )
+    for equipment in coverage["missing"]:
+        warn(
+            f"spec_sheets.{equipment}",
+            f"Manufacturer {equipment} spec sheet is missing.",
+            target=f"project.spec_sheets.{equipment}",
+            artifact="Spec sheets",
+            blocks_level="AHJ-ready candidate",
+        )
     if bom_payload["installed_cost_usd"] <= 0:
         error("cost", "Installed cost evaluated to zero or below.")
     return issues
@@ -1700,13 +1872,24 @@ async def _read_upload(upload: UploadFile | None) -> UploadedMaterial | None:
     )
 
 
+async def _read_uploads(uploads: list[UploadFile] | None) -> list[UploadedMaterial]:
+    materials: list[UploadedMaterial] = []
+    for upload in uploads or []:
+        material = await _read_upload(upload)
+        if material is not None:
+            materials.append(material)
+    return materials
+
+
 def _attach_site_materials(
     payload: WebProjectRequest,
     project_dir: Path,
     site_uploads: dict[str, UploadedMaterial],
+    auto_photo_uploads: list[UploadedMaterial],
     utility_bill_upload: UploadedMaterial | None,
     structural_upload: UploadedMaterial | None,
     spec_uploads: dict[str, UploadedMaterial],
+    auto_spec_uploads: list[UploadedMaterial],
     *,
     create_mock_photos: bool,
 ) -> WebProjectRequest:
@@ -1717,19 +1900,58 @@ def _attach_site_materials(
     ]
     by_kind = {ref.kind: ref for ref in photo_refs}
     photos_dir = project_dir / "source_materials" / "photos"
+    photo_classifications = list(payload.photo_classifications)
 
     for kind, upload in site_uploads.items():
-        if kind not in SITE_PHOTO_LABELS:
-            continue
+        classification = classify_site_photo(
+            filename=upload.filename,
+            provided_kind=kind,
+        )
+        photo_classifications.append(
+            WebIntakeClassification.model_validate(classification)
+        )
         photos_dir.mkdir(parents=True, exist_ok=True)
-        path = photos_dir / _safe_filename(upload.filename, default=f"{kind}.jpg")
+        path = _unique_path(
+            photos_dir / _safe_filename(upload.filename, default=f"{kind}.jpg")
+        )
+        path.write_bytes(upload.content)
+        photo_kind = kind if kind in SITE_PHOTO_LABELS else "other"
+        ref = WebSitePhotoRef(
+            kind=photo_kind,  # type: ignore[arg-type]
+            path=str(path.resolve()),
+            caption=SITE_PHOTO_LABELS.get(kind, "Other site photo"),
+        )
+        if kind in SITE_PHOTO_LABELS:
+            by_kind[kind] = ref
+        else:
+            photo_refs.append(ref)
+
+    for upload in auto_photo_uploads:
+        classification = classify_site_photo(
+            filename=upload.filename,
+            provided_kind="other",
+        )
+        photo_classifications.append(
+            WebIntakeClassification.model_validate(classification)
+        )
+        kind = classification["classified_kind"]
+        photos_dir.mkdir(parents=True, exist_ok=True)
+        path = _unique_path(
+            photos_dir / _safe_filename(upload.filename, default=f"{kind}.jpg")
+        )
         path.write_bytes(upload.content)
         ref = WebSitePhotoRef(
-            kind=kind,  # type: ignore[arg-type]
+            kind=kind if kind in SITE_PHOTO_LABELS else "other",  # type: ignore[arg-type]
             path=str(path.resolve()),
-            caption=SITE_PHOTO_LABELS[kind],
+            caption=(
+                SITE_PHOTO_LABELS.get(kind, "Other site photo")
+                + (" (auto-classified)" if kind != "other" else " (review)")
+            ),
         )
-        by_kind[kind] = ref
+        if kind in SITE_PHOTO_LABELS and kind not in by_kind:
+            by_kind[kind] = ref
+        else:
+            photo_refs.append(ref)
 
     if payload.site_data_source == "simulated" and create_mock_photos:
         photos_dir.mkdir(parents=True, exist_ok=True)
@@ -1746,24 +1968,40 @@ def _attach_site_materials(
             )
 
     utility_path = payload.utility_bill_path
+    monthly_kwh = list(payload.monthly_kwh)
+    monthly_kwh_source = (
+        payload.monthly_kwh_source
+        if payload.monthly_kwh_source != "none"
+        else ("form" if payload.monthly_kwh else "none")
+    )
+    utility_parse = dict(payload.utility_bill_parse)
     if utility_bill_upload is not None:
         docs_dir = project_dir / "source_materials" / "utility"
         docs_dir.mkdir(parents=True, exist_ok=True)
-        path = docs_dir / _safe_filename(
+        path = _unique_path(docs_dir / _safe_filename(
             utility_bill_upload.filename,
             default="utility-bill.pdf",
-        )
+        ))
         path.write_bytes(utility_bill_upload.content)
         utility_path = str(path.resolve())
+        parsed = parse_utility_usage(
+            filename=utility_bill_upload.filename,
+            content_type=utility_bill_upload.content_type,
+            content=utility_bill_upload.content,
+        )
+        utility_parse = parsed.as_dict()
+        if parsed.status == "parsed" and len(parsed.monthly_kwh) == 12:
+            monthly_kwh = list(parsed.monthly_kwh)
+            monthly_kwh_source = "utility_file"
 
     structural_path = payload.structural_letter_path
     if structural_upload is not None:
         structural_dir = project_dir / "source_materials" / "structural"
         structural_dir.mkdir(parents=True, exist_ok=True)
-        path = structural_dir / _safe_filename(
+        path = _unique_path(structural_dir / _safe_filename(
             structural_upload.filename,
             default="structural-letter.pdf",
-        )
+        ))
         path.write_bytes(structural_upload.content)
         structural_path = str(path.resolve())
 
@@ -1773,19 +2011,52 @@ def _attach_site_materials(
         if ref.path
     ]
     by_equipment = {ref.equipment: ref for ref in spec_refs}
+    spec_classifications = list(payload.spec_classifications)
     if spec_uploads:
         specs_dir = project_dir / "source_materials" / "spec_sheets"
         specs_dir.mkdir(parents=True, exist_ok=True)
         for equipment, upload in spec_uploads.items():
-            path = specs_dir / _safe_filename(
+            classification = classify_spec_sheet(
+                filename=upload.filename,
+                provided_equipment=equipment,
+            )
+            spec_classifications.append(
+                WebIntakeClassification.model_validate(classification)
+            )
+            path = _unique_path(specs_dir / _safe_filename(
                 upload.filename,
                 default=f"{equipment}-spec.pdf",
-            )
+            ))
             path.write_bytes(upload.content)
             by_equipment[equipment] = WebSpecSheetRef(
                 equipment=equipment,  # type: ignore[arg-type]
                 path=str(path.resolve()),
                 pages=[],
+            )
+
+    if auto_spec_uploads:
+        specs_dir = project_dir / "source_materials" / "spec_sheets"
+        specs_dir.mkdir(parents=True, exist_ok=True)
+        for upload in auto_spec_uploads:
+            classification = classify_spec_sheet(
+                filename=upload.filename,
+                provided_equipment="other",
+            )
+            spec_classifications.append(
+                WebIntakeClassification.model_validate(classification)
+            )
+            equipment = classification["classified_equipment"]
+            path = _unique_path(specs_dir / _safe_filename(
+                upload.filename,
+                default=f"{equipment}-spec.pdf",
+            ))
+            path.write_bytes(upload.content)
+            by_equipment[equipment if equipment in SPEC_EQUIPMENT else "other"] = (
+                WebSpecSheetRef(
+                    equipment=equipment if equipment in SPEC_EQUIPMENT else "other",  # type: ignore[arg-type]
+                    path=str(path.resolve()),
+                    pages=[],
+                )
             )
 
     updated_refs = [
@@ -1799,9 +2070,14 @@ def _attach_site_materials(
     )
     updated = payload.model_copy(update={
         "site_photo_refs": updated_refs,
+        "monthly_kwh": monthly_kwh,
+        "monthly_kwh_source": monthly_kwh_source,
+        "utility_bill_parse": utility_parse,
         "utility_bill_path": utility_path,
         "structural_letter_path": structural_path,
         "spec_sheet_refs": list(by_equipment.values()),
+        "photo_classifications": photo_classifications,
+        "spec_classifications": spec_classifications,
     })
     _write_source_pack(project_dir, updated)
     return updated
@@ -1826,6 +2102,13 @@ def _write_source_pack(project_dir: Path, payload: WebProjectRequest) -> None:
         if payload.utility_bill_path else []
     )
     usage_status = "ready" if payload.monthly_kwh else "missing"
+    usage_source = (
+        "parsed from uploaded utility file"
+        if payload.monthly_kwh_source == "utility_file"
+        else "web form monthly usage values"
+        if payload.monthly_kwh
+        else "no utility usage uploaded"
+    )
     structural_files = (
         [_project_relative(project_dir, Path(payload.structural_letter_path))]
         if payload.structural_letter_path else []
@@ -1894,10 +2177,7 @@ def _write_source_pack(project_dir: Path, payload: WebProjectRequest) -> None:
             },
             "loads.monthly_kwh": {
                 "status": usage_status,
-                "source": (
-                    "web form monthly usage values"
-                    if payload.monthly_kwh else "no utility usage uploaded"
-                ),
+                "source": usage_source,
                 "replacement": "12-month utility bill history or Smart Meter export",
                 "files": utility_files,
             },
@@ -1954,6 +2234,13 @@ def _write_source_pack(project_dir: Path, payload: WebProjectRequest) -> None:
 def build_source_materials(payload: WebProjectRequest) -> dict[str, Any]:
     required_kinds = {kind for kind, _label in REQUIRED_PHOTOS}
     supplied_kinds = {ref.kind for ref in payload.site_photo_refs if ref.path}
+    present_spec_equipment = {
+        ref.equipment for ref in payload.spec_sheet_refs if ref.path
+    }
+    spec_coverage = spec_sheet_coverage(
+        present_equipment=present_spec_equipment,
+        battery_installed=payload.battery_quantity > 0 and payload.battery_choice != "none",
+    )
     spec_files = [
         {
             "equipment": ref.equipment,
@@ -1968,9 +2255,16 @@ def build_source_materials(payload: WebProjectRequest) -> dict[str, Any]:
         "required_site_photo_count": len(required_kinds),
         "missing_photo_kinds": sorted(required_kinds - supplied_kinds),
         "utility_bill_uploaded": bool(payload.utility_bill_path),
+        "utility_bill_parse": payload.utility_bill_parse,
         "structural_letter_uploaded": bool(payload.structural_letter_path),
         "spec_sheet_count": len(spec_files),
+        "spec_coverage": spec_coverage,
         "monthly_kwh_count": len(payload.monthly_kwh),
+        "monthly_kwh_source": (
+            payload.monthly_kwh_source
+            if payload.monthly_kwh_source != "none"
+            else ("form" if payload.monthly_kwh else "none")
+        ),
         "equipment_locations_ready": (
             payload.msp_x_ft is not None
             and payload.msp_y_ft is not None
@@ -1985,7 +2279,13 @@ def build_source_materials(payload: WebProjectRequest) -> dict[str, Any]:
             }
             for ref in payload.site_photo_refs
         ],
+        "photo_classifications": [
+            item.model_dump(mode="json") for item in payload.photo_classifications
+        ],
         "spec_sheets": spec_files,
+        "spec_classifications": [
+            item.model_dump(mode="json") for item in payload.spec_classifications
+        ],
     }
 
 
@@ -2029,6 +2329,255 @@ def write_readiness_artifacts(result, project_dir: Path, output_dir: Path) -> di
             if readiness.source_pack is not None else ""
         ),
     }
+
+
+def build_ahj_gate(
+    *,
+    payload: WebProjectRequest,
+    source_materials: dict[str, Any],
+    readiness: dict[str, Any],
+    files: list[GeneratedFile],
+    review_state: dict[str, Any],
+) -> dict[str, Any]:
+    """Classify package maturity for Web handoff.
+
+    The gate is stricter than the renderer: generation can proceed with
+    simulated data, but AHJ-ready candidate status requires real source
+    evidence and complete selected deliverables.
+    """
+    blockers: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
+
+    def check(
+        key: str,
+        passed: bool,
+        detail: str,
+        *,
+        field: str = "",
+        artifact: str = "",
+        blocks_level: str = "AHJ-ready candidate",
+    ) -> None:
+        row = {
+            "key": key,
+            "status": "PASS" if passed else "BLOCKED",
+            "detail": detail,
+            "field": field or key,
+            "artifact": artifact,
+            "blocks_level": blocks_level,
+        }
+        checks.append(row)
+        if not passed:
+            blockers.append(row)
+
+    is_real = source_materials.get("site_data_source") == "real"
+    check(
+        "source_materials.site_data_source",
+        is_real,
+        "Field-uploaded source materials selected."
+        if is_real else "Simulated source materials cannot be AHJ-ready.",
+        field="site_data_source",
+    )
+
+    missing_photos = list(source_materials.get("missing_photo_kinds") or [])
+    check(
+        "project.site_photos",
+        not missing_photos,
+        "All required PV-7 site photos are present."
+        if not missing_photos else f"Missing PV-7 photos: {', '.join(missing_photos)}.",
+        field="project.site_photos",
+        artifact="PV-7 site photos",
+    )
+
+    utility_parsed = (
+        source_materials.get("utility_bill_uploaded")
+        and source_materials.get("monthly_kwh_source") == "utility_file"
+        and source_materials.get("monthly_kwh_count") == 12
+    )
+    check(
+        "loads.monthly_kwh",
+        bool(utility_parsed),
+        "12-month kWh parsed from uploaded utility file."
+        if utility_parsed else "Upload a utility bill/export that parses to 12 monthly kWh values.",
+        field="monthly_kwh",
+        artifact="Utility bill",
+    )
+
+    check(
+        "project.structural_letter_pdf",
+        bool(source_materials.get("structural_letter_uploaded")),
+        "Signed structural packet is attached."
+        if source_materials.get("structural_letter_uploaded")
+        else "Attach signed structural packet.",
+        field="structural_letter",
+        artifact="Structural letter",
+    )
+
+    spec_coverage = source_materials.get("spec_coverage") or {}
+    missing_specs = list(spec_coverage.get("missing") or [])
+    check(
+        "project.spec_sheets",
+        not missing_specs,
+        "Manufacturer spec sheets cover selected equipment."
+        if not missing_specs else f"Missing spec sheets: {', '.join(missing_specs)}.",
+        field="spec_sheets",
+        artifact="Spec sheets",
+    )
+
+    for field, passed, detail in _gate_field_checks(payload):
+        check(field, passed, detail, field=field)
+
+    file_labels = {file.label for file in files}
+    expected_outputs = [
+        ("outputs.permit", payload.outputs.permit, "Permit Package PDF"),
+        ("outputs.labels", payload.outputs.labels, "NEC Labels PDF"),
+        ("outputs.dxf", payload.outputs.dxf, "DXF + PNG previews"),
+    ]
+    for key, selected, label_fragment in expected_outputs:
+        produced = (
+            any(label_fragment in label for label in file_labels)
+            if label_fragment != "DXF + PNG previews"
+            else any("DXF" in label for label in file_labels)
+            and any("PNG Preview" in label for label in file_labels)
+        )
+        check(
+            key,
+            bool(selected and produced),
+            f"{label_fragment} generated."
+            if selected and produced else f"Select and generate {label_fragment}.",
+            field=key,
+            artifact=label_fragment,
+        )
+
+    review_values = [
+        item.get("status") for item in review_state.values()
+        if isinstance(item, dict)
+    ]
+    needs_revision = any(value == "needs_revision" for value in review_values)
+    check(
+        "review.needs_revision",
+        not needs_revision,
+        "No generated artifact is marked needs revision."
+        if not needs_revision else "Resolve artifacts marked needs revision.",
+        field="artifact_reviews",
+    )
+
+    level = (
+        "AHJ-ready candidate"
+        if not blockers
+        else "Estimate only"
+        if not is_real
+        else "Internal review"
+    )
+    next_level = (
+        "None"
+        if level == "AHJ-ready candidate"
+        else "Internal review"
+        if level == "Estimate only"
+        else "AHJ-ready candidate"
+    )
+    return {
+        "level": level,
+        "next_level": next_level,
+        "can_submit_to_ahj": level == "AHJ-ready candidate",
+        "blocker_count": len(blockers),
+        "blockers": blockers[:20],
+        "checks": checks,
+        "strict_readiness_status": readiness.get("status"),
+    }
+
+
+def _gate_field_checks(payload: WebProjectRequest) -> list[tuple[str, bool, str]]:
+    checks = [
+        (
+            "project.coordinates",
+            bool(payload.coordinates.strip()),
+            "Coordinates are required for AHJ site mapping.",
+        ),
+        (
+            "project.apn",
+            bool(payload.apn.strip()),
+            "APN / parcel is required for formal package review.",
+        ),
+        (
+            "project.meter_info.number",
+            bool(payload.meter_number.strip()),
+            "Meter number is required.",
+        ),
+        (
+            "project.meter_info.location",
+            bool(payload.meter_location.strip()),
+            "Meter location is required.",
+        ),
+        (
+            "design_engineer",
+            bool(
+                payload.engineer_firm.strip()
+                and payload.engineer_firm_number.strip()
+                and payload.engineer_email.strip()
+                and payload.engineer_phone.strip()
+            ),
+            "Engineer-of-record firm, number, email, and phone are required.",
+        ),
+        (
+            "installer",
+            bool(payload.installer_company.strip() and payload.installer_address.strip()),
+            "Installer company and address are required.",
+        ),
+        (
+            "project.roof_info",
+            bool(
+                payload.roof_info_type.strip()
+                and payload.roof_info_height_ft > 0
+                and (payload.roof_construction.strip() or payload.roof_framing.strip())
+                and payload.roof_condition != "unknown"
+                and payload.roof_attic_access != "unknown"
+                and payload.decking_thickness_in > 0
+                and payload.roof_layers > 0
+            ),
+            "Roof survey type, height, framing/construction, condition, attic access, decking, and layers are required.",
+        ),
+        (
+            "site.equipment_locations",
+            bool(
+                payload.msp_x_ft is not None
+                and payload.msp_y_ft is not None
+                and payload.inverter_x_ft is not None
+                and payload.inverter_y_ft is not None
+            ),
+            "MSP and inverter coordinates are required.",
+        ),
+    ]
+    if "TX" in (payload.site_address or payload.location).upper():
+        checks.append((
+            "project.meter_info.esid",
+            bool(payload.meter_esid.strip()),
+            "Texas ESID is required.",
+        ))
+    if payload.battery_quantity > 0 and payload.battery_choice != "none":
+        checks.append((
+            "battery.install_location",
+            payload.battery_install_location != "unknown",
+            "ESS install location is required.",
+        ))
+        if payload.battery_install_location in {"indoor", "garage"}:
+            checks.extend([
+                (
+                    "battery.distance_to_doorway_ft",
+                    payload.distance_to_doorway_ft >= 3.0,
+                    "ESS doorway setback must be at least 3 ft or AHJ-approved.",
+                ),
+                (
+                    "battery.distance_to_window_ft",
+                    payload.distance_to_window_ft >= 3.0,
+                    "ESS window setback must be at least 3 ft or AHJ-approved.",
+                ),
+                (
+                    "battery.distance_to_egress_ft",
+                    payload.distance_to_egress_ft >= 3.0,
+                    "ESS egress setback must be at least 3 ft or AHJ-approved.",
+                ),
+            ])
+    return checks
 
 
 def write_bom_csv(bom_payload: dict[str, Any], path: Path) -> None:
@@ -2077,6 +2626,8 @@ def build_artifact_manifest(
         "installed_cost_usd": bom["installed_cost_usd"],
         "cost_after_itc_usd": bom["cost_after_itc_usd"],
         "readiness_status": readiness.get("status"),
+        "readiness_level": (readiness.get("gate") or {}).get("level"),
+        "ahj_blocker_count": (readiness.get("gate") or {}).get("blocker_count"),
         "site_data_source": source_materials.get("site_data_source"),
         "category_counts": by_category,
         "files": [
@@ -2119,6 +2670,88 @@ def create_project_archive(project_dir: Path, job_id: str) -> Path:
     return archive_path
 
 
+def read_artifact_reviews(project_dir: Path) -> dict[str, Any]:
+    path = project_dir / "review-status.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    reviews = data.get("reviews") if isinstance(data, dict) else {}
+    return reviews if isinstance(reviews, dict) else {}
+
+
+def write_artifact_review(
+    project_dir: Path,
+    artifact_path: Path,
+    update: WebArtifactReviewUpdate,
+) -> dict[str, Any]:
+    rel = artifact_path.resolve().relative_to(project_dir.resolve()).as_posix()
+    reviews = read_artifact_reviews(project_dir)
+    reviews[rel] = {
+        "path": rel,
+        "status": update.status,
+        "note": update.note.strip(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    (project_dir / "review-status.json").write_text(
+        json.dumps({
+            "version": 1,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "reviews": reviews,
+        }, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return reviews
+
+
+def refresh_job_gate(
+    app: FastAPI,
+    job_id: str,
+    project_dir: Path,
+    review_state: dict[str, Any],
+) -> dict[str, Any] | None:
+    try:
+        state = load_job_state(app, job_id)
+    except HTTPException:
+        return None
+    if not state.result:
+        return None
+    request_path = project_dir / "request.json"
+    if not request_path.exists():
+        return None
+    try:
+        payload = WebProjectRequest.model_validate_json(
+            request_path.read_text(encoding="utf-8")
+        )
+        result_data = dict(state.result)
+        readiness = dict(result_data.get("readiness") or {})
+        files = [
+            GeneratedFile.model_validate(file)
+            for file in result_data.get("files") or []
+            if isinstance(file, dict)
+        ]
+        gate = build_ahj_gate(
+            payload=payload,
+            source_materials=dict(result_data.get("source_materials") or {}),
+            readiness=readiness,
+            files=files,
+            review_state=review_state,
+        )
+    except (OSError, ValidationError, ValueError, TypeError):
+        return None
+
+    readiness["gate"] = gate
+    result_data["readiness"] = readiness
+    updated = state.model_copy(update={
+        "result": result_data,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    _set_job_state(app, updated)
+    return gate
+
+
 def _zip_write(
     project_dir: Path,
     zf: zipfile.ZipFile,
@@ -2136,6 +2769,16 @@ def _safe_filename(filename: str, *, default: str) -> str:
     suffix = re.sub(r"[^A-Za-z0-9.]+", "", Path(raw_name).suffix.lower())
     default_suffix = Path(default).suffix
     return f"{stem[:48] or Path(default).stem}{suffix or default_suffix}"
+
+
+def _unique_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+    for index in range(2, 1000):
+        candidate = path.with_name(f"{path.stem}-{index}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+    return path.with_name(f"{path.stem}-{uuid4().hex[:6]}{path.suffix}")
 
 
 def _project_relative(project_dir: Path, path: Path) -> str:

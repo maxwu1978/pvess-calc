@@ -51,7 +51,9 @@ Production deployment details live in **[Web deployment](web-deployment.md)**.
 that the browser can apply to form fields. It can prefill utility, AHJ, NEC
 edition, coordinates, export tariff, and best available roof-section defaults.
 Provider misses are surfaced as low-confidence data instead of blocking the
-project form.
+project form. When lookup returns multiple roof faces, the UI lists candidate
+sections with pitch, azimuth, and area so the operator can choose a roof face
+instead of accepting only the automatic best match.
 
 ## Address Samples
 
@@ -71,14 +73,24 @@ The form accepts:
 
 - PV-7 site photos: front elevation, roof, meter, main panel, sub-panel, and
   equipment location.
+- Unsorted site photos. The Web intake helper classifies these by filename
+  into the closest PV-7 kind and keeps the classification visible for review.
 - Utility bill or usage export.
 - Signed structural letter PDF.
 - Manufacturer spec sheets for module, inverter, battery, racking, and
   optimizer.
+- Unsorted spec sheets. The intake helper classifies module, inverter,
+  optimizer, racking, and battery PDFs by filename and reports coverage for
+  the equipment selected in the form.
 
 Uploaded files are copied into `source_materials/` under the generated job
 directory and listed in `simulated-site-data.yaml` so simulated or missing
 inputs remain visible before AHJ submission.
+
+If a utility upload contains 12 valid monthly kWh values, those values replace
+form/simulated monthly usage in the generated `inputs.yaml`. The source status
+records whether monthly usage came from the form or from a parsed utility
+file.
 
 ## Generated Files
 
@@ -100,6 +112,32 @@ and QET.
 
 PDFs and PNG sheet previews render inside the **Preview** panel. Direct
 Open/download links remain available for external PDF viewers and CAD review.
+The preview grid also shows document/sheet thumbnails for PDFs, Markdown
+reports, and PNG previews.
+
+Each generated artifact can be marked:
+
+- `not reviewed`
+- `needs revision`
+- `approved for internal review`
+
+Review state is stored in `review-status.json` inside the job folder and is
+served through `/api/jobs/<job_id>/reviews`.
+
+## AHJ Gate
+
+The **Readiness** panel includes a package gate:
+
+- `Estimate only` — useful for sizing/cost preview; never AHJ-ready.
+- `Internal review` — real source-material mode is selected, but required
+  evidence, outputs, or field data still need review.
+- `AHJ-ready candidate` — source evidence and selected deliverables satisfy
+  the Web gate and the package can move to formal engineering/AHJ review.
+
+Simulated source materials can never produce `AHJ-ready candidate`. The gate
+also blocks missing parsed utility usage, signed structural packet, selected
+equipment spec sheets, PV-7 photos, roof/field data, selected permit/DXF/label
+outputs, and generated artifacts marked `needs revision`.
 
 ## History
 

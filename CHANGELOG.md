@@ -8,6 +8,27 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W21-W23: source intake, review workspace, AHJ gate
+
+- Added utility-upload parsing for common CSV/text/PDF-like files; a real
+  upload with 12 valid monthly kWh values now replaces simulated/form monthly
+  usage in generated `inputs.yaml`
+- Added filename-based auto-classification for unsorted site photos and spec
+  sheets, plus selected-equipment spec-sheet coverage in preflight and source
+  material status
+- Added selectable lookup roof candidates instead of applying only one best
+  roof section from lookup data
+- Added document/sheet thumbnails in the Preview panel and per-artifact review
+  state persisted in `review-status.json`
+- Added package readiness levels: `Estimate only`, `Internal review`, and
+  `AHJ-ready candidate`
+- Added an AHJ gate that blocks simulated source materials, missing utility
+  evidence, signed structural data, selected-equipment specs, PV-7 photos,
+  field intake gaps, selected output incompleteness, and artifacts marked
+  `needs revision`
+- Extended Web regression tests for uploaded-source parsing/classification,
+  review persistence, simulated/PV-only/PV+ESS gate paths, and UI terminology
+
 ### 2026-05-19 — Web UI W20: production deployment profile
 
 - Added a Dockerfile production profile for the FastAPI Web app

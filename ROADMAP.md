@@ -13,64 +13,49 @@ When a K-phase ships:
 
 ## Planned
 
-### W21 — Real source-data intake helpers
-
-Goal: reduce manual data entry by turning common source materials into
-structured form fields.
-
-Development plan:
-
-- Parse utility bill CSV/PDF inputs into monthly kWh where possible.
-- Classify uploaded site photos by required PV-7 kind.
-- Surface selected-equipment spec-sheet coverage in preflight.
-- Show lookup-derived roof sections as selectable candidates instead of only
-  applying one best section.
-
-Closing standards:
-
-- Simulated monthly usage is replaced automatically when a real utility file
-  yields 12 valid monthly values.
-- Photo/spec classification remains reviewable and never silently marks AHJ
-  readiness as strict-ready without source evidence.
-
-### W22 — Review workspace
-
-Goal: make generated package review easier before handoff.
-
-Development plan:
-
-- Add sheet/document thumbnails for generated PDFs and PNG previews.
-- Add review status per generated artifact: `not reviewed`, `needs revision`,
-  `approved for internal review`.
-- Link readiness/preflight issues to relevant source fields or generated
-  artifacts where possible.
-
-Closing standards:
-
-- Review state is stored with the job and survives page reload.
-- Generated file filtering and preview remain usable on mobile and desktop.
-
-### W23 — AHJ-ready gate
-
-Goal: separate quick estimates from packages that can be considered for
-formal AHJ submission.
-
-Development plan:
-
-- Add package readiness levels: `Estimate only`, `Internal review`, and
-  `AHJ-ready candidate`.
-- Wire readiness strict mode, doctor checks, source-material coverage, and
-  selected output completeness into one gate result.
-- Make the Web UI show which inputs block the next readiness level.
-
-Closing standards:
-
-- Simulated source materials can never produce `AHJ-ready candidate`.
-- Missing signed structural/spec/source data blocks the AHJ-ready gate with
-  actionable field names.
-- Tests cover PV-only, PV+ESS, simulated, and uploaded-source paths.
+No active Web phases are queued after W23. Next planned engineering work
+should be selected from the non-Web backlog below after another generated
+package review pass.
 
 ## Completed Milestones
+
+### Web UI W21-W23 — source intake, review workspace, AHJ gate ✅ DONE 2026-05-19
+
+Goal: reduce manual source-data entry, make generated outputs reviewable in
+the browser, and separate quick estimates from packages that can be considered
+for formal AHJ submission.
+
+Completed:
+
+- **W21** — Added utility upload parsing for common CSV/text/PDF-like files.
+  When 12 valid monthly kWh values are detected, generated `inputs.yaml`
+  automatically uses the uploaded utility data instead of simulated/form
+  monthly usage. Added filename-based auto-classification for unsorted site
+  photos and spec sheets, selected-equipment spec coverage, and lookup roof
+  candidates that can be applied from the UI.
+- **W22** — Added document/sheet thumbnails in the Preview panel and
+  per-artifact review state: `not reviewed`, `needs revision`, and
+  `approved for internal review`. Review state is stored in
+  `review-status.json` inside the job folder and survives reloads.
+- **W23** — Added an AHJ gate with three levels: `Estimate only`,
+  `Internal review`, and `AHJ-ready candidate`. The gate combines source
+  material provenance, selected output completeness, spec coverage, field
+  intake completeness, and artifact review state into actionable blockers.
+
+Closing standards met:
+
+- Simulated monthly usage is replaced automatically when a real utility upload
+  yields 12 valid monthly values.
+- Photo/spec classification is visible in source-material status and does not
+  silently make a package AHJ-ready.
+- Review state is persisted per artifact and can be loaded after page reload.
+- Simulated source materials can never produce `AHJ-ready candidate`.
+- Missing utility evidence, signed structural packet, selected-equipment spec
+  sheets, PV-7 photos, roof/field data, or selected permit/DXF/label outputs
+  block the AHJ-ready gate with field names.
+- Regression tests cover uploaded-source parsing/classification, review
+  persistence, simulated gate blocking, PV-only AHJ-ready candidate, and
+  PV+ESS missing-battery-spec blocking.
 
 ### Web UI W1-W13 — local project generator ✅ DONE 2026-05-19
 
