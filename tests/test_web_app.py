@@ -154,6 +154,17 @@ def _gate_files(tmp_path: Path, job_id: str = "gate-job") -> list[GeneratedFile]
     return files
 
 
+def _approved_reviews(files: list[GeneratedFile]) -> dict[str, dict[str, str]]:
+    return {
+        file.path: {
+            "path": file.path,
+            "status": "approved_internal",
+            "note": "checked",
+        }
+        for file in files
+    }
+
+
 def _submit_and_wait(
     client: TestClient,
     payload: dict,
@@ -1176,6 +1187,31 @@ def test_web_ahj_gate_allows_real_pv_only_candidate(tmp_path: Path):
             battery_capacity_kwh_each=0,
         )
     )
+    files = _gate_files(tmp_path)
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(payload),
+        readiness={"status": "PASS"},
+        package_qa={"status": "PASS"},
+        files=files,
+        review_state=_approved_reviews(files),
+    )
+
+    assert gate["level"] == "AHJ-ready candidate"
+    assert gate["can_submit_to_ahj"] is True
+    assert gate["blockers"] == []
+    assert gate["required_artifact_review_count"] == 4
+    assert gate["pending_required_artifact_review_count"] == 0
+
+
+def test_web_ahj_gate_blocks_unapproved_required_artifacts(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(
+        _complete_real_payload(
+            battery_choice="none",
+            battery_quantity=0,
+            battery_capacity_kwh_each=0,
+        )
+    )
     gate = build_ahj_gate(
         payload=payload,
         source_materials=build_source_materials(payload),
@@ -1185,9 +1221,15 @@ def test_web_ahj_gate_allows_real_pv_only_candidate(tmp_path: Path):
         review_state={},
     )
 
-    assert gate["level"] == "AHJ-ready candidate"
-    assert gate["can_submit_to_ahj"] is True
-    assert gate["blockers"] == []
+    assert gate["level"] == "Internal review"
+    assert gate["can_submit_to_ahj"] is False
+    assert gate["required_artifact_review_count"] == 4
+    assert gate["pending_required_artifact_review_count"] == 4
+    assert any(
+        blocker["key"] == "review.required_artifacts"
+        and blocker["field"] == "artifact_reviews"
+        for blocker in gate["blockers"]
+    )
 
 
 def test_web_ahj_gate_blocks_missing_package_qa(tmp_path: Path):

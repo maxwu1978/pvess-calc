@@ -138,8 +138,9 @@ The **Readiness** panel includes a package gate:
 Simulated source materials can never produce `AHJ-ready candidate`. The gate
 also blocks missing parsed utility usage, signed structural packet, selected
 equipment spec sheets, PV-7 photos, roof/field data, selected permit/DXF/label
-outputs, package QA that has not passed, and generated artifacts marked
-`needs revision`.
+outputs, package QA that has not passed, generated artifacts marked
+`needs revision`, and required generated artifacts that have not been marked
+`approved for internal review`.
 
 ## Package QA
 
@@ -152,7 +153,8 @@ The QA pass runs `pvess-doctor`, verifies the Complete Project ZIP can be read,
 and checks generated PDFs for page count and searchable text. The job result is
 updated with the QA status and the ZIP is rebuilt so the QA reports are included
 in the handoff archive. A package cannot reach `AHJ-ready candidate` until
-Package QA is `PASS`.
+Package QA is `PASS` and the required handoff artifacts have been approved in
+the Preview review controls.
 
 ## History
 

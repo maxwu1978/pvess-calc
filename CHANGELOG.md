@@ -8,6 +8,14 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W26: review-gated AHJ handoff
+
+- Added required-artifact approval to the Web AHJ gate
+- Permit PDF, NEC label PDF, DXF sheets, PNG previews, and generated Package QA
+  reports now block `AHJ-ready candidate` until approved for internal review
+- Added required/pending artifact review counts to gate responses
+- Added regression coverage for blocked and approved handoff paths
+
 ### 2026-05-19 — Web UI W25: QA-gated AHJ handoff
 
 - Added Package QA status to the Web AHJ gate

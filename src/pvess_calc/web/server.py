@@ -2508,6 +2508,25 @@ def build_ahj_gate(
         field="artifact_reviews",
     )
 
+    required_review_files = _gate_required_review_files(payload, files)
+    unapproved_review_files = [
+        file for file in required_review_files
+        if _gate_artifact_review_status(file, review_state) != "approved_internal"
+    ]
+    unapproved_labels = ", ".join(
+        file.label for file in unapproved_review_files[:6]
+    )
+    if len(unapproved_review_files) > 6:
+        unapproved_labels += f", +{len(unapproved_review_files) - 6} more"
+    check(
+        "review.required_artifacts",
+        not unapproved_review_files,
+        "Required generated artifacts are approved for internal review."
+        if not unapproved_review_files
+        else f"Approve required generated artifacts: {unapproved_labels}.",
+        field="artifact_reviews",
+    )
+
     qa_status = str((package_qa or {}).get("status") or "NOT_RUN").upper()
     check(
         "package_qa.status",
@@ -2563,7 +2582,50 @@ def build_ahj_gate(
         "checks": checks,
         "strict_readiness_status": readiness.get("status"),
         "package_qa_status": qa_status,
+        "required_artifact_review_count": len(required_review_files),
+        "pending_required_artifact_review_count": len(unapproved_review_files),
     }
+
+
+def _gate_required_review_files(
+    payload: WebProjectRequest,
+    files: list[GeneratedFile],
+) -> list[GeneratedFile]:
+    required: list[GeneratedFile] = []
+    seen: set[str] = set()
+
+    def add(file: GeneratedFile) -> None:
+        if file.path in seen:
+            return
+        seen.add(file.path)
+        required.append(file)
+
+    for file in files:
+        label = file.label.lower()
+        if payload.outputs.permit and label.startswith("permit package pdf"):
+            add(file)
+        elif payload.outputs.labels and label.startswith("nec labels pdf"):
+            add(file)
+        elif payload.outputs.dxf and file.category == "CAD" and file.kind in {
+            "dxf", "preview",
+        }:
+            add(file)
+        elif label.startswith("package qa report"):
+            add(file)
+    return required
+
+
+def _gate_artifact_review_status(
+    file: GeneratedFile,
+    review_state: dict[str, Any],
+) -> str:
+    entry = review_state.get(file.path)
+    if not isinstance(entry, dict):
+        return "not_reviewed"
+    status = str(entry.get("status") or "not_reviewed")
+    if status not in {"not_reviewed", "needs_revision", "approved_internal"}:
+        return "not_reviewed"
+    return status
 
 
 def _gate_field_checks(payload: WebProjectRequest) -> list[tuple[str, bool, str]]:

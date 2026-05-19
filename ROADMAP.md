@@ -13,11 +13,33 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W25. Next planned engineering work
+No active Web phases are queued after W26. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web UI W26 — review-gated AHJ handoff ✅ DONE 2026-05-19
+
+Goal: close the handoff loop so a package cannot become AHJ-ready just because
+automated QA passed; core generated artifacts must also be internally approved.
+
+Completed:
+
+- Added required-artifact review checks to the AHJ gate.
+- Permit PDF, NEC label PDF, DXF sheets, PNG previews, and generated Package QA
+  reports now block `AHJ-ready candidate` until marked `approved_internal`.
+- Gate responses now include required/pending artifact review counts.
+- Updated Web docs to make the manual review requirement explicit.
+
+Closing standards met:
+
+- A real-source package with strict readiness PASS, generated selected outputs,
+  and Package QA PASS remains `Internal review` when required artifacts have
+  not been approved.
+- The same package can become `AHJ-ready candidate` once required artifacts are
+  marked `approved_internal`.
+- Regression tests cover both the blocked and cleared paths.
 
 ### Web UI W25 — QA-gated AHJ handoff ✅ DONE 2026-05-19
 
@@ -38,8 +60,8 @@ Closing standards met:
 
 - A real-source package that otherwise satisfies source/readiness/output
   checks is blocked when Package QA has not run.
-- A real-source package with strict readiness PASS, selected outputs, approved
-  review state, and Package QA PASS can become `AHJ-ready candidate`.
+- A real-source package with strict readiness PASS, selected outputs, and
+  Package QA PASS can become eligible for the final review gate.
 - Package QA results remain visible after reload and in Recent jobs.
 - Regression tests cover missing-QA blocking and QA persistence.
 
