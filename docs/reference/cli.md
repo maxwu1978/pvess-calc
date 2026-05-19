@@ -117,6 +117,12 @@ Each generated job stores `request.json`, `inputs.yaml`, generated outputs,
 `bom-cost.json`, `bom-cost.csv`, `artifact-manifest.json`, uploaded source
 files, and a complete ZIP package under the Web workdir.
 
+The workdir also contains `web-jobs.sqlite3`, a searchable job index for
+history, filters, source-material/readiness metadata, and artifact records.
+Generated files remain in each job folder. Existing job folders with
+`job-status.json` are imported into the index automatically when history is
+listed.
+
 Environment equivalents:
 
 - `PVESS_WEB_WORKDIR` — default generated-job directory

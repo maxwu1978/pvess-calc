@@ -13,29 +13,6 @@ When a K-phase ships:
 
 ## Planned
 
-### W18 — Durable Web job storage
-
-Goal: move Web job metadata out of directory-only discovery so generated
-projects can be searched, filtered, retained, and migrated predictably.
-
-Development plan:
-
-- Add a small SQLite-backed job index for job metadata, payload summary,
-  status, artifact list, source-material status, and generated timestamps.
-- Keep generated files on disk for now; the database owns discovery and
-  metadata, not binary storage.
-- Migrate existing `job-status.json` discovery into a compatibility import
-  path so old local jobs remain visible.
-- Add job list filters for status, project name/address, and created date.
-
-Closing standards:
-
-- Existing filesystem jobs still appear after the first W18 run.
-- New jobs write both status JSON and SQLite metadata.
-- Deleting a job removes the database row and the generated project folder.
-- Tests cover empty database, legacy import, create/list/delete, and
-  artifact-index consistency.
-
 ### W19 — Operator accounts and project isolation
 
 Goal: replace shared-token-only access with a lightweight operator model for
@@ -172,7 +149,6 @@ Closing standards met:
 
 Remaining follow-up:
 
-- Production-hosted/multi-user deployment with durable job storage.
 - Optional account/user model if multiple operators need isolated job history.
 
 ### Web UI W14-W16 — deploy hardening + preview + lookup ✅ DONE 2026-05-19
@@ -235,6 +211,31 @@ Closing standards met:
 - Mansfield sample addresses generate valid project outputs with 12-month
   simulated usage and still surface simulated source-material status.
 - Documentation, navigation, and tests cover the copy standard.
+
+### Web UI W18 — durable Web job storage ✅ DONE 2026-05-19
+
+Goal: move Web job metadata out of directory-only discovery so generated
+projects can be searched, filtered, retained, and migrated predictably.
+
+Completed:
+
+- Added a SQLite-backed Web job index at `<workdir>/web-jobs.sqlite3`.
+- Kept generated files on disk while storing job state, payload summary,
+  project/address search fields, source-material status, readiness status,
+  installed cost, and artifact metadata in SQLite.
+- Added compatibility import from existing `job-status.json` folders so old
+  local jobs appear after the first W18 run.
+- Added API and browser filters for job status, project/address text, and
+  created date range.
+
+Closing standards met:
+
+- Empty Web workdirs return an empty history and create the SQLite index.
+- Legacy filesystem-only jobs are imported into the database on list/load.
+- New async and sync jobs write both `job-status.json` and SQLite metadata.
+- Deleting a job removes the database row and generated project folder.
+- Regression tests cover empty database, legacy import, create/list/filter,
+  delete, sync status persistence, and artifact-index consistency.
 
 ### Stage 5 — simulated site-data readiness path ✅ DONE 2026-05-18
 

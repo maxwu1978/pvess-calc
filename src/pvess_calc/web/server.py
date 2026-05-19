@@ -60,6 +60,7 @@ from ..qet.inject import inject_from_result
 from ..report.json_dump import write_json
 from ..report.markdown import write_markdown
 from ..schema import Inputs
+from .job_store import JobStore
 from .quote import categorize_bom, installed_breakdown, quote_tiers_for_result
 
 
@@ -400,6 +401,7 @@ def create_app(
     app.state.access_token = access_token if access_token is not None else default_access_token()
     app.state.jobs: dict[str, WebJobState] = {}
     app.state.job_lock = threading.Lock()
+    app.state.job_store = JobStore(app.state.jobs_dir)
     app.state.executor = ThreadPoolExecutor(max_workers=2)
 
     origins = cors_origins if cors_origins is not None else default_cors_origins()
@@ -559,7 +561,21 @@ def create_app(
     @app.post("/api/projects/sync", response_model=WebJobResponse)
     def create_project_sync(payload: WebProjectRequest) -> WebJobResponse:
         try:
-            return generate_project(payload, app.state.jobs_dir)
+            result = generate_project(payload, app.state.jobs_dir)
+            now = datetime.now(timezone.utc).isoformat()
+            state = WebJobState(
+                job_id=result.job_id,
+                project_dir=result.project_dir,
+                status="done",
+                progress=100,
+                stage="done",
+                message="Package generation complete.",
+                created_at=now,
+                updated_at=now,
+                result=result.model_dump(mode="json"),
+            )
+            _set_job_state(app, state, payload=payload)
+            return result
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
         except ValueError as exc:
@@ -568,13 +584,30 @@ def create_app(
             raise HTTPException(status_code=500, detail=repr(exc)) from exc
 
     @app.get("/api/jobs")
-    def list_jobs() -> dict[str, Any]:
-        jobs = []
-        for path in sorted(app.state.jobs_dir.glob("*"), reverse=True):
-            status_path = path / "job-status.json"
-            if status_path.exists():
-                jobs.append(json.loads(status_path.read_text(encoding="utf-8")))
-        return {"jobs": jobs[:25]}
+    def list_jobs(
+        status: Literal["queued", "running", "done", "failed"] | None = Query(None),
+        q: str = Query("", max_length=120),
+        created_from: str = Query("", max_length=40),
+        created_to: str = Query("", max_length=40),
+        limit: int = Query(25, ge=1, le=100),
+    ) -> dict[str, Any]:
+        jobs = app.state.job_store.list_jobs(
+            status=status,
+            query=q,
+            created_from=created_from,
+            created_to=created_to,
+            limit=limit,
+        )
+        return {
+            "jobs": jobs,
+            "filters": {
+                "status": status,
+                "q": q,
+                "created_from": created_from,
+                "created_to": created_to,
+                "limit": limit,
+            },
+        }
 
     @app.get("/api/jobs/{job_id}", response_model=WebJobState)
     def get_job(job_id: str) -> WebJobState:
@@ -604,6 +637,7 @@ def create_app(
         project_dir = _job_project_dir(app, job_id)
         with app.state.job_lock:
             app.state.jobs.pop(job_id, None)
+        app.state.job_store.delete_job(job_id)
         shutil.rmtree(project_dir)
         return {"deleted": job_id}
 
@@ -681,7 +715,7 @@ def enqueue_project(
         created_at=now,
         updated_at=now,
     )
-    _set_job_state(app, state)
+    _set_job_state(app, state, payload=payload)
     app.state.executor.submit(
         _run_job,
         app,
@@ -711,6 +745,9 @@ def load_job_state(app: FastAPI, job_id: str) -> WebJobState:
     with app.state.job_lock:
         if job_id in app.state.jobs:
             return app.state.jobs[job_id]
+    stored = app.state.job_store.get_state(job_id)
+    if stored is not None:
+        return WebJobState.model_validate(stored)
     path = app.state.jobs_dir / job_id / "job-status.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="job not found")
@@ -771,7 +808,12 @@ def _run_job(
         _set_job_state(app, state)
 
 
-def _set_job_state(app: FastAPI, state: WebJobState) -> None:
+def _set_job_state(
+    app: FastAPI,
+    state: WebJobState,
+    *,
+    payload: WebProjectRequest | None = None,
+) -> None:
     with app.state.job_lock:
         app.state.jobs[state.job_id] = state
     project_dir = Path(state.project_dir)
@@ -779,6 +821,10 @@ def _set_job_state(app: FastAPI, state: WebJobState) -> None:
     (project_dir / "job-status.json").write_text(
         state.model_dump_json(indent=2),
         encoding="utf-8",
+    )
+    app.state.job_store.upsert_state(
+        state.model_dump(mode="json"),
+        payload=payload.model_dump(mode="json") if payload is not None else None,
     )
 
 
@@ -2165,6 +2211,8 @@ def serve_cmd(
 
     app.state.jobs_dir = default_jobs_dir()
     app.state.access_token = default_access_token()
+    app.state.job_store = JobStore(app.state.jobs_dir)
+    app.state.job_store.ensure_ready()
     click.echo(f"PVESS web UI: http://{host}:{port}")
     click.echo(f"Jobs directory: {default_jobs_dir()}")
     if app.state.access_token:

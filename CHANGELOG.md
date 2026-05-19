@@ -8,6 +8,19 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W18: durable job storage
+
+- Added a SQLite-backed Web job index at `<workdir>/web-jobs.sqlite3` while
+  keeping generated artifacts on disk
+- Indexed job state, payload summary, project/address search fields,
+  source-material status, readiness status, installed cost, and artifact list
+- Added compatibility import from existing `job-status.json` folders so old
+  local jobs remain visible
+- Added API and browser job filters for status, project/address text, and
+  created date range
+- Extended Web regression tests for empty database, legacy import, filtering,
+  delete cleanup, sync-job persistence, and artifact-index consistency
+
 ### 2026-05-19 — Web UI W17b: release-readiness closeout
 
 - Reorganized `ROADMAP.md` so upcoming Web phases W18-W23 are explicit

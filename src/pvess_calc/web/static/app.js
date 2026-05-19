@@ -30,6 +30,11 @@ const progressBar = document.querySelector("#progress-bar");
 const progressMessage = document.querySelector("#progress-message");
 const historyEmpty = document.querySelector("#history-empty");
 const historyList = document.querySelector("#history-list");
+const historyStatus = document.querySelector("#history-status");
+const historyQuery = document.querySelector("#history-query");
+const historyFrom = document.querySelector("#history-from");
+const historyTo = document.querySelector("#history-to");
+const historyRefresh = document.querySelector("#history-refresh");
 const accessTokenInput = document.querySelector("#access-token");
 const saveTokenButton = document.querySelector("#save-token");
 const tokenStatus = document.querySelector("#token-status");
@@ -862,7 +867,7 @@ function renderError(message) {
 
 async function loadHistory() {
   try {
-    const response = await apiFetch("/api/jobs");
+    const response = await apiFetch(`/api/jobs${historyQueryString()}`);
     const data = await response.json();
     const jobs = data.jobs || [];
     historyList.innerHTML = "";
@@ -886,6 +891,35 @@ async function loadHistory() {
     historyEmpty.classList.remove("hidden");
   }
 }
+
+function historyQueryString() {
+  const params = new URLSearchParams();
+  if (historyStatus.value) {
+    params.set("status", historyStatus.value);
+  }
+  if (historyQuery.value.trim()) {
+    params.set("q", historyQuery.value.trim());
+  }
+  if (historyFrom.value) {
+    params.set("created_from", historyFrom.value);
+  }
+  if (historyTo.value) {
+    params.set("created_to", historyTo.value);
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+for (const element of [historyStatus, historyFrom, historyTo]) {
+  element.addEventListener("change", loadHistory);
+}
+
+historyQuery.addEventListener("input", () => {
+  window.clearTimeout(historyQuery._timer);
+  historyQuery._timer = window.setTimeout(loadHistory, 250);
+});
+
+historyRefresh.addEventListener("click", loadHistory);
 
 historyList.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-job-id]");

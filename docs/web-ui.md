@@ -97,3 +97,13 @@ Recent jobs can be viewed, loaded back into the form, rerun, or deleted from
 the browser UI. Loading a job restores the JSON request payload. Browser file
 inputs cannot be restored by JavaScript, so attach new files before rerunning
 with changed uploads.
+
+Job history is indexed in SQLite at `<workdir>/web-jobs.sqlite3`. Generated
+artifacts stay in their job folders; SQLite stores searchable metadata,
+payload summaries, source-material/readiness status, and artifact records.
+Existing filesystem-only jobs with `job-status.json` are imported into the
+index the first time history is listed.
+
+The **Recent jobs** panel can filter by status, project/address text, and
+created date range. The same filters are available through `/api/jobs` using
+`status`, `q`, `created_from`, `created_to`, and `limit` query parameters.

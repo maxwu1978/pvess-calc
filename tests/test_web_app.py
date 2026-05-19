@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -654,6 +655,109 @@ def test_web_job_history_lists_completed_job(tmp_path: Path):
     assert jobs[0]["result"]["summary"]["project_name"] == "History Smoke"
 
 
+def test_web_job_history_empty_database_returns_empty_list(tmp_path: Path):
+    client = _client(tmp_path)
+
+    response = client.get("/api/jobs")
+
+    assert response.status_code == 200
+    assert response.json()["jobs"] == []
+    assert (tmp_path / "web-jobs.sqlite3").exists()
+
+
+def test_web_job_history_imports_legacy_status_json(tmp_path: Path):
+    now = datetime.now(timezone.utc).isoformat()
+    legacy_dir = tmp_path / "legacy-job"
+    legacy_dir.mkdir(parents=True)
+    (legacy_dir / "request.json").write_text(
+        json.dumps({
+            "project_name": "Legacy Imported",
+            "site_address": "101 Legacy Lane, Mansfield, TX",
+            "location": "Mansfield, TX",
+        }),
+        encoding="utf-8",
+    )
+    (legacy_dir / "job-status.json").write_text(
+        json.dumps({
+            "job_id": "legacy-job",
+            "project_dir": str(legacy_dir),
+            "status": "done",
+            "progress": 100,
+            "stage": "done",
+            "message": "legacy complete",
+            "created_at": now,
+            "updated_at": now,
+            "result": {
+                "summary": {"project_name": "Legacy Imported"},
+                "bom": {"installed_cost_usd": 12345},
+                "source_materials": {"site_data_source": "simulated"},
+                "readiness": {"status": "WARN"},
+                "files": [
+                    {
+                        "label": "Inputs YAML",
+                        "path": "inputs.yaml",
+                        "url": "/files/legacy-job/inputs.yaml",
+                        "bytes": 100,
+                        "category": "Input",
+                        "kind": "yaml",
+                    }
+                ],
+            },
+            "error": None,
+        }),
+        encoding="utf-8",
+    )
+    client = _client(tmp_path)
+
+    response = client.get("/api/jobs", params={"q": "Legacy Lane"})
+
+    assert response.status_code == 200
+    jobs = response.json()["jobs"]
+    assert len(jobs) == 1
+    assert jobs[0]["job_id"] == "legacy-job"
+    assert jobs[0]["result"]["summary"]["project_name"] == "Legacy Imported"
+    artifacts = client.app.state.job_store.list_artifacts("legacy-job")
+    assert [artifact["path"] for artifact in artifacts] == ["inputs.yaml"]
+
+
+def test_web_job_history_filters_and_indexes_artifacts(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(
+        client,
+        _light_payload(
+            project_name="Filtered History",
+            site_address="905 Crossvine Drive, Mansfield, TX",
+        ),
+    )
+    _submit_and_wait(
+        client,
+        _light_payload(
+            project_name="Other History",
+            site_address="2806 Green Circle Drive, Mansfield, TX",
+        ),
+    )
+    today = datetime.now(timezone.utc).date().isoformat()
+
+    filtered = client.get(
+        "/api/jobs",
+        params={
+            "status": "done",
+            "q": "Crossvine",
+            "created_from": today,
+            "created_to": today,
+        },
+    )
+
+    assert filtered.status_code == 200
+    jobs = filtered.json()["jobs"]
+    assert [job["job_id"] for job in jobs] == [state["job_id"]]
+    artifacts = client.app.state.job_store.list_artifacts(state["job_id"])
+    assert len(artifacts) == len(state["result"]["files"])
+    assert {artifact["path"] for artifact in artifacts} == {
+        file["path"] for file in state["result"]["files"]
+    }
+
+
 def test_web_job_payload_rerun_and_delete(tmp_path: Path):
     client = _client(tmp_path)
     state = _submit_and_wait(
@@ -688,3 +792,20 @@ def test_web_job_payload_rerun_and_delete(tmp_path: Path):
     assert delete_response.status_code == 200
     assert delete_response.json()["deleted"] == job_id
     assert client.get(f"/api/jobs/{job_id}").status_code == 404
+    assert client.app.state.job_store.get_state(job_id) is None
+    assert not Path(state["project_dir"]).exists()
+
+
+def test_web_sync_project_writes_status_json_and_sqlite(tmp_path: Path):
+    client = _client(tmp_path)
+
+    response = client.post("/api/projects/sync", json=_light_payload(project_name="Sync Job"))
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    project_dir = Path(data["project_dir"])
+    assert (project_dir / "job-status.json").exists()
+    stored = client.app.state.job_store.get_state(data["job_id"])
+    assert stored is not None
+    assert stored["status"] == "done"
+    assert stored["result"]["summary"]["project_name"] == "Sync Job"
