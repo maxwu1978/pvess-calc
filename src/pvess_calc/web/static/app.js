@@ -18,6 +18,9 @@ const sourceEmpty = document.querySelector("#source-empty");
 const sourceMaterials = document.querySelector("#source-materials");
 const readinessEmpty = document.querySelector("#readiness-empty");
 const readinessPanel = document.querySelector("#readiness-panel");
+const packageQaEmpty = document.querySelector("#package-qa-empty");
+const packageQaPanel = document.querySelector("#package-qa-panel");
+const runPackageQaButton = document.querySelector("#run-package-qa");
 const previewEmpty = document.querySelector("#preview-empty");
 const previewPanel = document.querySelector("#preview-panel");
 const errorEmpty = document.querySelector("#error-empty");
@@ -214,6 +217,7 @@ lookupButton.addEventListener("click", runAddressLookup);
 lookupPanel.addEventListener("click", handleLookupCandidateClick);
 previewPanel.addEventListener("click", handlePreviewClick);
 fileList.addEventListener("change", handleArtifactReviewChange);
+runPackageQaButton.addEventListener("click", runPackageQa);
 projectTemplate.addEventListener("change", () => applyTemplate(projectTemplate.value));
 addressSample.addEventListener("change", () => applyAddressSample(addressSample.value));
 moduleChoice.addEventListener("change", syncModuleOption);
@@ -602,6 +606,8 @@ function renderResult(data) {
   renderBom(data.bom);
   renderSourceMaterials(data.source_materials || {});
   renderReadiness(currentReadiness);
+  renderPackageQa(data.package_qa || {});
+  runPackageQaButton.disabled = !currentJobId;
   renderDeliveryPackage(data.files || []);
   renderPreviews(data.files || []);
   renderFiles(data.files);
@@ -1032,6 +1038,78 @@ function renderReadiness(readiness) {
           <strong>${escapeHtml(item.key)}</strong>
         </li>
       `).join("") || "<li><strong>No open data gaps</strong></li>"}
+    </ul>
+  `;
+}
+
+async function runPackageQa() {
+  if (!currentJobId) {
+    return;
+  }
+  runPackageQaButton.disabled = true;
+  runPackageQaButton.textContent = "Running...";
+  statusEl.textContent = "Running package QA.";
+  try {
+    const response = await apiFetch(`/api/jobs/${currentJobId}/qa`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    renderPackageQa(data.package_qa || {});
+    renderDeliveryPackage(data.files || []);
+    renderPreviews(data.files || []);
+    renderFiles(data.files || []);
+    statusEl.textContent = "Package QA complete.";
+  } catch (error) {
+    statusEl.textContent = error.message;
+    statusEl.classList.add("error");
+    renderError(error.message);
+  } finally {
+    runPackageQaButton.disabled = !currentJobId;
+    runPackageQaButton.textContent = "Run QA";
+  }
+}
+
+function renderPackageQa(qa) {
+  const hasQa = Boolean(qa && qa.status);
+  packageQaEmpty.classList.toggle("hidden", hasQa);
+  packageQaPanel.classList.toggle("hidden", !hasQa);
+  if (!hasQa) {
+    packageQaPanel.innerHTML = "";
+    return;
+  }
+  const summary = qa.summary || {};
+  const doctor = qa.doctor || {};
+  const archive = qa.archive || {};
+  const pdfs = qa.pdfs || {};
+  const statusClass = qa.status === "PASS" ? "pass" : (qa.status === "FAIL" ? "fail" : "warn");
+  const warnings = (doctor.warnings || []).slice(0, 5);
+  const failures = (doctor.failures || []).slice(0, 5);
+  packageQaPanel.innerHTML = `
+    <div class="readiness-status ${statusClass}">
+      <strong>${escapeHtml(qa.status)}</strong>
+      <span>${escapeHtml(archive.status || "Archive pending")} · ${pdfs.total || 0} PDF artifact(s)</span>
+    </div>
+    <dl class="readiness-counts">
+      <dt>Doctor fail</dt><dd>${summary.doctor_failed || 0}</dd>
+      <dt>Doctor warn</dt><dd>${summary.doctor_warned || 0}</dd>
+      <dt>PDF fail</dt><dd>${summary.pdf_failed || 0}</dd>
+      <dt>PDF warn</dt><dd>${summary.pdf_warned || 0}</dd>
+    </dl>
+    <ul class="gate-list">
+      ${failures.map((item) => `
+        <li>
+          <span>${escapeHtml(item.name)}</span>
+          <em>${escapeHtml(item.detail || "")}</em>
+        </li>
+      `).join("") || warnings.map((item) => `
+        <li>
+          <span>${escapeHtml(item.name)}</span>
+          <em>${escapeHtml(item.detail || "")}</em>
+        </li>
+      `).join("") || "<li><span>QA</span><em>No package QA failures detected</em></li>"}
     </ul>
   `;
 }

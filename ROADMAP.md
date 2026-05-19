@@ -13,11 +13,37 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W23. Next planned engineering work
+No active Web phases are queued after W24. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web UI W24 — package QA workbench ✅ DONE 2026-05-19
+
+Goal: turn the R1 manual generated-package review loop into a repeatable Web
+job action before internal/AHJ handoff.
+
+Completed:
+
+- Added a `POST /api/jobs/<job_id>/qa` action that runs package QA for a
+  completed Web job.
+- QA now runs `pvess-doctor`, verifies the Complete Project ZIP, and checks
+  generated PDFs for page count and searchable text.
+- The action writes `output/package-qa.json` and `output/package-qa.md`,
+  stores the QA result in job state, exposes the files in the generated-file
+  list, and rebuilds the ZIP to include QA outputs.
+- Added a browser **Package QA** panel with a **Run QA** control and summary
+  of doctor/PDF/archive failures and warnings.
+
+Closing standards met:
+
+- QA cannot be run against an incomplete job.
+- QA artifacts persist in the job folder and remain visible after reload.
+- The regenerated Complete Project ZIP contains the QA JSON and Markdown
+  reports.
+- Regression tests cover the endpoint, persisted job state, file categorization,
+  and ZIP inclusion.
 
 ### Web UI W21-W23 — source intake, review workspace, AHJ gate ✅ DONE 2026-05-19
 

@@ -230,6 +230,7 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Structural letter" in response.text
     assert "Run preflight" in response.text
     assert "Preflight" in response.text
+    assert "Package QA" in response.text
     assert "Preview" in response.text
     assert "Admin/operator token" in response.text
     assert "Lookup address" in response.text
@@ -1110,6 +1111,40 @@ def test_web_sync_project_writes_status_json_and_sqlite(tmp_path: Path):
     assert stored is not None
     assert stored["status"] == "done"
     assert stored["result"]["summary"]["project_name"] == "Sync Job"
+
+
+def test_web_package_qa_runs_and_persists_outputs(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(client, _light_payload(project_name="QA Job"))
+    job_id = state["job_id"]
+
+    response = client.post(f"/api/jobs/{job_id}/qa")
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    qa = data["package_qa"]
+    project_dir = Path(state["project_dir"])
+    assert qa["status"] in {"PASS", "WARN"}
+    assert qa["doctor"]["total"] > 0
+    assert qa["archive"]["status"] == "PASS"
+    assert (project_dir / "output" / "package-qa.json").exists()
+    assert (project_dir / "output" / "package-qa.md").exists()
+    assert any(file["label"] == "Package QA JSON" for file in data["files"])
+    assert any(file["category"] == "QA" for file in data["files"])
+
+    archive = next(
+        file for file in data["files"]
+        if file["label"] == "Complete Project ZIP"
+    )
+    with zipfile.ZipFile(project_dir / archive["path"]) as zf:
+        names = set(zf.namelist())
+    assert "output/package-qa.json" in names
+    assert "output/package-qa.md" in names
+
+    reloaded = _client(tmp_path)
+    status = reloaded.get(f"/api/jobs/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["result"]["package_qa"]["archive"]["status"] == "PASS"
 
 
 def test_web_ahj_gate_blocks_simulated_source_materials(tmp_path: Path):

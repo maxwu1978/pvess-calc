@@ -552,6 +552,15 @@
 
         <section class="panel">
           <div class="section-head">
+            <h2>Package QA</h2>
+            <button id="run-package-qa" type="button" class="secondary-button" disabled>Run QA</button>
+          </div>
+          <div id="package-qa-empty" class="empty">Run package QA after generation to verify doctor, ZIP, and PDF checks.</div>
+          <div id="package-qa-panel" class="package-qa-panel hidden"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
             <h2>Preview</h2>
           </div>
           <div id="preview-empty" class="empty">PDF and PNG previews appear after generation.</div>
@@ -601,6 +610,7 @@
                 <option value="CAD">CAD</option>
                 <option value="Cost">Cost</option>
                 <option value="Readiness">Readiness</option>
+                <option value="QA">QA</option>
                 <option value="Manifest">Manifest</option>
                 <option value="Archive">Archive</option>
               </select>

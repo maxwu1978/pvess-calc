@@ -551,7 +551,8 @@ button:disabled {
   white-space: nowrap;
 }
 
-.readiness-panel {
+.readiness-panel,
+.package-qa-panel {
   display: grid;
   gap: 12px;
 }

@@ -69,6 +69,7 @@ from .intake import (
     spec_sheet_coverage,
 )
 from .job_store import JobStore
+from .package_qa import build_package_qa, write_package_qa_artifacts
 from .quote import categorize_bom, installed_breakdown, quote_tiers_for_result
 
 
@@ -350,7 +351,7 @@ class GeneratedFile(BaseModel):
     bytes: int
     category: Literal[
         "Input", "Engineering", "Permit", "CAD", "Cost", "Readiness",
-        "Manifest", "Archive", "Other",
+        "Manifest", "Archive", "QA", "Other",
     ] = "Other"
     kind: str = "other"
 
@@ -400,6 +401,7 @@ class WebJobResponse(BaseModel):
     bom: dict[str, Any]
     source_materials: dict[str, Any]
     readiness: dict[str, Any]
+    package_qa: dict[str, Any] = Field(default_factory=dict)
     files: list[GeneratedFile]
 
 
@@ -772,6 +774,13 @@ def create_app(
             "reviews": reviews,
             "gate": refresh_job_gate(app, job_id, project_dir, reviews),
         }
+
+    @app.post("/api/jobs/{job_id}/qa")
+    def run_package_qa_endpoint(request: Request, job_id: str) -> dict[str, Any]:
+        project_dir = _job_project_dir(
+            app, job_id, context=_require_auth_context(request),
+        )
+        return run_package_qa_for_job(app, job_id, project_dir)
 
     @app.post("/api/jobs/{job_id}/rerun", response_model=WebJobState)
     def rerun_job(request: Request, job_id: str) -> WebJobState:
@@ -1323,6 +1332,7 @@ def generate_project(
         bom=bom_payload,
         source_materials=source_materials,
         readiness=readiness_payload,
+        package_qa={},
         files=files,
     )
 
@@ -2805,6 +2815,104 @@ def refresh_job_gate(
     return gate
 
 
+def run_package_qa_for_job(
+    app: FastAPI,
+    job_id: str,
+    project_dir: Path,
+) -> dict[str, Any]:
+    state = load_job_state(app, job_id)
+    if state.status != "done" or not state.result:
+        raise HTTPException(status_code=409, detail="job is not complete")
+
+    result_data = dict(state.result)
+    files = [
+        GeneratedFile.model_validate(file)
+        for file in result_data.get("files") or []
+        if isinstance(file, dict)
+    ]
+
+    archive_path = create_project_archive(project_dir, job_id)
+    files = _upsert_generated_file(
+        files,
+        _file(project_dir, job_id, "Complete Project ZIP", archive_path),
+    )
+
+    package_qa = build_package_qa(
+        project_dir,
+        files,
+        archive_path=archive_path,
+    )
+    qa_json, qa_markdown = write_package_qa_artifacts(project_dir, package_qa)
+    files = _upsert_generated_file(
+        files,
+        _file(project_dir, job_id, "Package QA JSON", qa_json),
+    )
+    files = _upsert_generated_file(
+        files,
+        _file(project_dir, job_id, "Package QA Report", qa_markdown),
+    )
+
+    if (
+        isinstance(result_data.get("summary"), dict)
+        and isinstance(result_data.get("bom"), dict)
+        and isinstance(result_data.get("source_materials"), dict)
+        and isinstance(result_data.get("readiness"), dict)
+    ):
+        artifact_manifest_path = project_dir / "output" / "artifact-manifest.json"
+        artifact_manifest_path.write_text(
+            json.dumps(
+                build_artifact_manifest(
+                    files,
+                    summary=result_data["summary"],
+                    bom=result_data["bom"],
+                    source_materials=result_data["source_materials"],
+                    readiness=result_data["readiness"],
+                ),
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        files = _upsert_generated_file(
+            files,
+            _file(
+                project_dir,
+                job_id,
+                "Artifact Manifest JSON",
+                artifact_manifest_path,
+            ),
+        )
+
+    archive_path = create_project_archive(project_dir, job_id)
+    files = _upsert_generated_file(
+        files,
+        _file(project_dir, job_id, "Complete Project ZIP", archive_path),
+    )
+
+    result_data["package_qa"] = package_qa
+    result_data["files"] = [file.model_dump(mode="json") for file in files]
+    updated = state.model_copy(update={
+        "result": result_data,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    _set_job_state(app, updated)
+    return {
+        "job_id": job_id,
+        "package_qa": package_qa,
+        "files": result_data["files"],
+    }
+
+
+def _upsert_generated_file(
+    files: list[GeneratedFile],
+    new_file: GeneratedFile,
+) -> list[GeneratedFile]:
+    return [
+        *(file for file in files if file.path != new_file.path),
+        new_file,
+    ]
+
+
 def _zip_write(
     project_dir: Path,
     zf: zipfile.ZipFile,
@@ -3057,6 +3165,8 @@ def _classify_artifact(label: str, path: Path) -> tuple[str, str]:
         return "Cost", "csv" if suffix == ".csv" else "json"
     if "readiness" in lower or "checklist" in lower:
         return "Readiness", "markdown"
+    if "package qa" in lower or path.name.startswith("package-qa"):
+        return "QA", "json" if suffix == ".json" else "markdown"
     if "manifest" in lower:
         return "Manifest", "json"
     if "complete project zip" in lower:

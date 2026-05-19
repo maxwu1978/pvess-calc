@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W24: package QA workbench
+
+- Added a Web package QA action for completed jobs
+- The QA action runs `pvess-doctor`, validates the Complete Project ZIP, and
+  checks generated PDFs for page count and searchable text
+- Added `output/package-qa.json` and `output/package-qa.md` artifacts, exposed
+  them in the generated-file list, and rebuilt the handoff ZIP to include them
+- Added a browser **Package QA** panel with a **Run QA** control and a compact
+  doctor/PDF/archive status summary
+- Added regression coverage for QA persistence, file categorization, and ZIP
+  inclusion
+
 ### 2026-05-19 — Web UI W21-W23: source intake, review workspace, AHJ gate
 
 - Added utility-upload parsing for common CSV/text/PDF-like files; a real

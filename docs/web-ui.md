@@ -40,7 +40,8 @@ scoped to the jobs they create.
    and payback sensitivity without writing a project package.
 4. Select outputs and click **Generate package**.
 5. Review **Readiness**, **Preview**, **BOM cost**, and **Generated files**.
-6. Download **Complete Project ZIP** for handoff.
+6. Run **Package QA** when a generated package is ready for internal review.
+7. Download **Complete Project ZIP** for handoff.
 
 User-facing copy follows **[Web UI language](web-ui-language.md)**.
 Production deployment details live in **[Web deployment](web-deployment.md)**.
@@ -138,6 +139,18 @@ Simulated source materials can never produce `AHJ-ready candidate`. The gate
 also blocks missing parsed utility usage, signed structural packet, selected
 equipment spec sheets, PV-7 photos, roof/field data, selected permit/DXF/label
 outputs, and generated artifacts marked `needs revision`.
+
+## Package QA
+
+After a job completes, click **Run QA** to create:
+
+- `output/package-qa.json`
+- `output/package-qa.md`
+
+The QA pass runs `pvess-doctor`, verifies the Complete Project ZIP can be read,
+and checks generated PDFs for page count and searchable text. The job result is
+updated with the QA status and the ZIP is rebuilt so the QA reports are included
+in the handoff archive.
 
 ## History
 
