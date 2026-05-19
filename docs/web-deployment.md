@@ -93,3 +93,59 @@ Recommended assumptions:
 
 The app itself does not terminate TLS and does not store browser sessions.
 Operator tokens are bearer tokens sent by the browser with API/file requests.
+
+## reelamate.com Rollout
+
+Current DNS for `reelamate.com` / `www.reelamate.com` points to Vercel. Keep
+those records in place and deploy the PVESS tool on a dedicated subdomain:
+
+```text
+pvess.reelamate.com
+```
+
+This avoids disrupting any existing site on the apex domain while giving the
+generator a production URL.
+
+The repo includes a Docker Compose + Caddy profile in
+`deploy/reelamate/`:
+
+- `docker-compose.yml` builds the PVESS image and mounts persistent job storage
+  at `/data/pvess-web`.
+- `Caddyfile` terminates TLS for `pvess.reelamate.com` and proxies to the
+  FastAPI container.
+- `.env.example` lists the required access token and optional lookup-provider
+  API keys.
+
+DNS record:
+
+| Host | Type | Value |
+|---|---|---|
+| `pvess` | `A` | public IPv4 of the Docker host |
+
+Add `AAAA` as well if the host has IPv6. If you later want the root domain to
+serve the generator, change the Caddy site address to `reelamate.com` and
+replace the current Vercel apex DNS records with records for the Docker host.
+
+Deployment:
+
+```bash
+cp deploy/reelamate/.env.example deploy/reelamate/.env
+openssl rand -hex 32
+# paste the random value into deploy/reelamate/.env as PVESS_WEB_ACCESS_TOKEN
+
+docker compose --env-file deploy/reelamate/.env \
+  -f deploy/reelamate/docker-compose.yml up -d --build
+```
+
+Smoke test:
+
+```bash
+export PVESS_WEB_ACCESS_TOKEN="$(grep '^PVESS_WEB_ACCESS_TOKEN=' deploy/reelamate/.env | cut -d= -f2-)"
+pvess web-smoke \
+  --base-url https://pvess.reelamate.com \
+  --token "$PVESS_WEB_ACCESS_TOKEN"
+```
+
+Do not deploy this app as a Vercel serverless function without reworking job
+storage. The current Web generator intentionally writes uploaded source
+materials, PDFs, DXFs, ZIPs, and `web-jobs.sqlite3` to a persistent workdir.

@@ -1,0 +1,11 @@
+pvess.reelamate.com {
+	encode gzip
+	request_body {
+		max_size 64MB
+	}
+	reverse_proxy pvess-web:8765 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-For {remote_host}
+	}
+}

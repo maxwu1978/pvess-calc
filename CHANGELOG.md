@@ -8,6 +8,19 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W29: reelamate.com deployment profile
+
+- Added a Docker Compose + Caddy deployment profile for
+  `pvess.reelamate.com`
+- Documented DNS setup that keeps the current `reelamate.com` / `www`
+  Vercel records intact while routing the PVESS tool through a subdomain
+- Added an env template for the production access token and optional lookup
+  provider API keys
+- Added deployment smoke-check and backup commands for the persistent Web job
+  volume
+- Documented why the current FastAPI generator should run on Docker with
+  persistent storage instead of Vercel serverless
+
 ### 2026-05-19 — Web UI W28: generated package review pass
 
 - Ran the Web generator against the two Mansfield test addresses in PV-only

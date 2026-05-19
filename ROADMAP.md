@@ -13,11 +13,42 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W28. Next planned engineering work
+No active Web phases are queued after W29. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web UI W29 — reelamate.com deployment profile ✅ DONE 2026-05-19
+
+Goal: make the existing `reelamate.com` domain usable as the public entry
+point for the TGE Solar Project Generator without breaking the current apex /
+`www` Vercel DNS records.
+
+Completed:
+
+- Confirmed current DNS: `reelamate.com` and `www.reelamate.com` point to
+  Vercel.
+- Chose `pvess.reelamate.com` as the production tool hostname so the apex
+  domain can remain untouched.
+- Added `deploy/reelamate/docker-compose.yml` for the PVESS Docker image,
+  persistent `/data/pvess-web` storage, and provider API-key env passthrough.
+- Added `deploy/reelamate/Caddyfile` to terminate TLS and reverse proxy to the
+  FastAPI container.
+- Added `deploy/reelamate/.env.example` and `deploy/reelamate/README.md` with
+  DNS, token, smoke-check, and backup commands.
+- Updated Web deployment docs with the reelamate rollout path and a warning
+  that the current app should not be deployed as Vercel serverless without a
+  storage redesign.
+
+Closing standards met:
+
+- Deployment profile keeps generated jobs, uploaded evidence, PDFs, DXFs, ZIPs,
+  and `web-jobs.sqlite3` on a persistent Docker volume.
+- TLS and reverse proxy settings are explicit.
+- `docker compose ... config` validates the compose file.
+- Production validation path uses `pvess web-smoke` against
+  `https://pvess.reelamate.com`.
 
 ### Web UI W28 — generated package review pass ✅ DONE 2026-05-19
 
