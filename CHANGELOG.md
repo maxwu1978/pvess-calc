@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W28: generated package review pass
+
+- Ran the Web generator against the two Mansfield test addresses in PV-only
+  and PV + ESS variants
+- Verified Package QA runs for all four generated packages with zero FAIL
+  results and valid ZIP archives
+- Confirmed QA reports are persisted into each handoff ZIP
+- Confirmed W25-W27 gate behavior across NOT_RUN QA, pending artifact review,
+  artifact approval, and simulated-source blocking
+- Recorded follow-up polish items for simulated site geometry, EE-4 fire-offset
+  label placement, and DXF-derived low-text permit pages
+
 ### 2026-05-19 — Web UI W27: handoff review visibility
 
 - Added per-required-artifact review rows to the Web AHJ gate response

@@ -13,11 +13,65 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W27. Next planned engineering work
+No active Web phases are queued after W28. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web UI W28 — generated package review pass ✅ DONE 2026-05-19
+
+Goal: validate the current Web system as an end-to-end internal review path
+using simulated site data for the two Mansfield test addresses.
+
+Review matrix:
+
+| Address | Variant | Result |
+|---|---|---|
+| 905 Crossvine Drive, Mansfield, TX | PV-only | Generated, QA ran, ZIP valid |
+| 905 Crossvine Drive, Mansfield, TX | PV + ESS | Generated, QA ran, ZIP valid |
+| 2806 Green Circle Drive, Mansfield, TX | PV-only | Generated, QA ran, ZIP valid |
+| 2806 Green Circle Drive, Mansfield, TX | PV + ESS | Generated, QA ran, ZIP valid |
+
+Completed:
+
+- Generated all four Web packages through the Web API path with customer PDF,
+  permit PDF, DXF/PNG previews, NEC labels, QET, BOM, manifests, and ZIP.
+- Ran Package QA for each package; all four completed with zero FAIL results.
+- Verified each ZIP is readable and includes `output/package-qa.json` and
+  `output/package-qa.md`.
+- Verified gate behavior: initial packages were blocked by `NOT_RUN` QA and
+  pending artifact review; after QA they remained `Estimate only` because
+  source data was simulated; after approving required artifacts, pending
+  review count dropped to zero while simulated source data still prevented AHJ
+  submission.
+- Rendered and visually checked representative PV + ESS pages: cover,
+  property plan, PV-4 attachment plan, EE-1 string plan, EE-2 three-line,
+  EE-2.1 one-line, PV-6 notes, PV-7 photos, SPEC placeholder, NEC labels, and
+  customer summary.
+
+Findings:
+
+- No W28 blocker found. Permit PDFs were 17 pages, labels PDFs were 2 pages,
+  and customer summaries rendered searchable text.
+- Package QA status is `WARN`, not `PASS`, for the simulated packages. The
+  warnings are expected for missing signed structural/spec attachments,
+  simulated PV-7 photos, missing site/property geometry, and field-proof items.
+- `ee4_preview_visual_lint` still warns that one fire-offset label is close to
+  or outside the frame. Treat as a visual-polish follow-up after real site
+  geometry/satellite data is introduced.
+- Permit pages 9-10 are visually readable but have low extracted text because
+  the DXF-derived sheets are embedded as drawing previews. This remains a QA
+  warning, not a generation failure.
+
+Closing standards met:
+
+- Both Mansfield addresses generate complete Web packages for PV-only and
+  PV + ESS.
+- Package QA runs and persists QA artifacts into the ZIP for every package.
+- Readiness and artifact approval gate behavior matches W25-W27 rules.
+- Representative rendered sheets show no blank pages, broken tables, or
+  obvious text/image collisions.
 
 ### Web UI W27 — handoff review visibility ✅ DONE 2026-05-19
 
