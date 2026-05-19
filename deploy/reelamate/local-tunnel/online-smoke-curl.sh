@@ -34,19 +34,25 @@ if [[ -n "${CF_ACCESS_CLIENT_ID:-}" && -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; the
   )
 fi
 
-curl -fsS --max-time 20 "${curl_auth[@]}" "${cf_access[@]}" "$BASE_URL/" > "$tmp"
+curl -fsS --max-time 20 \
+  "${curl_auth[@]+"${curl_auth[@]}"}" \
+  "${cf_access[@]+"${cf_access[@]}"}" \
+  "$BASE_URL/" > "$tmp"
 grep -q "TGE Solar Project Generator" "$tmp"
 echo "PASS public index"
 
 curl -fsS --max-time 20 \
-  "${curl_auth[@]}" \
-  "${cf_access[@]}" \
+  "${curl_auth[@]+"${curl_auth[@]}"}" \
+  "${cf_access[@]+"${cf_access[@]}"}" \
   -H "X-PVESS-Token: $PVESS_WEB_ACCESS_TOKEN" \
   "$BASE_URL/api/health" > "$tmp"
 grep -q '"status":"ok"' "$tmp" || grep -q '"status": "ok"' "$tmp"
 grep -q '"storage"' "$tmp"
 echo "PASS public health"
 
-curl -fsS --max-time 20 "${curl_auth[@]}" "${cf_access[@]}" "$BASE_URL/assets/app.js" > "$tmp"
+curl -fsS --max-time 20 \
+  "${curl_auth[@]+"${curl_auth[@]}"}" \
+  "${cf_access[@]+"${cf_access[@]}"}" \
+  "$BASE_URL/assets/app.js" > "$tmp"
 grep -q "apiFetch" "$tmp"
 echo "PASS public app.js"
