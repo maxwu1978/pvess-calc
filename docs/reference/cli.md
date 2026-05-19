@@ -133,6 +133,25 @@ Environment equivalents:
 - `PVESS_WEB_ACCESS_TOKEN` — same behavior as `--access-token`
 - `PVESS_WEB_CORS_ORIGINS` — comma-separated allowed origins for hosted
   front-end/API deployments
+- `PVESS_QET_TEMPLATE` — optional override for the QET template path in
+  non-repo-root deployments
+
+### `pvess web-smoke`
+
+```bash
+pvess web-smoke [--base-url URL] [--token TOKEN] [--timeout SECONDS] [--skip-generate]
+```
+
+Smoke-tests a running Web deployment. It checks `/api/health`, static assets,
+auth mode, and by default creates a lightweight sync job with optional outputs
+disabled.
+
+| Option | Notes |
+|---|---|
+| `--base-url` | Running Web service. Defaults to `http://127.0.0.1:8765` |
+| `--token` | Admin or operator token. Defaults from `PVESS_WEB_ACCESS_TOKEN` |
+| `--timeout` | Per-request timeout in seconds. Defaults to 30 |
+| `--skip-generate` | Skip the lightweight generated-job check |
 
 ## SUBMIT
 

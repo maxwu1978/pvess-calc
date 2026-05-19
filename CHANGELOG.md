@@ -8,6 +8,19 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W20: production deployment profile
+
+- Added a Dockerfile production profile for the FastAPI Web app
+- Set container default job storage to `/data/pvess-web` and declared it as a
+  Docker volume so generated artifacts persist outside the image layer
+- Added `.dockerignore` to keep outputs, SQLite files, caches, and virtualenvs
+  out of the production build context
+- Expanded `/api/health` with app version and storage status
+- Added `pvess web-smoke` / `pvess-web-smoke` to verify health, static assets,
+  auth mode, and a lightweight generated job
+- Documented Docker run command, environment variables, backup strategy,
+  health checks, and reverse-proxy assumptions
+
 ### 2026-05-19 — Web UI W19: operator accounts and isolation
 
 - Added SQLite-backed operator token storage with hashed tokens and one-time

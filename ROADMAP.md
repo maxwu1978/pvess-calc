@@ -13,25 +13,6 @@ When a K-phase ships:
 
 ## Planned
 
-### W20 — Production deployment profile
-
-Goal: package the Web app for a repeatable hosted deployment without changing
-the local CLI workflow.
-
-Development plan:
-
-- Add a Dockerfile or equivalent deployment entrypoint for the FastAPI app.
-- Document required environment variables, job storage paths, backup strategy,
-  health checks, and reverse-proxy assumptions.
-- Add a production smoke command that verifies `/api/health`, static assets,
-  auth mode, and a lightweight generated job.
-
-Closing standards:
-
-- One documented command starts the production profile locally.
-- Health check returns app/version/auth/storage status.
-- Generated artifacts persist outside the container image layer.
-
 ### W21 — Real source-data intake helpers
 
 Goal: reduce manual data entry by turning common source materials into
@@ -242,6 +223,32 @@ Closing standards met:
 - Auth failures return 401/403 JSON without filesystem path leakage.
 - Regression tests cover operator creation, owner-scoped history, cross-owner
   denial paths, admin all-jobs access, and owner delete/download behavior.
+
+### Web UI W20 — production deployment profile ✅ DONE 2026-05-19
+
+Goal: package the Web app for a repeatable hosted deployment without changing
+the local CLI workflow.
+
+Completed:
+
+- Added a Dockerfile production profile for the FastAPI app.
+- Set the container default Web workdir to `/data/pvess-web` and declared it
+  as a Docker volume so generated artifacts persist outside the image layer.
+- Added `.dockerignore` to keep local outputs, SQLite files, caches, and
+  virtualenvs out of the production image context.
+- Expanded `/api/health` with app version and storage status.
+- Added `pvess web-smoke` / `pvess-web-smoke` to verify health, static
+  assets, auth mode, and a lightweight generated job.
+- Documented local Docker run command, environment variables, backup strategy,
+  health checks, and reverse-proxy assumptions.
+
+Closing standards met:
+
+- One documented Docker command starts the production profile locally.
+- Health check returns app/version/auth/storage status.
+- Generated artifacts persist under the mounted `/data/pvess-web` volume.
+- Regression tests cover smoke-command behavior, CLI registration, health
+  storage payload, and Dockerfile persistent-volume guardrails.
 
 ### Stage 5 — simulated site-data readiness path ✅ DONE 2026-05-18
 

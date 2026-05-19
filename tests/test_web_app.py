@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 import yaml
 
-from pvess_calc.web.server import create_app
+from pvess_calc.web.server import create_app, default_qet_template
 
 
 DFW_SIMULATED_MONTHLY_KWH = [
@@ -161,7 +161,13 @@ def test_web_health_endpoint(tmp_path: Path):
     data = response.json()
     assert data["status"] == "ok"
     assert data["app"] == "TGE Solar Project Generator"
+    assert data["version"] == "0.1.0"
     assert data["jobs_dir"] == str(tmp_path)
+    assert data["storage"]["status"] == "ok"
+    assert data["storage"]["jobs_dir"] == str(tmp_path)
+    assert data["storage"]["job_db_path"] == str(tmp_path / "web-jobs.sqlite3")
+    assert data["storage"]["job_db_exists"] is True
+    assert data["storage"]["writable"] is True
     assert data["auth_required"] is False
 
 
@@ -173,6 +179,11 @@ def test_web_runtime_config_reports_auth_mode(tmp_path: Path):
     data = response.json()
     assert data["auth_required"] is True
     assert data["lookup_modes"] == ["online", "offline"]
+
+
+def test_web_default_qet_template_resolves_for_source_checkout():
+    assert default_qet_template().exists()
+    assert default_qet_template().name == "residential-ess-v1.qet"
 
 
 def test_web_catalog_exposes_device_options(tmp_path: Path):

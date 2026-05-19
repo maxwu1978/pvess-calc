@@ -72,8 +72,8 @@ See **[Workflow → Intake](workflow/intake.md)** for the full guided tour.
 - **Multi-level roofs / dormers** — `RoofSection` supports rect / tri / polygon,
   but cross-section adjacency (ridge / valley topology) is K.2.9+ work.
 - **Real-time online providers** beyond Mapbox + NREL.
-- **Web UI** — local FastAPI UI is available through `pvess serve`; mobile
-  layout and upload workflows are early but usable for project intake.
+- **Web UI** — FastAPI UI is available through `pvess serve`; W20 adds a
+  Docker-based production profile with persistent job storage.
 
 ---
 
@@ -82,6 +82,8 @@ See **[Workflow → Intake](workflow/intake.md)** for the full guided tour.
 - **[Quickstart →](quickstart.md)** — 10-minute walkthrough on a real project
 - **[Web UI →](web-ui.md)** — browser intake, preflight, generation, and
   delivery package workflow
+- **[Web deployment →](web-deployment.md)** — Docker profile, persistent
+  storage, smoke checks, and reverse-proxy assumptions
 - **[Workflow guide →](workflow/intake.md)** — every phase, in order
 - **[CLI reference →](reference/cli.md)** — every command + option
 - **[Schema reference →](reference/schema.md)** — every `inputs.yaml` field

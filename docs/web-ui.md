@@ -43,6 +43,7 @@ scoped to the jobs they create.
 6. Download **Complete Project ZIP** for handoff.
 
 User-facing copy follows **[Web UI language](web-ui-language.md)**.
+Production deployment details live in **[Web deployment](web-deployment.md)**.
 
 ## Address Lookup
 

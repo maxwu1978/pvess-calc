@@ -60,6 +60,7 @@ from ..qet.inject import inject_from_result
 from ..report.json_dump import write_json
 from ..report.markdown import write_markdown
 from ..schema import Inputs
+from .. import __version__
 from .job_store import JobStore
 from .quote import categorize_bom, installed_breakdown, quote_tiers_for_result
 
@@ -67,7 +68,7 @@ from .quote import categorize_bom, installed_breakdown, quote_tiers_for_result
 WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-QET_TEMPLATE = PROJECT_ROOT / "library" / "templates" / "residential-ess-v1.qet"
+QET_TEMPLATE_NAME = "residential-ess-v1.qet"
 
 WEB_MODULE_OPTIONS: dict[str, dict[str, str]] = {
     "talesun_tp7g54m_415": {
@@ -482,7 +483,9 @@ def create_app(
         return {
             "status": "ok",
             "app": "TGE Solar Project Generator",
+            "version": __version__,
             "jobs_dir": str(app.state.jobs_dir),
+            "storage": _storage_status(app),
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
             "auth_required": bool(app.state.access_token),
             "auth_modes": ["admin_token", "operator_token"],
@@ -762,6 +765,45 @@ def default_cors_origins() -> list[str]:
     if raw == "*":
         return ["*"]
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def default_qet_template() -> Path:
+    raw = os.environ.get("PVESS_QET_TEMPLATE", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    candidates = [
+        PROJECT_ROOT / "library" / "templates" / QET_TEMPLATE_NAME,
+        Path.cwd() / "library" / "templates" / QET_TEMPLATE_NAME,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def _storage_status(app: FastAPI) -> dict[str, Any]:
+    jobs_dir = Path(app.state.jobs_dir)
+    db_path = Path(app.state.job_store.db_path)
+    detail = ""
+    writable = False
+    try:
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+        app.state.job_store.ensure_ready()
+        probe = jobs_dir / ".pvess-web-healthcheck"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+        writable = True
+    except Exception as exc:  # pragma: no cover - depends on host FS perms.
+        detail = repr(exc)
+    return {
+        "status": "ok" if writable else "error",
+        "jobs_dir": str(jobs_dir),
+        "jobs_dir_exists": jobs_dir.exists(),
+        "job_db_path": str(db_path),
+        "job_db_exists": db_path.exists(),
+        "writable": writable,
+        "detail": detail,
+    }
 
 
 def _request_requires_token(path: str) -> bool:
@@ -1103,7 +1145,11 @@ def generate_project(
         if progress:
             progress("qet", "Injecting QET single-line project.", 90)
         qet_path = output_dir / "system.qet"
-        inject_from_result(result, template_path=QET_TEMPLATE, output_path=qet_path)
+        inject_from_result(
+            result,
+            template_path=default_qet_template(),
+            output_path=qet_path,
+        )
         files.append(_file(project_dir, job_id, "QET Single-line Project", qet_path))
 
     if progress:

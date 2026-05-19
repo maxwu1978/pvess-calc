@@ -62,6 +62,7 @@ EXPECTED_SUBCOMMANDS = {
     "doctor":   "pvess-doctor",
     "readiness": "pvess-readiness",
     "symbols":  "pvess-symbols-preview",
+    "web-smoke": "pvess-web-smoke",
 }
 
 

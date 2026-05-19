@@ -25,6 +25,7 @@ Subcommand layout mirrors the natural customer workflow phases:
 
   Phase 4 — VERIFY        pvess doctor      structural self-checks
                           pvess readiness   source-data readiness report
+                          pvess web-smoke   production Web smoke check
                           pvess symbols     symbols preview
 
   Phase 5 — PIPELINES     pvess pipeline customer   calc + customer-summary
@@ -58,6 +59,7 @@ from .cli import (
 )
 from .doctor import doctor_cmd
 from .web.server import serve_cmd
+from .web.smoke import smoke_cmd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -73,7 +75,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
         "                `pvess serve` for the browser-based estimator\n"
         "  3. SUBMIT   :  `pvess permit`, `pvess dxf`, `pvess labels`, "
         "`pvess render`, `pvess ee4-trace`, `pvess ee4-preview`\n"
-        "  4. VERIFY   :  `pvess doctor`, `pvess readiness`, `pvess symbols`\n\n"
+        "  4. VERIFY   :  `pvess doctor`, `pvess readiness`, `pvess symbols`\n"
+        "                `pvess web-smoke` for production Web health checks\n\n"
         "Or skip the choreography and use a pipeline:\n"
         "  `pvess pipeline customer projects/<id>/`   "
         "→ calc + customer-summary in one shot\n"
@@ -121,6 +124,7 @@ pvess.add_command(ee4_preview_cmd, name="ee4-preview")
 
 pvess.add_command(doctor_cmd, name="doctor")
 pvess.add_command(readiness_cmd, name="readiness")
+pvess.add_command(smoke_cmd, name="web-smoke")
 pvess.add_command(symbols_preview_cmd, name="symbols")
 
 

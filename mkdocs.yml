@@ -69,6 +69,7 @@ nav:
   - Home: index.md
   - Getting started: quickstart.md
   - Web UI: web-ui.md
+  - Web deployment: web-deployment.md
   - Web UI language: web-ui-language.md
   - Workflow:
       - Intake: workflow/intake.md
