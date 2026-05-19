@@ -18,6 +18,34 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P3a — guided page language ✅ DONE 2026-05-20
+
+Goal: make the browser UI more self-guiding for operators and early customers
+without changing the generated engineering artifacts.
+
+Completed:
+
+- Reworked top-level page copy around a clear flow: address, system, estimate
+  package, drawings, BOM, and handoff checks.
+- Renamed primary controls to **Auto-fill from address**,
+  **Check readiness**, and **Generate estimate package**.
+- Replaced internal-feeling section labels with workflow labels:
+  **Project basics**, **Site and field data**, **System equipment**,
+  **Source materials and evidence**, **Handoff readiness**,
+  **Review preview**, **BOM and quote estimate**, and
+  **Generated deliverables**.
+- Updated runtime messages for lookup, readiness, Package QA, project history,
+  and operator-token state.
+- Updated Web UI documentation and regression tests for the new copy standard.
+
+Closing standards met:
+
+- The UI still uses English for North American permit and engineering output.
+- Engineering terms remain visible when they affect decisions: AHJ, NEC,
+  interconnection, source materials, Package QA, BOM, and ITC.
+- Primary actions read as a guided workflow rather than internal feature names.
+- Regression tests lock the expected page language.
+
 ### Web Ops P3 — online end-to-end package validation ✅ DONE 2026-05-20
 
 Goal: verify that the secured public path at `https://tge.reelamate.com`

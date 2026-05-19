@@ -19,32 +19,49 @@ Avoid:
 | Term | Meaning | Use |
 |---|---|---|
 | Project | One address + one selected system configuration | Project name, project history |
-| Project template | Starting configuration such as PV + ESS or PV-only | Form selector |
-| Address sample | Built-in example address used for smoke tests or demos | Optional form helper |
-| Address lookup | Utility/AHJ/NEC/roof-data prefill from lookup providers | Button/API label |
-| Preflight | Generation-before-check for schema, cost, intake, and code warnings | Button and panel |
-| Package | Generated output bundle for review/handoff | Generate package, Delivery package |
-| Preview | Embedded PDF/PNG review surface | Preview panel |
-| Readiness | Source-material completeness for internal/AHJ review | Readiness panel |
-| Source materials | Uploaded or simulated photos, bills, specs, and structural files | Source materials panel |
-| BOM cost | Bill-of-materials cost estimate | Cost panel |
-| Generated files | Complete artifact list | File panel |
+| Project basics | Address, client, AHJ, utility, and project type | First form section |
+| Project type | Starting configuration such as PV + ESS or PV-only | Form selector |
+| Try a sample address | Built-in example address used for smoke tests or demos | Optional form helper |
+| Auto-fill from address | Utility/AHJ/NEC/roof-data prefill from lookup providers | Button/API label |
+| Readiness check | Generation-before-check for schema, cost, intake, and code warnings | Button and panel |
+| Estimate package | Generated output bundle for review/handoff | Generate button and delivery copy |
+| Review preview | Embedded PDF/PNG review surface | Preview panel |
+| Handoff readiness | Source-material completeness for internal/AHJ review | Readiness panel |
+| Source materials and evidence | Uploaded or simulated photos, bills, specs, and structural files | Upload panel |
+| BOM and quote estimate | Bill-of-materials and quote-level cost estimate | Cost panel |
+| Generated deliverables | Complete artifact list | File panel |
 
 ## Button Language
 
 Use direct verb phrases:
 
-- `Lookup address`
-- `Run preflight`
-- `Generate package`
+- `Auto-fill from address`
+- `Check readiness`
+- `Generate estimate package`
 - `Download complete ZIP`
-- `Load`
-- `Rerun`
+- `Load form`
+- `Rerun package`
 - `Delete`
 - `Save`
 
 Avoid vague verbs such as `Submit`, `Start`, `Process`, or `Do it` unless
 the action is a final external submission.
+
+## Guidance Pattern
+
+Lead users through the workflow in this order:
+
+1. Enter project basics or choose a sample address.
+2. Auto-fill address data when available.
+3. Confirm site, system, service, roof, cost, and source evidence.
+4. Check readiness before generation.
+5. Generate the estimate package.
+6. Review handoff readiness, preview artifacts, BOM/quote estimate, and
+   generated deliverables.
+
+Use engineering terms when they are the user's decision point, such as AHJ,
+NEC edition, interconnection, source materials, Package QA, and BOM. Avoid
+internal-only terms as primary labels when a workflow label is clearer.
 
 ## Status Language
 

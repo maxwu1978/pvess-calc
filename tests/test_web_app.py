@@ -234,30 +234,31 @@ def test_web_index_serves_static_page(tmp_path: Path):
 
     assert response.status_code == 200
     assert "TGE Solar Project Generator" in response.text
-    assert "Project template" in response.text
+    assert "Project basics" in response.text
+    assert "Project type" in response.text
     assert "Talesun TP7G54M-415" in response.text
     assert "InHouse HV-16" in response.text
     assert "Megarova / Megarevo" in response.text
     assert "Hoymile / Hoymiles" in response.text
     assert "Growatt" in response.text
-    assert "Field intake" in response.text
-    assert "Source materials" in response.text
-    assert "Unsorted site photos" in response.text
-    assert "Unsorted spec sheets" in response.text
+    assert "Site and field data" in response.text
+    assert "Source materials and evidence" in response.text
+    assert "Drop any site photos" in response.text
+    assert "Drop any spec sheets" in response.text
     assert "Structural letter" in response.text
-    assert "Run preflight" in response.text
-    assert "Preflight" in response.text
+    assert "Check readiness" in response.text
+    assert "Readiness check" in response.text
     assert "Package QA" in response.text
-    assert "Preview" in response.text
-    assert "Admin/operator token" in response.text
-    assert "Lookup address" in response.text
-    assert "Lookup: online if configured" in response.text
-    assert "Address sample" in response.text
+    assert "Review preview" in response.text
+    assert "Operator access token" in response.text
+    assert "Auto-fill from address" in response.text
+    assert "Use online lookup when available" in response.text
+    assert "Try a sample address" in response.text
     assert "905 Crossvine Drive, Mansfield, TX" in response.text
     assert "2806 Green Circle Drive, Mansfield, TX" in response.text
-    assert "Error detail" in response.text
+    assert "What needs attention" in response.text
     assert "Filter" in response.text
-    assert "Generate package" in response.text
+    assert "Generate estimate package" in response.text
     assert "Frisco PV + ESS Estimate" not in response.text
     assert "Project Estimator" not in response.text
     assert client.get("/favicon.ico").status_code == 204

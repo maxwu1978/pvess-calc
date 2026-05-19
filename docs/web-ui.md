@@ -30,16 +30,18 @@ scoped to the jobs they create.
 
 ## Workflow
 
-1. Fill **Project**, **Field intake**, **System**, **Service/roof/cost**, and
-   **Source materials**.
-2. Optional: click **Lookup address**. `online` mode uses configured Mapbox,
-   NREL, and Google Solar providers when keys are available; `offline` mode
-   uses only bundled utility/AHJ/NEC/rate datasets.
-3. Run **Preflight**. This checks schema validity, interconnection status,
+1. Fill **Project basics**, **Site and field data**, **System equipment**,
+   **Service, roof, and cost assumptions**, and
+   **Source materials and evidence**.
+2. Optional: click **Auto-fill from address**. Online mode uses configured
+   Mapbox, NREL, and Google Solar providers when keys are available; offline
+   mode uses only bundled utility/AHJ/NEC/rate datasets.
+3. Run **Check readiness**. This checks schema validity, interconnection status,
    reference-profile intake gaps, ESS placement inputs, BOM cost, ITC cost,
    and payback sensitivity without writing a project package.
-4. Select outputs and click **Generate package**.
-5. Review **Readiness**, **Preview**, **BOM cost**, and **Generated files**.
+4. Select outputs and click **Generate estimate package**.
+5. Review **Handoff readiness**, **Review preview**,
+   **BOM and quote estimate**, and **Generated deliverables**.
 6. Run **Package QA** when a generated package is ready for internal review.
 7. Download **Complete Project ZIP** for handoff.
 
@@ -58,8 +60,8 @@ instead of accepting only the automatic best match.
 
 ## Address Samples
 
-The **Address sample** selector keeps a few realistic smoke-test inputs in
-the UI. W17a includes these Mansfield, TX samples:
+The **Try a sample address** selector keeps a few realistic smoke-test inputs
+in the UI. W17a includes these Mansfield, TX samples:
 
 - `905 Crossvine Drive, Mansfield, TX`
 - `2806 Green Circle Drive, Mansfield, TX`
@@ -144,7 +146,7 @@ outputs, package QA that has not passed, generated artifacts marked
 
 ## Package QA
 
-After a job completes, click **Run QA** to create:
+After a project package completes, click **Run package QA** to create:
 
 - `output/package-qa.json`
 - `output/package-qa.md`
@@ -159,7 +161,7 @@ approval count and each required artifact's current review status.
 
 ## History
 
-Recent jobs can be viewed, loaded back into the form, rerun, or deleted from
+Recent projects can be viewed, loaded back into the form, rerun, or deleted from
 the browser UI. Loading a job restores the JSON request payload. Browser file
 inputs cannot be restored by JavaScript, so attach new files before rerunning
 with changed uploads.
@@ -172,13 +174,13 @@ index the first time history is listed. New W19 jobs also store `owner_id` so
 history, payload loading, rerun, delete, and file download permissions can be
 scoped by operator.
 
-The **Recent jobs** panel can filter by status, project/address text, and
+The **Recent projects** panel can filter by status, project/address text, and
 created date range. The same filters are available through `/api/jobs` using
 `status`, `q`, `created_from`, `created_to`, and `limit` query parameters.
 Admins can add `all_jobs=true` or select **All jobs** in the UI for internal
 support review. Operators cannot enable all-jobs mode.
 
-Each job row shows its current AHJ gate level and Package QA status, so
+Each project row shows its current AHJ gate level and Package QA status, so
 operators can distinguish estimate-only packages from QA-cleared handoff
 candidates without opening every job.
 

@@ -10,16 +10,16 @@
     <header class="topbar">
       <div>
         <h1>TGE Solar Project Generator</h1>
-        <p>Enter site and equipment data, run preflight, generate package outputs, and review BOM cost.</p>
+        <p>Start with an address, choose the system, then generate an estimate package with drawings, BOM, and handoff checks.</p>
       </div>
       <div class="access-token-card" aria-label="Optional server access token">
-        <label>Admin/operator token
+        <label>Operator access token
           <span class="token-row">
             <input id="access-token" type="password" autocomplete="off" placeholder="Optional" />
             <button id="save-token" type="button" class="secondary-button">Save</button>
           </span>
         </label>
-        <span id="token-status">Local server mode</span>
+        <span id="token-status">No token required on local server</span>
       </div>
       <div class="mini-plan" aria-hidden="true">
         <div class="roof-line"></div>
@@ -35,24 +35,24 @@
       <form id="project-form" class="editor">
         <section class="panel">
           <div class="section-head">
-            <h2>Project</h2>
+            <h2>Project basics</h2>
             <div class="lookup-controls">
               <select id="lookup-mode" aria-label="Address lookup mode">
-                <option value="online" selected>Lookup: online if configured</option>
-                <option value="offline">Lookup: offline only</option>
+                <option value="online" selected>Use online lookup when available</option>
+                <option value="offline">Use offline reference data only</option>
               </select>
-              <button id="lookup-address" type="button" class="secondary-button">Lookup address</button>
+              <button id="lookup-address" type="button" class="secondary-button">Auto-fill from address</button>
             </div>
           </div>
           <div class="grid two">
-            <label>Project template
+            <label>Project type
               <select id="project-template">
                 <option value="pv_ess" selected>PV + ESS</option>
                 <option value="pv_only">PV-only</option>
                 <option value="retrofit_existing_pv">Retrofit with existing PV</option>
               </select>
             </label>
-            <label>Address sample
+            <label>Try a sample address
               <select id="address-sample">
                 <option value="" selected>Manual entry</option>
                 <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX</option>
@@ -104,7 +104,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Field intake</h2>
+            <h2>Site and field data</h2>
           </div>
           <div class="grid four">
             <label>Meter number
@@ -229,7 +229,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>System</h2>
+            <h2>System equipment</h2>
           </div>
           <div class="grid four">
             <label>Modules
@@ -369,7 +369,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Service, roof, cost</h2>
+            <h2>Service, roof, and cost assumptions</h2>
           </div>
           <div class="grid four">
             <label>Main breaker A
@@ -427,7 +427,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Source materials</h2>
+            <h2>Source materials and evidence</h2>
           </div>
           <div class="grid two">
             <label>Site data source
@@ -436,7 +436,7 @@
                 <option value="real">Field-uploaded source materials</option>
               </select>
             </label>
-            <label>Utility bill or usage export
+            <label>Utility bill / Smart Meter usage
               <input name="utility_bill" type="file" accept=".pdf,.csv,image/*" />
             </label>
             <label>Structural letter
@@ -457,7 +457,7 @@
             <label>Optimizer spec sheet
               <input name="spec_optimizer" type="file" accept=".pdf" />
             </label>
-            <label>Unsorted spec sheets
+            <label>Drop any spec sheets
               <input name="spec_sheets_auto" type="file" accept=".pdf" multiple />
             </label>
           </div>
@@ -465,7 +465,7 @@
             <label>Front elevation
               <input name="front_elevation" type="file" accept="image/*" />
             </label>
-            <label>Roof / array area
+            <label>Roof and array area
               <input name="roof" type="file" accept="image/*" />
             </label>
             <label>Utility meter
@@ -483,7 +483,7 @@
             <label>Equipment location
               <input name="equipment_location" type="file" accept="image/*" />
             </label>
-            <label>Unsorted site photos
+            <label>Drop any site photos
               <input name="site_photos_auto" type="file" accept="image/*" multiple />
             </label>
           </div>
@@ -491,7 +491,7 @@
 
         <section class="panel output-options">
           <div class="section-head">
-            <h2>Outputs</h2>
+            <h2>Package outputs</h2>
           </div>
           <label><input type="checkbox" name="out_customer" checked /> Customer PDF</label>
           <label><input type="checkbox" name="out_permit" checked /> Permit package</label>
@@ -501,8 +501,8 @@
         </section>
 
         <div class="actions">
-          <button id="preflight" type="button" class="secondary-button">Run preflight</button>
-          <button id="generate" type="submit">Generate package</button>
+          <button id="preflight" type="button" class="secondary-button">Check readiness</button>
+          <button id="generate" type="submit">Generate estimate package</button>
           <span id="status" role="status"></span>
         </div>
         <div id="validation-panel" class="validation-panel hidden"></div>
@@ -518,9 +518,9 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Preflight</h2>
+            <h2>Readiness check</h2>
           </div>
-          <div id="preflight-empty" class="empty">Run preflight before generation to check intake gaps and cost sensitivity.</div>
+          <div id="preflight-empty" class="empty">Check readiness before generation to catch missing intake data, code warnings, and cost sensitivity.</div>
           <div id="preflight-panel" class="preflight-panel hidden"></div>
         </section>
 
@@ -536,7 +536,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Delivery package</h2>
+            <h2>Delivery ZIP</h2>
           </div>
           <div id="delivery-empty" class="empty">Complete ZIP appears after generation.</div>
           <div id="delivery-package" class="delivery-package hidden"></div>
@@ -544,7 +544,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Readiness</h2>
+            <h2>Handoff readiness</h2>
           </div>
           <div id="readiness-empty" class="empty">Readiness status appears after generation.</div>
           <div id="readiness-panel" class="readiness-panel hidden"></div>
@@ -553,15 +553,15 @@
         <section class="panel">
           <div class="section-head">
             <h2>Package QA</h2>
-            <button id="run-package-qa" type="button" class="secondary-button" disabled>Run QA</button>
+            <button id="run-package-qa" type="button" class="secondary-button" disabled>Run package QA</button>
           </div>
-          <div id="package-qa-empty" class="empty">Run package QA after generation to verify doctor, ZIP, and PDF checks.</div>
+          <div id="package-qa-empty" class="empty">Run package QA after generation to verify doctor, ZIP, and PDF checks before handoff.</div>
           <div id="package-qa-panel" class="package-qa-panel hidden"></div>
         </section>
 
         <section class="panel">
           <div class="section-head">
-            <h2>Preview</h2>
+            <h2>Review preview</h2>
           </div>
           <div id="preview-empty" class="empty">PDF and PNG previews appear after generation.</div>
           <div id="preview-panel" class="preview-panel hidden"></div>
@@ -569,7 +569,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Error detail</h2>
+            <h2>What needs attention</h2>
           </div>
           <div id="error-empty" class="empty">No generation errors.</div>
           <pre id="error-panel" class="error-panel hidden"></pre>
@@ -577,7 +577,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>BOM cost</h2>
+            <h2>BOM and quote estimate</h2>
           </div>
           <div id="bom-empty" class="empty">No package generated yet.</div>
           <div id="quote-cards" class="quote-cards hidden"></div>
@@ -598,7 +598,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Generated files</h2>
+            <h2>Generated deliverables</h2>
           </div>
           <div class="files-toolbar">
             <label>Filter
@@ -623,7 +623,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Source materials</h2>
+            <h2>Source material status</h2>
           </div>
           <div id="source-empty" class="empty">Source material status appears after generation.</div>
           <dl id="source-materials" class="source-materials hidden"></dl>
@@ -631,7 +631,7 @@
 
         <section class="panel">
           <div class="section-head">
-            <h2>Recent jobs</h2>
+            <h2>Recent projects</h2>
           </div>
           <div class="history-toolbar">
             <select id="history-status" aria-label="Job status filter">
@@ -655,7 +655,7 @@
             </label>
             <button id="history-refresh" type="button" class="secondary-button">Refresh</button>
           </div>
-          <div id="history-empty" class="empty">No generated jobs yet.</div>
+          <div id="history-empty" class="empty">No generated projects yet.</div>
           <ul id="history-list" class="file-list history-list"></ul>
         </section>
       </aside>

@@ -179,13 +179,13 @@ form.addEventListener("submit", async (event) => {
   const validation = validatePayload(payload);
   renderValidation(validation.errors, validation.warnings);
   if (validation.errors.length > 0) {
-    statusEl.textContent = "Fix validation errors before generating.";
+    statusEl.textContent = "Fix the highlighted inputs before generating the package.";
     statusEl.classList.add("error");
     return;
   }
 
-  setBusy(true, "Submitting generation job.");
-  setProgress(2, "Submitting generation job.");
+  setBusy(true, "Submitting estimate package job.");
+  setProgress(2, "Submitting estimate package job.");
 
   try {
     const request = new FormData();
@@ -200,7 +200,7 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok) {
       throw new Error(formatApiError(state));
     }
-    setBusy(true, `Job ${state.job_id} queued.`);
+    setBusy(true, `Package job ${state.job_id} queued.`);
     pollJob(state.job_id);
   } catch (error) {
     setBusy(false, "");
@@ -240,24 +240,24 @@ async function loadRuntimeConfig() {
     runtimeConfig = { auth_required: false };
   }
   if (runtimeConfig.auth_required && !currentAccessToken()) {
-    tokenStatus.textContent = "Token required for API and file requests";
+    tokenStatus.textContent = "Enter an operator token to use API and files";
   }
 }
 
 function loadAccessToken() {
   const token = localStorage.getItem("pvess_access_token") || "";
   accessTokenInput.value = token;
-  tokenStatus.textContent = token ? "Token saved for API and file requests" : "Local server mode";
+  tokenStatus.textContent = token ? "Operator token saved for API and files" : "No token required on local server";
 }
 
 function saveAccessToken() {
   const token = accessTokenInput.value.trim();
   if (token) {
     localStorage.setItem("pvess_access_token", token);
-    tokenStatus.textContent = "Token saved for API and file requests";
+    tokenStatus.textContent = "Operator token saved for API and files";
   } else {
     localStorage.removeItem("pvess_access_token");
-    tokenStatus.textContent = "Local server mode";
+    tokenStatus.textContent = "No token required on local server";
   }
   loadHistory();
 }
@@ -301,7 +301,7 @@ function applyTemplate(name) {
   syncModuleOption();
   syncInverterOption();
   syncBatteryOption({ preserveQuantity: true });
-  renderValidation([], [`Applied template: ${labelForTemplate(name)}.`]);
+  renderValidation([], [`Project type set to ${labelForTemplate(name)}.`]);
 }
 
 function applyAddressSample(name) {
@@ -312,7 +312,7 @@ function applyAddressSample(name) {
   for (const [key, value] of Object.entries(sample)) {
     setFieldValue(key, value);
   }
-  renderValidation([], [`Applied address sample: ${sample.site_address}. Monthly usage is simulated until replaced by a utility bill.`]);
+  renderValidation([], [`Loaded sample address: ${sample.site_address}. Monthly usage is simulated until a bill or Smart Meter export is uploaded.`]);
 }
 
 function buildPayload(data) {
@@ -406,14 +406,14 @@ async function runPreflight() {
   const validation = validatePayload(payload);
   renderValidation(validation.errors, validation.warnings);
   if (validation.errors.length > 0) {
-    statusEl.textContent = "Fix validation errors before preflight.";
+    statusEl.textContent = "Fix the highlighted inputs before checking readiness.";
     statusEl.classList.add("error");
     return;
   }
 
   preflightButton.disabled = true;
   preflightButton.textContent = "Checking...";
-  statusEl.textContent = "Running preflight.";
+  statusEl.textContent = "Checking project readiness.";
   try {
     const response = await apiFetch("/api/preflight", {
       method: "POST",
@@ -425,14 +425,14 @@ async function runPreflight() {
       throw new Error(formatApiError(data));
     }
     renderPreflight(data);
-    statusEl.textContent = `Preflight ${data.status}`;
+    statusEl.textContent = `Readiness check ${data.status}`;
   } catch (error) {
     statusEl.textContent = error.message;
     statusEl.classList.add("error");
     renderError(error.message);
   } finally {
     preflightButton.disabled = false;
-    preflightButton.textContent = "Run preflight";
+    preflightButton.textContent = "Check readiness";
   }
 }
 
@@ -444,13 +444,13 @@ async function runAddressLookup() {
     ""
   ).trim();
   if (!address) {
-    renderLookupMessage("Enter a site address before lookup.", "warning");
+    renderLookupMessage("Enter a site address before using auto-fill.", "warning");
     return;
   }
 
   lookupButton.disabled = true;
-  lookupButton.textContent = "Looking up...";
-  statusEl.textContent = "Looking up address data.";
+  lookupButton.textContent = "Auto-filling...";
+  statusEl.textContent = "Looking up address details.";
   try {
     const mode = lookupMode.value || "online";
     const response = await apiFetch(
@@ -462,14 +462,14 @@ async function runAddressLookup() {
     }
     applyLookupToForm(data.suggested_payload || {});
     renderLookup(data);
-    statusEl.textContent = `Address lookup ${data.status}`;
+    statusEl.textContent = `Address auto-fill ${data.status}`;
   } catch (error) {
     statusEl.textContent = error.message;
     statusEl.classList.add("error");
     renderError(error.message);
   } finally {
     lookupButton.disabled = false;
-    lookupButton.textContent = "Lookup address";
+    lookupButton.textContent = "Auto-fill from address";
   }
 }
 
@@ -489,16 +489,16 @@ function renderLookup(data) {
   lookupPanel.innerHTML = `
     <div class="lookup-summary">
       <div>
-        <strong>${escapeHtml(data.status)} · ${escapeHtml(data.mode)} lookup</strong>
-        <span>${hits.length}/${providers.length} providers returned data${roof.section_count ? ` · ${roof.section_count} roof faces` : ""}</span>
+        <strong>${escapeHtml(data.status)} · ${escapeHtml(data.mode)} address data</strong>
+        <span>${hits.length}/${providers.length} data sources returned project data${roof.section_count ? ` · ${roof.section_count} roof faces` : ""}</span>
       </div>
-      <span>${roof.imagery_quality ? `Solar imagery ${escapeHtml(roof.imagery_quality)}` : "Review fields before generation"}</span>
+      <span>${roof.imagery_quality ? `Solar imagery ${escapeHtml(roof.imagery_quality)}` : "Review roof and service fields before generation"}</span>
     </div>
     <div class="lookup-fields">
       ${suggested.map((field) => `<span>${escapeHtml(field)}</span>`).join("") || "<span>No form fields changed</span>"}
     </div>
     <div class="lookup-sources">
-      ${hits.slice(0, 5).map((provider) => `${escapeHtml(provider.source)}:${escapeHtml(provider.confidence)}`).join(" · ") || "No provider hits"}
+      ${hits.slice(0, 5).map((provider) => `${escapeHtml(provider.source)}:${escapeHtml(provider.confidence)}`).join(" · ") || "No lookup data returned"}
     </div>
     ${lastLookupRoofCandidates.length ? `
       <div class="roof-candidates">
@@ -534,7 +534,7 @@ function handleLookupCandidateClick(event) {
       setFieldValue(key, value);
     }
   }
-  renderValidation([], [`Applied roof candidate: ${section.name || "Roof Section"}.`]);
+  renderValidation([], [`Roof candidate applied: ${section.name || "Roof Section"}. Review dimensions before generation.`]);
 }
 
 function renderLookupMessage(message, type) {
@@ -556,7 +556,7 @@ async function pollJob(jobId) {
       }
       renderJobState(state);
       if (state.status === "done") {
-        setBusy(false, `Done. Job ${state.job_id}`);
+        setBusy(false, `Package ready. Project ${state.job_id}`);
         renderResult(state.result);
         await loadHistory();
         return;
@@ -625,7 +625,7 @@ function renderPreflight(data) {
   preflightPanel.innerHTML = `
     <div class="readiness-status ${statusClass}">
       <strong>${escapeHtml(data.status)}</strong>
-      <span>${intake.ready || 0}/${intake.total || 0} intake items ready · ${money(estimate.cost_after_itc_usd)} after ITC</span>
+      <span>${intake.ready || 0}/${intake.total || 0} handoff items ready · ${money(estimate.cost_after_itc_usd)} after ITC</span>
     </div>
     <dl class="preflight-metrics">
       <dt>DC size</dt><dd>${data.summary?.system_kw_dc ?? "-"} kW</dd>
@@ -643,7 +643,7 @@ function renderPreflight(data) {
           <strong>${escapeHtml(issue.field)}</strong>
           <em>${escapeHtml(issue.message)}${issue.blocks_level ? ` · blocks ${escapeHtml(issue.blocks_level)}` : ""}</em>
         </li>
-      `).join("") || "<li class=\"pass\"><strong>No blocking issues detected</strong></li>"}
+      `).join("") || "<li class=\"pass\"><strong>No blocking issues detected. Ready to generate an estimate package.</strong></li>"}
     </ul>
   `;
 }
@@ -740,7 +740,7 @@ function renderQuoteCards(tiers) {
     <article class="quote-card ${tier.is_selected ? "selected" : ""}">
       <div class="quote-title">${escapeHtml(tier.name)}</div>
       <div class="quote-price">${money(tier.cost_after_itc_usd)}</div>
-      <div class="quote-sub">${money(tier.installed_cost_usd)} before ITC</div>
+      <div class="quote-sub">${money(tier.installed_cost_usd)} before 30% ITC</div>
       <dl>
         <dt>Battery</dt><dd>${tier.battery_kwh_total} kWh</dd>
         <dt>Savings</dt><dd>${money(tier.monthly_savings_usd)} / mo</dd>
@@ -1089,14 +1089,14 @@ async function runPackageQa() {
     renderDeliveryPackage(data.files || []);
     renderPreviews(data.files || []);
     renderFiles(data.files || []);
-    statusEl.textContent = "Package QA complete.";
+    statusEl.textContent = "Package QA complete. Review handoff readiness before submission.";
   } catch (error) {
     statusEl.textContent = error.message;
     statusEl.classList.add("error");
     renderError(error.message);
   } finally {
     runPackageQaButton.disabled = !currentJobId;
-    runPackageQaButton.textContent = "Run QA";
+    runPackageQaButton.textContent = "Run package QA";
   }
 }
 
@@ -1152,11 +1152,11 @@ function renderError(message) {
 async function loadHistory() {
   if (runtimeConfig.auth_required && !currentAccessToken()) {
     historyList.innerHTML = "";
-    historyEmpty.textContent = "Enter an admin/operator token to view recent jobs.";
+    historyEmpty.textContent = "Enter an operator token to view recent projects.";
     historyEmpty.classList.remove("hidden");
     return;
   }
-  historyEmpty.textContent = "No generated jobs yet.";
+  historyEmpty.textContent = "No generated projects yet.";
   try {
     const response = await apiFetch(`/api/jobs${historyQueryString()}`);
     const data = await response.json();
@@ -1176,8 +1176,8 @@ async function loadHistory() {
           ${escapeHtml(gateLevel)} · ${escapeHtml(qaStatus)}
         </span>
         <span class="history-actions">
-          <button type="button" data-job-action="load" data-job-id="${job.job_id}">Load</button>
-          <button type="button" data-job-action="rerun" data-job-id="${job.job_id}">Rerun</button>
+          <button type="button" data-job-action="load" data-job-id="${job.job_id}">Load form</button>
+          <button type="button" data-job-action="rerun" data-job-id="${job.job_id}">Rerun package</button>
           <button type="button" data-job-action="delete" data-job-id="${job.job_id}">Delete</button>
         </span>
       `;
@@ -1235,7 +1235,7 @@ historyList.addEventListener("click", async (event) => {
         throw new Error(formatApiError(payload));
       }
       applyPayloadToForm(payload);
-      statusEl.textContent = `Loaded form from job ${jobId}`;
+      statusEl.textContent = `Loaded form from project ${jobId}`;
       return;
     }
     if (action === "rerun") {
@@ -1244,7 +1244,7 @@ historyList.addEventListener("click", async (event) => {
       if (!response.ok) {
         throw new Error(formatApiError(state));
       }
-      setBusy(true, `Rerunning job ${jobId}.`);
+      setBusy(true, `Rerunning package from project ${jobId}.`);
       pollJob(state.job_id);
       return;
     }
@@ -1254,7 +1254,7 @@ historyList.addEventListener("click", async (event) => {
       if (!response.ok) {
         throw new Error(formatApiError(data));
       }
-      statusEl.textContent = `Deleted job ${jobId}`;
+      statusEl.textContent = `Deleted project ${jobId}`;
       await loadHistory();
       return;
     }
@@ -1267,7 +1267,7 @@ historyList.addEventListener("click", async (event) => {
     renderJobState(state);
     if (state.result) {
       renderResult(state.result);
-      statusEl.textContent = `Viewed job ${state.job_id}`;
+      statusEl.textContent = `Viewed project ${state.job_id}`;
     }
   } catch (error) {
     statusEl.textContent = error.message;
@@ -1300,7 +1300,7 @@ function applyPayloadToForm(payload) {
   syncModuleOption();
   syncInverterOption();
   syncBatteryOption({ preserveQuantity: true });
-  renderValidation([], ["Loaded prior job payload. File inputs must be reattached before a rerun with new uploads."]);
+  renderValidation([], ["Loaded a prior project form. Reattach file uploads before rerunning with new source materials."]);
 }
 
 function setFieldValue(name, value) {
@@ -1342,7 +1342,7 @@ function setProgress(percent, message) {
 
 function setBusy(isBusy, message) {
   button.disabled = isBusy;
-  button.textContent = isBusy ? "Generating..." : "Generate package";
+  button.textContent = isBusy ? "Generating package..." : "Generate estimate package";
   statusEl.textContent = message;
 }
 

@@ -8,6 +8,19 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P3a: guided page language
+
+- Reworked browser UI copy from internal feature labels toward a guided
+  project workflow: project basics, site data, system equipment, readiness,
+  estimate package generation, handoff readiness, and generated deliverables
+- Renamed the main lookup and generation controls to
+  **Auto-fill from address**, **Check readiness**, and
+  **Generate estimate package**
+- Updated dynamic browser messages for lookup, readiness checks, Package QA,
+  recent projects, and operator-token status
+- Updated Web UI documentation and regression assertions to lock the new
+  user-facing language
+
 ### 2026-05-20 — Web Ops P3: online end-to-end package validation
 
 - Generated four complete packages through the public
