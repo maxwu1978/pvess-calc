@@ -68,6 +68,8 @@ plugins:
 nav:
   - Home: index.md
   - Getting started: quickstart.md
+  - Web UI: web-ui.md
+  - Web UI language: web-ui-language.md
   - Workflow:
       - Intake: workflow/intake.md
       - Design: workflow/design.md

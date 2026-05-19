@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TGE Solar Project Generator</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>TGE Solar Project Generator</h1>
+        <p>Enter site and equipment data, run preflight, generate package outputs, and review BOM cost.</p>
+      </div>
+      <div class="access-token-card" aria-label="Optional server access token">
+        <label>Access token
+          <span class="token-row">
+            <input id="access-token" type="password" autocomplete="off" placeholder="Optional" />
+            <button id="save-token" type="button" class="secondary-button">Save</button>
+          </span>
+        </label>
+        <span id="token-status">Local server mode</span>
+      </div>
+      <div class="mini-plan" aria-hidden="true">
+        <div class="roof-line"></div>
+        <div class="panel-grid">
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <form id="project-form" class="editor">
+        <section class="panel">
+          <div class="section-head">
+            <h2>Project</h2>
+            <div class="lookup-controls">
+              <select id="lookup-mode" aria-label="Address lookup mode">
+                <option value="online" selected>Lookup: online if configured</option>
+                <option value="offline">Lookup: offline only</option>
+              </select>
+              <button id="lookup-address" type="button" class="secondary-button">Lookup address</button>
+            </div>
+          </div>
+          <div class="grid two">
+            <label>Project template
+              <select id="project-template">
+                <option value="pv_ess" selected>PV + ESS</option>
+                <option value="pv_only">PV-only</option>
+                <option value="retrofit_existing_pv">Retrofit with existing PV</option>
+              </select>
+            </label>
+            <label>Address sample
+              <select id="address-sample">
+                <option value="" selected>Manual entry</option>
+                <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX</option>
+                <option value="crossvine">905 Crossvine Drive, Mansfield, TX</option>
+                <option value="green_circle">2806 Green Circle Drive, Mansfield, TX</option>
+              </select>
+            </label>
+            <label>Project name
+              <input name="project_name" value="Frisco PV + ESS Package" />
+            </label>
+            <label>Client
+              <input name="client_name" value="Homeowner" />
+            </label>
+            <label>Site address
+              <input name="site_address" value="7652 Glasshouse Walk, Frisco, TX" />
+            </label>
+            <label>Coordinates
+              <input name="coordinates" placeholder="33.1414, -96.8012" />
+            </label>
+            <label>APN / parcel
+              <input name="apn" placeholder="optional" />
+            </label>
+            <label>Location
+              <input name="location" value="Frisco, TX" />
+            </label>
+            <label>AHJ
+              <input name="ahj" value="Frisco TX" />
+            </label>
+            <label>Utility
+              <input name="utility" value="Oncor Electric Delivery" />
+            </label>
+            <label>NEC edition
+              <select name="nec_edition">
+                <option value="2023" selected>2023</option>
+                <option value="2020">2020</option>
+                <option value="2017">2017</option>
+              </select>
+            </label>
+            <label>Permit profile
+              <select name="permit_profile">
+                <option value="wyssling_like" selected>Wyssling-like</option>
+                <option value="tx_residential_pv">TX residential PV</option>
+                <option value="internal">Internal</option>
+              </select>
+            </label>
+          </div>
+          <div id="lookup-panel" class="lookup-panel hidden"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Field intake</h2>
+          </div>
+          <div class="grid four">
+            <label>Meter number
+              <input name="meter_number" placeholder="153468971" />
+            </label>
+            <label>Meter location
+              <input name="meter_location" placeholder="Exterior garage wall" />
+            </label>
+            <label>ESID
+              <input name="meter_esid" placeholder="TX utility ESID" />
+            </label>
+            <label>ESS install location
+              <select name="battery_install_location">
+                <option value="unknown" selected>Unknown</option>
+                <option value="garage">Garage</option>
+                <option value="indoor">Indoor</option>
+                <option value="outdoor">Outdoor</option>
+                <option value="outdoor_protected">Outdoor protected</option>
+              </select>
+            </label>
+            <label>Doorway setback ft
+              <input name="distance_to_doorway_ft" type="number" min="0" step="0.1" value="0" />
+            </label>
+            <label>Window setback ft
+              <input name="distance_to_window_ft" type="number" min="0" step="0.1" value="0" />
+            </label>
+            <label>Egress setback ft
+              <input name="distance_to_egress_ft" type="number" min="0" step="0.1" value="0" />
+            </label>
+            <label>Roof type
+              <input name="roof_info_type" value="Comp Shingle" />
+            </label>
+            <label>Roof height ft
+              <input name="roof_info_height_ft" type="number" min="0" step="0.1" value="0" />
+            </label>
+            <label>Roof construction
+              <input name="roof_construction" placeholder="Prefabricated trusses" />
+            </label>
+            <label>Roof condition
+              <select name="roof_condition">
+                <option value="unknown" selected>Unknown</option>
+                <option value="good">Good</option>
+                <option value="fair">Fair</option>
+                <option value="poor">Poor</option>
+              </select>
+            </label>
+            <label>Roof framing
+              <input name="roof_framing" placeholder='2x4 @ 24" O.C.' />
+            </label>
+            <label>Attic access
+              <select name="roof_attic_access">
+                <option value="unknown" selected>Unknown</option>
+                <option value="accessible">Accessible</option>
+                <option value="inaccessible">Inaccessible</option>
+              </select>
+            </label>
+            <label>Decking thickness in
+              <input name="decking_thickness_in" type="number" min="0" step="0.125" value="0" />
+            </label>
+            <label>Roof layers
+              <input name="roof_layers" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>Engineer firm
+              <input name="engineer_firm" placeholder="Wyssling Consulting" />
+            </label>
+            <label>Engineer firm #
+              <input name="engineer_firm_number" placeholder="20109" />
+            </label>
+            <label>Engineer email
+              <input name="engineer_email" placeholder="engineer@example.com" />
+            </label>
+            <label>Engineer phone
+              <input name="engineer_phone" placeholder="(201) 874-3483" />
+            </label>
+            <label>Engineer address
+              <input name="engineer_address" placeholder="Firm address" />
+            </label>
+            <label>Installer company
+              <input name="installer_company" value="Texas Green Eco Power" />
+            </label>
+            <label>Installer address
+              <input name="installer_address" placeholder="Installer address" />
+            </label>
+            <label>MSP X / Y ft
+              <span class="coord-pair">
+                <input name="msp_x_ft" type="number" step="0.1" placeholder="x" />
+                <input name="msp_y_ft" type="number" step="0.1" placeholder="y" />
+              </span>
+            </label>
+            <label>Inverter X / Y ft
+              <span class="coord-pair">
+                <input name="inverter_x_ft" type="number" step="0.1" placeholder="x" />
+                <input name="inverter_y_ft" type="number" step="0.1" placeholder="y" />
+              </span>
+            </label>
+            <label>AC disconnect X / Y ft
+              <span class="coord-pair">
+                <input name="ac_disconnect_x_ft" type="number" step="0.1" placeholder="x" />
+                <input name="ac_disconnect_y_ft" type="number" step="0.1" placeholder="y" />
+              </span>
+            </label>
+            <label>ESS X / Y ft
+              <span class="coord-pair">
+                <input name="ess_x_ft" type="number" step="0.1" placeholder="x" />
+                <input name="ess_y_ft" type="number" step="0.1" placeholder="y" />
+              </span>
+            </label>
+            <label>Attic drop X / Y ft
+              <span class="coord-pair">
+                <input name="attic_drop_x_ft" type="number" step="0.1" placeholder="x" />
+                <input name="attic_drop_y_ft" type="number" step="0.1" placeholder="y" />
+              </span>
+            </label>
+            <label>Attic drop height ft
+              <input name="attic_to_eq_height_ft" type="number" min="0" step="0.1" value="10" />
+            </label>
+            <label class="wide">Monthly kWh, oldest first
+              <textarea name="monthly_kwh_text" rows="3" placeholder="820, 740, 690, 780, 1020, 1350, 1480, 1520, 1380, 1010, 760, 790"></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>System</h2>
+          </div>
+          <div class="grid four">
+            <label>Modules
+              <input name="modules" type="number" min="1" value="32" />
+            </label>
+            <label>Strings
+              <input name="strings" type="number" min="1" value="4" />
+            </label>
+            <label>Module
+              <select name="module_choice" id="module-choice">
+                <option
+                  value="talesun_tp7g54m_415"
+                  data-brand="Talesun"
+                  data-model="TP7G54M-415"
+                  data-watts="415"
+                  selected
+                >Talesun TP7G54M-415</option>
+                <option
+                  value="rec_alpha_pure_410"
+                  data-brand="REC"
+                  data-model="Alpha Pure REC410AA"
+                  data-watts="410"
+                >REC Alpha Pure 410</option>
+                <option
+                  value="canadian_solar_hiku7_595"
+                  data-brand="Canadian Solar"
+                  data-model="HiKu7 CS7N-595MS"
+                  data-watts="595"
+                >Canadian Solar HiKu7 595</option>
+                <option
+                  value="generic_420"
+                  data-brand="Generic"
+                  data-model="MONO-420-144"
+                  data-watts="420"
+                >Generic MONO-420</option>
+              </select>
+            </label>
+            <label>Module watts
+              <input id="module-watts-display" value="415" readonly />
+            </label>
+            <label>Module brand
+              <input id="module-brand-display" value="Talesun" readonly />
+            </label>
+            <label>Module model
+              <input id="module-model-display" value="TP7G54M-415" readonly />
+            </label>
+            <label>Inverter brand
+              <select name="inverter_choice" id="inverter-choice">
+                <option
+                  value="megarova"
+                  data-brand="Megarevo"
+                  data-model="R11KLNA"
+                  data-amps="45.8"
+                >Megarova / Megarevo</option>
+                <option
+                  value="hoymile"
+                  data-brand="Hoymiles"
+                  data-model="HYS-11.5LV-USG1"
+                  data-amps="48"
+                >Hoymile / Hoymiles</option>
+                <option
+                  value="growatt"
+                  data-brand="Growatt"
+                  data-model="MIN 11400TL-XH-US"
+                  data-amps="48"
+                  selected
+                >Growatt</option>
+              </select>
+            </label>
+            <label>Inverter model
+              <input id="inverter-model-display" value="MIN 11400TL-XH-US" readonly />
+            </label>
+            <label>Inverter qty
+              <input name="inverter_quantity" type="number" min="1" value="1" />
+            </label>
+            <label>AC output amps
+              <input name="inverter_ac_output_a" type="number" min="1" step="0.1" value="48" />
+            </label>
+            <label>Battery
+              <select name="battery_choice" id="battery-choice">
+                <option
+                  value="none"
+                  data-brand="None"
+                  data-model="PV-only"
+                  data-kwh="0"
+                >No battery</option>
+                <option
+                  value="inhouse_16kwh_hv"
+                  data-brand="InHouse"
+                  data-model="HV-16"
+                  data-kwh="16"
+                  selected
+                >InHouse HV-16</option>
+                <option
+                  value="growatt_apx_20kwh"
+                  data-brand="Growatt"
+                  data-model="APX HV 20K"
+                  data-kwh="20"
+                >Growatt APX HV 20K</option>
+                <option
+                  value="tesla_powerwall_3"
+                  data-brand="Tesla"
+                  data-model="Powerwall 3"
+                  data-kwh="13.5"
+                >Tesla Powerwall 3</option>
+                <option
+                  value="eg4_lifepower4_v2"
+                  data-brand="EG4"
+                  data-model="LifePower4 V2"
+                  data-kwh="5.12"
+                >EG4 LifePower4 V2</option>
+                <option
+                  value="franklinwh_apower"
+                  data-brand="FranklinWH"
+                  data-model="aPower"
+                  data-kwh="13.6"
+                >FranklinWH aPower</option>
+                <option
+                  value="enphase_iq_battery_5p"
+                  data-brand="Enphase"
+                  data-model="IQ Battery 5P"
+                  data-kwh="5"
+                >Enphase IQ Battery 5P</option>
+              </select>
+            </label>
+            <label>Battery qty
+              <input name="battery_quantity" type="number" min="0" value="1" />
+            </label>
+            <label>Battery kWh each
+              <input id="battery-kwh-display" value="16" readonly />
+            </label>
+            <label>Battery model
+              <input id="battery-model-display" value="HV-16" readonly />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Service, roof, cost</h2>
+          </div>
+          <div class="grid four">
+            <label>Main breaker A
+              <input name="main_panel_a" type="number" min="1" value="200" />
+            </label>
+            <label>Busbar A
+              <input name="busbar_a" type="number" min="1" value="200" />
+            </label>
+            <label>Interconnection
+              <select name="interconnection_method">
+                <option value="supply_side_tap" selected>Supply-side tap</option>
+                <option value="120%_rule">120% rule</option>
+                <option value="sum_rule">Sum rule</option>
+                <option value="center_fed">Center-fed</option>
+              </select>
+            </label>
+            <label>Export tariff
+              <select name="export_tariff_model">
+                <option value="tx_default_oncor" selected>TX Oncor default</option>
+                <option value="tx_txu_buyback">TXU buyback</option>
+                <option value="tx_green_mountain">Green Mountain</option>
+                <option value="tx_reliant_sun">Reliant Sun</option>
+                <option value="tx_rhythm_pure">Rhythm Pure</option>
+                <option value="1to1_nem">1:1 NEM</option>
+                <option value="ca_nem3">CA NEM 3.0</option>
+                <option value="hi_self_consumption">HI self-consumption</option>
+              </select>
+            </label>
+            <label>Self-consumption
+              <input name="self_consumption_fraction" type="number" min="0" max="1" step="0.01" value="0.55" />
+            </label>
+            <label>PV turnkey $/W
+              <input name="pv_turnkey_usd_per_w" type="number" min="0.01" max="10" step="0.01" value="2.40" />
+            </label>
+            <label>Inverter cost total
+              <input name="inverter_cost_usd_total" type="number" min="0" step="1" placeholder="optional" />
+            </label>
+            <label>Battery cost total
+              <input name="battery_cost_usd_total" type="number" min="0" step="1" placeholder="optional" />
+            </label>
+            <label>Roof pitch deg
+              <input name="roof_pitch_deg" type="number" min="0" max="60" step="0.1" value="22" />
+            </label>
+            <label>Roof azimuth deg
+              <input name="roof_azimuth_deg" type="number" min="0" max="360" step="1" value="180" />
+            </label>
+            <label>Roof width ft
+              <input name="roof_width_ft" type="number" min="1" step="0.1" value="54" />
+            </label>
+            <label>Roof height ft
+              <input name="roof_height_ft" type="number" min="1" step="0.1" value="24" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Source materials</h2>
+          </div>
+          <div class="grid two">
+            <label>Site data source
+              <select name="site_data_source">
+                <option value="simulated" selected>Simulated source materials</option>
+                <option value="real">Field-uploaded source materials</option>
+              </select>
+            </label>
+            <label>Utility bill or usage export
+              <input name="utility_bill" type="file" accept=".pdf,.csv,image/*" />
+            </label>
+            <label>Structural letter
+              <input name="structural_letter" type="file" accept=".pdf" />
+            </label>
+            <label>Module spec sheet
+              <input name="spec_module" type="file" accept=".pdf" />
+            </label>
+            <label>Inverter spec sheet
+              <input name="spec_inverter" type="file" accept=".pdf" />
+            </label>
+            <label>Battery spec sheet
+              <input name="spec_battery" type="file" accept=".pdf" />
+            </label>
+            <label>Racking spec sheet
+              <input name="spec_racking" type="file" accept=".pdf" />
+            </label>
+            <label>Optimizer spec sheet
+              <input name="spec_optimizer" type="file" accept=".pdf" />
+            </label>
+          </div>
+          <div class="photo-grid" aria-label="PV-7 required site photos">
+            <label>Front elevation
+              <input name="front_elevation" type="file" accept="image/*" />
+            </label>
+            <label>Roof / array area
+              <input name="roof" type="file" accept="image/*" />
+            </label>
+            <label>Utility meter
+              <input name="meter" type="file" accept="image/*" />
+            </label>
+            <label>Main service panel
+              <input name="main_panel" type="file" accept="image/*" />
+            </label>
+            <label>Sub-panel / load center
+              <input name="sub_panel" type="file" accept="image/*" />
+            </label>
+            <label>Equipment location
+              <input name="equipment_location" type="file" accept="image/*" />
+            </label>
+          </div>
+        </section>
+
+        <section class="panel output-options">
+          <div class="section-head">
+            <h2>Outputs</h2>
+          </div>
+          <label><input type="checkbox" name="out_customer" checked /> Customer PDF</label>
+          <label><input type="checkbox" name="out_permit" checked /> Permit package</label>
+          <label><input type="checkbox" name="out_dxf" checked /> DXF + PNG previews</label>
+          <label><input type="checkbox" name="out_labels" checked /> NEC labels</label>
+          <label><input type="checkbox" name="out_qet" checked /> QET file</label>
+        </section>
+
+        <div class="actions">
+          <button id="preflight" type="button" class="secondary-button">Run preflight</button>
+          <button id="generate" type="submit">Generate package</button>
+          <span id="status" role="status"></span>
+        </div>
+        <div id="validation-panel" class="validation-panel hidden"></div>
+      </form>
+
+      <aside class="results" aria-live="polite">
+        <section class="summary-strip" id="summary-strip">
+          <div><strong>-</strong><span>DC kW</span></div>
+          <div><strong>-</strong><span>Modules</span></div>
+          <div><strong>-</strong><span>Installed cost</span></div>
+          <div><strong>-</strong><span>ITC cost</span></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Preflight</h2>
+          </div>
+          <div id="preflight-empty" class="empty">Run preflight before generation to check intake gaps and cost sensitivity.</div>
+          <div id="preflight-panel" class="preflight-panel hidden"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Generation progress</h2>
+          </div>
+          <div class="progress-shell">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
+          <div id="progress-message" class="empty">No active job.</div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Delivery package</h2>
+          </div>
+          <div id="delivery-empty" class="empty">Complete ZIP appears after generation.</div>
+          <div id="delivery-package" class="delivery-package hidden"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Readiness</h2>
+          </div>
+          <div id="readiness-empty" class="empty">Readiness status appears after generation.</div>
+          <div id="readiness-panel" class="readiness-panel hidden"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Preview</h2>
+          </div>
+          <div id="preview-empty" class="empty">PDF and PNG previews appear after generation.</div>
+          <div id="preview-panel" class="preview-panel hidden"></div>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Error detail</h2>
+          </div>
+          <div id="error-empty" class="empty">No generation errors.</div>
+          <pre id="error-panel" class="error-panel hidden"></pre>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>BOM cost</h2>
+          </div>
+          <div id="bom-empty" class="empty">No package generated yet.</div>
+          <div id="quote-cards" class="quote-cards hidden"></div>
+          <div id="category-costs" class="category-costs hidden"></div>
+          <table id="bom-table" class="hidden">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Unit</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <dl id="cost-totals" class="totals hidden"></dl>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Generated files</h2>
+          </div>
+          <div class="files-toolbar">
+            <label>Filter
+              <select id="file-filter">
+                <option value="all" selected>All files</option>
+                <option value="Input">Input</option>
+                <option value="Engineering">Engineering</option>
+                <option value="Permit">Permit</option>
+                <option value="CAD">CAD</option>
+                <option value="Cost">Cost</option>
+                <option value="Readiness">Readiness</option>
+                <option value="Manifest">Manifest</option>
+                <option value="Archive">Archive</option>
+              </select>
+            </label>
+            <span id="file-count" class="file-count"></span>
+          </div>
+          <div id="files-empty" class="empty">Files will appear here after generation.</div>
+          <ul id="file-list" class="file-list"></ul>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Source materials</h2>
+          </div>
+          <div id="source-empty" class="empty">Source material status appears after generation.</div>
+          <dl id="source-materials" class="source-materials hidden"></dl>
+        </section>
+
+        <section class="panel">
+          <div class="section-head">
+            <h2>Recent jobs</h2>
+          </div>
+          <div id="history-empty" class="empty">No generated jobs yet.</div>
+          <ul id="history-list" class="file-list history-list"></ul>
+        </section>
+      </aside>
+    </main>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>

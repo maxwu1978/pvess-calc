@@ -14,6 +14,7 @@ Subcommand layout mirrors the natural customer workflow phases:
   Phase 2 — DESIGN        pvess calc        NEC math + report.md
                           pvess customer    customer-summary PDF
                           pvess compare     scenario comparison
+                          pvess serve       browser UI for web estimates
 
   Phase 3 — SUBMIT        pvess permit      12-page permit PDF
                           pvess dxf         EE-1 + EE-2 DXF
@@ -56,6 +57,7 @@ from .cli import (
     symbols_preview_cmd,
 )
 from .doctor import doctor_cmd
+from .web.server import serve_cmd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -68,6 +70,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
         "Workflow phases (run in order for a new project):\n\n"
         "  1. INTAKE   :  `pvess init`, `pvess survey`, `pvess lookup`, `pvess roof-vis`\n"
         "  2. DESIGN   :  `pvess calc`, `pvess customer`, `pvess compare`\n"
+        "                `pvess serve` for the browser-based estimator\n"
         "  3. SUBMIT   :  `pvess permit`, `pvess dxf`, `pvess labels`, "
         "`pvess render`, `pvess ee4-trace`, `pvess ee4-preview`\n"
         "  4. VERIFY   :  `pvess doctor`, `pvess readiness`, `pvess symbols`\n\n"
@@ -99,6 +102,7 @@ pvess.add_command(roof_vis_cmd, name="roof-vis")
 pvess.add_command(calc_cmd, name="calc")
 pvess.add_command(customer_summary_cmd, name="customer")
 pvess.add_command(compare_cmd, name="compare")
+pvess.add_command(serve_cmd, name="serve")
 
 
 # ─── Phase 3: SUBMIT ────────────────────────────────────────────────

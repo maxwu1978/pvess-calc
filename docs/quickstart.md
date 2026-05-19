@@ -87,6 +87,19 @@ The 12 pages:
 | 10 | PV-N | General + electrical notes |
 | 11-12 | Labels | NEC 690/706/705 placards |
 
+## Optional: use the browser generator
+
+For operator-driven project intake, start the local Web UI:
+
+```bash
+pvess serve --host 127.0.0.1 --port 8765
+```
+
+Open `http://127.0.0.1:8765`. The **TGE Solar Project Generator** collects
+site and equipment data, address lookup results, source uploads, and cost
+overrides, then generates the same package outputs plus BOM cost JSON/CSV,
+source-data manifests, in-page PDF/PNG previews, and a complete ZIP.
+
 ## Run for your own project
 
 ```bash

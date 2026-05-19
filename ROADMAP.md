@@ -13,6 +13,229 @@ When a K-phase ships:
 
 ## Planned
 
+### W18 — Durable Web job storage
+
+Goal: move Web job metadata out of directory-only discovery so generated
+projects can be searched, filtered, retained, and migrated predictably.
+
+Development plan:
+
+- Add a small SQLite-backed job index for job metadata, payload summary,
+  status, artifact list, source-material status, and generated timestamps.
+- Keep generated files on disk for now; the database owns discovery and
+  metadata, not binary storage.
+- Migrate existing `job-status.json` discovery into a compatibility import
+  path so old local jobs remain visible.
+- Add job list filters for status, project name/address, and created date.
+
+Closing standards:
+
+- Existing filesystem jobs still appear after the first W18 run.
+- New jobs write both status JSON and SQLite metadata.
+- Deleting a job removes the database row and the generated project folder.
+- Tests cover empty database, legacy import, create/list/delete, and
+  artifact-index consistency.
+
+### W19 — Operator accounts and project isolation
+
+Goal: replace shared-token-only access with a lightweight operator model for
+multi-user internal use.
+
+Development plan:
+
+- Introduce operator identity, session token storage, and per-operator job
+  ownership.
+- Preserve `PVESS_WEB_ACCESS_TOKEN` as an admin/bootstrap mode.
+- Scope job history, payload loading, reruns, and file downloads by operator.
+- Add an admin-only all-jobs view for internal support.
+
+Closing standards:
+
+- An operator cannot load, rerun, delete, or download another operator's job.
+- Admin/bootstrap token can still inspect all jobs.
+- Auth failure paths return consistent 401/403 JSON and do not leak paths.
+
+### W20 — Production deployment profile
+
+Goal: package the Web app for a repeatable hosted deployment without changing
+the local CLI workflow.
+
+Development plan:
+
+- Add a Dockerfile or equivalent deployment entrypoint for the FastAPI app.
+- Document required environment variables, job storage paths, backup strategy,
+  health checks, and reverse-proxy assumptions.
+- Add a production smoke command that verifies `/api/health`, static assets,
+  auth mode, and a lightweight generated job.
+
+Closing standards:
+
+- One documented command starts the production profile locally.
+- Health check returns app/version/auth/storage status.
+- Generated artifacts persist outside the container image layer.
+
+### W21 — Real source-data intake helpers
+
+Goal: reduce manual data entry by turning common source materials into
+structured form fields.
+
+Development plan:
+
+- Parse utility bill CSV/PDF inputs into monthly kWh where possible.
+- Classify uploaded site photos by required PV-7 kind.
+- Surface selected-equipment spec-sheet coverage in preflight.
+- Show lookup-derived roof sections as selectable candidates instead of only
+  applying one best section.
+
+Closing standards:
+
+- Simulated monthly usage is replaced automatically when a real utility file
+  yields 12 valid monthly values.
+- Photo/spec classification remains reviewable and never silently marks AHJ
+  readiness as strict-ready without source evidence.
+
+### W22 — Review workspace
+
+Goal: make generated package review easier before handoff.
+
+Development plan:
+
+- Add sheet/document thumbnails for generated PDFs and PNG previews.
+- Add review status per generated artifact: `not reviewed`, `needs revision`,
+  `approved for internal review`.
+- Link readiness/preflight issues to relevant source fields or generated
+  artifacts where possible.
+
+Closing standards:
+
+- Review state is stored with the job and survives page reload.
+- Generated file filtering and preview remain usable on mobile and desktop.
+
+### W23 — AHJ-ready gate
+
+Goal: separate quick estimates from packages that can be considered for
+formal AHJ submission.
+
+Development plan:
+
+- Add package readiness levels: `Estimate only`, `Internal review`, and
+  `AHJ-ready candidate`.
+- Wire readiness strict mode, doctor checks, source-material coverage, and
+  selected output completeness into one gate result.
+- Make the Web UI show which inputs block the next readiness level.
+
+Closing standards:
+
+- Simulated source materials can never produce `AHJ-ready candidate`.
+- Missing signed structural/spec/source data blocks the AHJ-ready gate with
+  actionable field names.
+- Tests cover PV-only, PV+ESS, simulated, and uploaded-source paths.
+
+## Completed Milestones
+
+### Web UI W1-W13 — local project generator ✅ DONE 2026-05-19
+
+Goal: put the current PVESS generation pipeline behind a local browser UI so
+an operator can enter project requirements, choose one inverter family, upload
+available source material, generate the current package outputs, and review
+BOM cost before moving to engineer/AHJ review.
+
+Completed:
+
+- **W1-W3** — Added `pvess serve`, local FastAPI endpoints, static UI shell,
+  and the `TGE Solar Project Generator` title/branding.
+- **W4-W7** — Wired project form input to `inputs.yaml`, calculation,
+  permit/DXF/customer-summary generation, package ZIP creation, and
+  selectable inverter brands (`megarova`, `hoymile`, `growatt`) mapped to
+  their US-market model metadata.
+- **W8-W10** — Added BOM cost estimation, override fields, generated-file
+  filtering, preview/download actions, preflight checks, and clearer
+  generation/readiness status in the UI.
+- **W11-W13** — Added real-source intake fields, site/source uploads,
+  simulated site-photo fallback, artifact/source manifests, BOM CSV,
+  recent-job load/rerun/delete controls, and documentation/test coverage.
+
+Closing standards met:
+
+- Browser form can create a project job without hand-editing YAML.
+- Each job stores `request.json`, `inputs.yaml`, output artifacts,
+  `bom-cost.json`, `bom-cost.csv`, `artifact-manifest.json`, and a complete
+  ZIP under the configured Web workdir.
+- Inverter selection is single-family per project; alternatives are catalog
+  choices, not simultaneous selected equipment.
+- Preflight separates blocking validation errors from simulated/missing
+  source-data warnings.
+- File download paths are bounded to generated job artifacts.
+- Web regression tests cover static UI, catalog/preflight/generation APIs,
+  uploads, BOM overrides, model mapping, job history, rerun, delete, and
+  traversal rejection.
+
+Remaining follow-up:
+
+- Production-hosted/multi-user deployment with durable job storage.
+- Optional account/user model if multiple operators need isolated job history.
+
+### Web UI W14-W16 — deploy hardening + preview + lookup ✅ DONE 2026-05-19
+
+Goal: make the local Web generator less fragile when exposed beyond a single
+developer machine, improve review ergonomics, and let address/site lookup
+prefill the browser form without requiring YAML edits.
+
+Completed:
+
+- **W14** — Added optional shared-token protection for `/api/*` and
+  `/files/*` via `PVESS_WEB_ACCESS_TOKEN` or `pvess serve --access-token`.
+  Added optional `PVESS_WEB_CORS_ORIGINS` for hosted front-end/API splits.
+- **W15** — Reworked the Preview panel into an embedded document/image viewer
+  for generated PDFs and PNG sheet previews, while keeping direct Open links.
+- **W16** — Added `/api/lookup/address` with `online` and deterministic
+  `offline` modes. The UI can apply returned utility, AHJ, NEC edition,
+  coordinates, export tariff, and best roof-section defaults to the form.
+
+Closing standards met:
+
+- Static UI stays publicly loadable, while API/file routes require the token
+  only when configured.
+- Token-protected file links still work in the browser via signed query token
+  URLs generated client-side from the locally stored token.
+- Address lookup works without online credentials in `offline` mode.
+- Online mode reuses the existing lookup provider chain and degrades through
+  provider misses instead of blocking the UI.
+- Browser preview can switch between generated PDF/Markdown documents and
+  PNG previews without leaving the generator page.
+- Regression tests cover token protection, file access, runtime config, and
+  offline address prefill.
+
+### Web UI W17a — language standardization ✅ DONE 2026-05-19
+
+Goal: standardize the page language before deeper productization so the Web
+UI reads like a North American PV permit workflow rather than a mix of internal
+engineering terms and ad-hoc labels.
+
+Completed:
+
+- Added `docs/web-ui-language.md` as the single copy standard for product name,
+  core terms, button language, status language, and simulated-data wording.
+- Updated the Web UI to use **Source materials** consistently for uploaded or
+  simulated photos, bills, specs, and structural documents.
+- Replaced default project copy that implied a standalone estimator with
+  package-generation language.
+- Added UI address samples for:
+  `905 Crossvine Drive, Mansfield, TX` and
+  `2806 Green Circle Drive, Mansfield, TX`.
+- Added a DFW simulated residential monthly usage curve for Mansfield tests:
+  `880, 780, 720, 820, 1050, 1450, 1700, 1750, 1450, 1050, 820, 860`.
+
+Closing standards met:
+
+- UI title remains **TGE Solar Project Generator**.
+- Buttons use stable action verbs: `Lookup address`, `Run preflight`,
+  `Generate package`, `Load`, `Rerun`, `Delete`, `Save`.
+- The UI no longer presents **Project Estimator** as a product name.
+- Mansfield sample addresses generate valid project outputs with 12-month
+  simulated usage and still surface simulated source-material status.
+- Documentation, navigation, and tests cover the copy standard.
+
 ### Stage 5 — simulated site-data readiness path ✅ DONE 2026-05-18
 
 Goal: while real field photos, utility bills, APN lookup, signed structural
@@ -638,7 +861,7 @@ render — PV-4 looks like K.9.3 alone, no regression.
 
 ---
 
-## Backlog (no committed timing)
+## Backlog And Historical Detail
 
 ### K.8.2 — Value-weighted orientation derate (TX afternoon-peak / TOU) (2 days) ✅ DONE 2026-05-17
 
@@ -941,17 +1164,17 @@ Test plan:
 - E2E report test verifies the regional section renders for Frisco.
 
 ### K-future — UX surface (no estimate)
-- Web preview server (`pvess serve` → FastAPI + static front-end)
 - VS Code extension (yaml schema validation + inline preview)
 - Real wizard CLI replacing yaml hand-edit (Aurora-style flow)
 - Multi-language: lift `nec/` to `code/` to support IEC + metric
 
 ---
 
-## Done
+## Historical Done Index
 
 Past K-phases live in `CHANGELOG.md`. Latest:
 
+- **2026-05-19**: Web UI W1-W13 local project generator (`pvess serve`)
 - **2026-05-17**: K.13.1 EE-4 visual-collision polish; K.13 EE-4
   site-focused restructure (Stages A–D); K.4.6 + K.8.2 + K.9 +
   K.10 + K.11 + K.12 (single-day landings)

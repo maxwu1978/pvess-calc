@@ -1,0 +1,99 @@
+# Web UI
+
+`pvess serve` starts the local browser workflow for TGE Solar project intake,
+preflight, package generation, BOM review, and delivery-file download.
+
+```bash
+pvess serve --host 127.0.0.1 --port 8765
+```
+
+Open `http://127.0.0.1:8765`.
+
+For a shared preview machine, protect API and generated-file routes with a
+token:
+
+```bash
+pvess serve --host 0.0.0.0 --port 8765 --access-token "$PVESS_WEB_ACCESS_TOKEN"
+```
+
+The static page still loads, then the browser sends the saved access token
+with API requests and generated-file preview/download URLs.
+
+## Workflow
+
+1. Fill **Project**, **Field intake**, **System**, **Service/roof/cost**, and
+   **Source materials**.
+2. Optional: click **Lookup address**. `online` mode uses configured Mapbox,
+   NREL, and Google Solar providers when keys are available; `offline` mode
+   uses only bundled utility/AHJ/NEC/rate datasets.
+3. Run **Preflight**. This checks schema validity, interconnection status,
+   reference-profile intake gaps, ESS placement inputs, BOM cost, ITC cost,
+   and payback sensitivity without writing a project package.
+4. Select outputs and click **Generate package**.
+5. Review **Readiness**, **Preview**, **BOM cost**, and **Generated files**.
+6. Download **Complete Project ZIP** for handoff.
+
+User-facing copy follows **[Web UI language](web-ui-language.md)**.
+
+## Address Lookup
+
+`/api/lookup/address` returns provider provenance and a `suggested_payload`
+that the browser can apply to form fields. It can prefill utility, AHJ, NEC
+edition, coordinates, export tariff, and best available roof-section defaults.
+Provider misses are surfaced as low-confidence data instead of blocking the
+project form.
+
+## Address Samples
+
+The **Address sample** selector keeps a few realistic smoke-test inputs in
+the UI. W17a includes these Mansfield, TX samples:
+
+- `905 Crossvine Drive, Mansfield, TX`
+- `2806 Green Circle Drive, Mansfield, TX`
+
+Both use the DFW simulated residential monthly usage curve documented in
+**[Web UI language](web-ui-language.md)** until a real utility bill or Smart
+Meter Texas export is uploaded.
+
+## Source Materials
+
+The form accepts:
+
+- PV-7 site photos: front elevation, roof, meter, main panel, sub-panel, and
+  equipment location.
+- Utility bill or usage export.
+- Signed structural letter PDF.
+- Manufacturer spec sheets for module, inverter, battery, racking, and
+  optimizer.
+
+Uploaded files are copied into `source_materials/` under the generated job
+directory and listed in `simulated-site-data.yaml` so simulated or missing
+inputs remain visible before AHJ submission.
+
+## Generated Files
+
+Every run writes:
+
+- `inputs.yaml`
+- `request.json`
+- `output/calculation.json`
+- `output/report.md`
+- `output/bom-cost.json`
+- `output/bom-cost.csv`
+- `output/reference-readiness.md`
+- `output/real-data-checklist.md`
+- `output/artifact-manifest.json`
+- `output/project-package-<job>.zip`
+
+Optional outputs add customer PDF, permit PDF, DXF/PNG previews, NEC labels,
+and QET.
+
+PDFs and PNG sheet previews render inside the **Preview** panel. Direct
+Open/download links remain available for external PDF viewers and CAD review.
+
+## History
+
+Recent jobs can be viewed, loaded back into the form, rerun, or deleted from
+the browser UI. Loading a job restores the JSON request payload. Browser file
+inputs cannot be restored by JavaScript, so attach new files before rerunning
+with changed uploads.

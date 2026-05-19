@@ -8,6 +8,57 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W17b: release-readiness closeout
+
+- Reorganized `ROADMAP.md` so upcoming Web phases W18-W23 are explicit
+  planned work and completed W1-W17a items sit under completed milestones
+- Removed duplicated production-Web future wording now covered by W18-W20
+- Prepared the Web UI W1-W17a workstream for GitHub publication with a
+  focused release branch and validation pass
+
+### 2026-05-19 — Web UI W17a: language standardization
+
+- Added `docs/web-ui-language.md` as the user-facing terminology and copy
+  standard for the TGE Solar Project Generator
+- Standardized Web UI labels around Project, Preflight, Package, Preview,
+  Readiness, Source materials, Generated files, and BOM cost
+- Added built-in address samples for `905 Crossvine Drive, Mansfield, TX` and
+  `2806 Green Circle Drive, Mansfield, TX`
+- Added DFW simulated residential monthly usage for Mansfield smoke tests,
+  clearly treated as simulated source material until replaced by real bills
+- Added regression tests for page terminology and Mansfield address generation
+
+### 2026-05-19 — Web UI W14-W16: deployment hardening, preview, lookup
+
+- Added optional `PVESS_WEB_ACCESS_TOKEN` / `pvess serve --access-token`
+  protection for Web API and generated-file routes
+- Added optional CORS origin configuration through `PVESS_WEB_CORS_ORIGINS`
+  for hosted deployments
+- Added `/api/runtime-config` and `/api/lookup/address`, with offline-only
+  and online-if-configured lookup modes
+- Wired address lookup into the browser form so utility, AHJ, NEC edition,
+  coordinates, tariff, and roof defaults can be prefilled from existing
+  lookup providers
+- Upgraded the Preview panel with an embedded PDF/PNG viewer while preserving
+  direct file-open/download links
+- Extended Web regression coverage for token-protected API/files and offline
+  address prefill
+
+### 2026-05-19 — Web UI W1-W13: local project generator MVP
+
+- Added `pvess serve`, a local FastAPI + static browser UI branded as
+  **TGE Solar Project Generator**
+- Added browser intake for project metadata, address/site fields, PV module,
+  battery, and single selected inverter brand/model path
+- Added generated BOM cost estimates, cost overrides, quote tiers, BOM CSV,
+  artifact manifest, and complete package ZIP export
+- Added preflight checks, async generation jobs, source-data readiness,
+  generated-file filtering, preview/download links, and recent-job
+  load/rerun/delete actions
+- Added upload handling for site photos, utility bills, structural letters,
+  and equipment spec sheets, plus explicit simulated-photo/source-data output
+- Documented the Web UI flow and added endpoint/UI regression coverage
+
 ### 2026-05-18 — Phase I: regional-rule summary closure
 
 - Added a `regional` calculation-result surface that aggregates CA Title 24,

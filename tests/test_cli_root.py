@@ -52,6 +52,7 @@ EXPECTED_SUBCOMMANDS = {
     "calc":     "pvess-calc",
     "customer": "pvess-customer-summary",
     "compare":  "pvess-compare",
+    "serve":    "pvess-serve",
     "permit":   "pvess-permit",
     "dxf":      "pvess-dxf",
     "labels":   "pvess-labels",

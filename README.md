@@ -30,6 +30,19 @@ That profile emits the contractor-style PV/EE sheet numbering, conditional
 EE-2.1 one-line diagram, PV-7 site-photo sheet, SPEC attachment section, and
 an unsigned structural-review draft when no signed engineering PDF is supplied.
 
+Browser UI:
+
+```bash
+pvess serve --host 127.0.0.1 --port 8765
+# Optional for a shared preview machine:
+pvess serve --host 0.0.0.0 --port 8765 --access-token "$PVESS_WEB_ACCESS_TOKEN"
+```
+
+This starts the local **TGE Solar Project Generator** so an operator can enter
+site and equipment data, run address lookup/preflight, generate package
+outputs, preview generated PDFs/PNGs, and review BOM cost without hand-editing
+`inputs.yaml`.
+
 ## Documentation
 
 ```bash
@@ -41,6 +54,8 @@ Or read the markdown directly under [`docs/`](docs/):
 
 - [`docs/index.md`](docs/index.md) — overview + 30-second pitch
 - [`docs/quickstart.md`](docs/quickstart.md) — 10-minute walkthrough
+- [`docs/web-ui.md`](docs/web-ui.md) — browser generator workflow
+- [`docs/web-ui-language.md`](docs/web-ui-language.md) — UI terminology and copy standard
 - [`docs/workflow/`](docs/workflow/) — intake → design → submit → verify
 - [`docs/recipes/`](docs/recipes/) — add AHJ / NEC edition / lookup provider
 - [`docs/reference/`](docs/reference/) — CLI / schema / doctor checks
@@ -62,6 +77,7 @@ Or read the markdown directly under [`docs/`](docs/):
 ## Tooling
 
 - **`pvess <subcommand>`** — unified CLI; subcommands + pipelines.
+- **`pvess serve`** — local browser project generator + BOM estimator.
 - **`pvess doctor`** — structural self-checks; CI-ready.
 - **MkDocs Material** site under `docs/`.
 - **Pytest suite** under `tests/`; `pytest -q` runs in ~30 s.
@@ -69,8 +85,9 @@ Or read the markdown directly under [`docs/`](docs/):
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full K-phase milestone history.
-Latest milestones: docs site + CI / CD (2026-05-15), K.7 unified CLI +
-4-step precision (2026-05-14), K.6 visual polish (2026-05-13).
+Latest milestones: Web UI W1-W13 local generator (2026-05-19), Phase I
+regional rules (2026-05-18), and reference-style planset profile
+(2026-05-18).
 
 ## Scope + license
 

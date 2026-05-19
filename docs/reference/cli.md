@@ -95,6 +95,35 @@ Where `<scenarios-dir>` contains subdirectories each with their own
 - `comparison.json` — machine-readable
 - `comparison.pdf` — 1-page landscape PDF (K.7 [4/4])
 
+### `pvess serve`
+
+```bash
+pvess serve [--host HOST] [--port PORT] [--workdir DIR] [--access-token TOKEN] [--reload]
+```
+
+Starts the local **TGE Solar Project Generator** browser UI. The UI collects
+site and equipment data, runs preflight checks, generates package outputs, and
+writes BOM cost artifacts.
+
+| Option | Notes |
+|---|---|
+| `--host` | Bind address. Defaults to `127.0.0.1` |
+| `--port` | Bind port. Defaults to `8765` |
+| `--workdir` | Job/output storage. Defaults to `~/.pvess/web_jobs` |
+| `--access-token` | Optional shared token required for `/api/*` and `/files/*` routes |
+| `--reload` | Enable Uvicorn reload during UI/API development |
+
+Each generated job stores `request.json`, `inputs.yaml`, generated outputs,
+`bom-cost.json`, `bom-cost.csv`, `artifact-manifest.json`, uploaded source
+files, and a complete ZIP package under the Web workdir.
+
+Environment equivalents:
+
+- `PVESS_WEB_WORKDIR` — default generated-job directory
+- `PVESS_WEB_ACCESS_TOKEN` — same behavior as `--access-token`
+- `PVESS_WEB_CORS_ORIGINS` — comma-separated allowed origins for hosted
+  front-end/API deployments
+
 ## SUBMIT
 
 ### `pvess permit`
