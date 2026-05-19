@@ -677,6 +677,14 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.gate-list span.review-approved {
+  color: var(--green);
+}
+
+.gate-list span.review-pending {
+  color: var(--orange);
+}
+
 .gate-list em {
   color: var(--muted);
   font-style: normal;

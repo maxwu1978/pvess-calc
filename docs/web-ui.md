@@ -154,7 +154,8 @@ and checks generated PDFs for page count and searchable text. The job result is
 updated with the QA status and the ZIP is rebuilt so the QA reports are included
 in the handoff archive. A package cannot reach `AHJ-ready candidate` until
 Package QA is `PASS` and the required handoff artifacts have been approved in
-the Preview review controls.
+the Preview review controls. The Readiness panel shows the required artifact
+approval count and each required artifact's current review status.
 
 ## History
 

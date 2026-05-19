@@ -2509,9 +2509,17 @@ def build_ahj_gate(
     )
 
     required_review_files = _gate_required_review_files(payload, files)
+    required_review_rows = [
+        {
+            "label": file.label,
+            "path": file.path,
+            "status": _gate_artifact_review_status(file, review_state),
+        }
+        for file in required_review_files
+    ]
     unapproved_review_files = [
-        file for file in required_review_files
-        if _gate_artifact_review_status(file, review_state) != "approved_internal"
+        file for file, row in zip(required_review_files, required_review_rows)
+        if row["status"] != "approved_internal"
     ]
     unapproved_labels = ", ".join(
         file.label for file in unapproved_review_files[:6]
@@ -2584,6 +2592,7 @@ def build_ahj_gate(
         "package_qa_status": qa_status,
         "required_artifact_review_count": len(required_review_files),
         "pending_required_artifact_review_count": len(unapproved_review_files),
+        "required_artifact_reviews": required_review_rows,
     }
 
 

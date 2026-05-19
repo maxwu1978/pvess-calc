@@ -992,6 +992,14 @@ def test_web_job_history_imports_legacy_status_json(tmp_path: Path):
     assert [artifact["path"] for artifact in artifacts] == ["inputs.yaml"]
 
 
+def test_web_static_readiness_surfaces_artifact_review_counts():
+    script = Path("src/pvess_calc/web/static/app.js").read_text(encoding="utf-8")
+
+    assert "Artifact reviews" in script
+    assert "required_artifact_reviews" in script
+    assert "pending_required_artifact_review_count" in script
+
+
 def test_web_job_history_filters_and_indexes_artifacts(tmp_path: Path):
     client = _client(tmp_path)
     state = _submit_and_wait(
@@ -1202,6 +1210,9 @@ def test_web_ahj_gate_allows_real_pv_only_candidate(tmp_path: Path):
     assert gate["blockers"] == []
     assert gate["required_artifact_review_count"] == 4
     assert gate["pending_required_artifact_review_count"] == 0
+    assert [
+        item["status"] for item in gate["required_artifact_reviews"]
+    ] == ["approved_internal"] * 4
 
 
 def test_web_ahj_gate_blocks_unapproved_required_artifacts(tmp_path: Path):
@@ -1225,6 +1236,9 @@ def test_web_ahj_gate_blocks_unapproved_required_artifacts(tmp_path: Path):
     assert gate["can_submit_to_ahj"] is False
     assert gate["required_artifact_review_count"] == 4
     assert gate["pending_required_artifact_review_count"] == 4
+    assert [
+        item["status"] for item in gate["required_artifact_reviews"]
+    ] == ["not_reviewed"] * 4
     assert any(
         blocker["key"] == "review.required_artifacts"
         and blocker["field"] == "artifact_reviews"

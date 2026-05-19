@@ -8,6 +8,14 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W27: handoff review visibility
+
+- Added per-required-artifact review rows to the Web AHJ gate response
+- The Readiness panel now shows required artifact approval progress and each
+  required artifact's current review status
+- Added approved/pending styling for the handoff artifact review list
+- Added regression coverage for the gate response and static UI contract
+
 ### 2026-05-19 — Web UI W26: review-gated AHJ handoff
 
 - Added required-artifact approval to the Web AHJ gate

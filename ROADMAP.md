@@ -13,11 +13,31 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W26. Next planned engineering work
+No active Web phases are queued after W27. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web UI W27 — handoff review visibility ✅ DONE 2026-05-19
+
+Goal: make the W26 artifact-approval gate visible enough for an operator to
+clear it without reading raw blocker text.
+
+Completed:
+
+- Added per-required-artifact review rows to the AHJ gate response.
+- The Readiness panel now shows required artifact approval progress and a
+  status line for each required handoff artifact.
+- Added color treatment for approved vs pending review states.
+- Updated Web docs and regression coverage for the response/UI contract.
+
+Closing standards met:
+
+- Gate responses include label/path/status for every required artifact review.
+- The browser Readiness panel exposes approval counts and required artifact
+  statuses.
+- Existing W26 blocking behavior remains unchanged.
 
 ### Web UI W26 — review-gated AHJ handoff ✅ DONE 2026-05-19
 

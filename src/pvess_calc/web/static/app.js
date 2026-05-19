@@ -858,6 +858,16 @@ function reviewStatusOptions(selected) {
   `).join("");
 }
 
+function reviewStatusLabel(status) {
+  if (status === "approved_internal") {
+    return "approved";
+  }
+  if (status === "needs_revision") {
+    return "needs revision";
+  }
+  return "not reviewed";
+}
+
 function reviewLabel(path) {
   const status = artifactReviews[path]?.status || "not_reviewed";
   if (status === "approved_internal") {
@@ -1000,6 +1010,10 @@ function renderReadiness(readiness) {
   const reviewItems = readiness.review_items || [];
   const gate = readiness.gate || {};
   const blockers = gate.blockers || [];
+  const requiredReviews = gate.required_artifact_reviews || [];
+  const requiredReviewCount = Number(gate.required_artifact_review_count || requiredReviews.length || 0);
+  const pendingReviewCount = Number(gate.pending_required_artifact_review_count || 0);
+  const approvedReviewCount = Math.max(0, requiredReviewCount - pendingReviewCount);
   readinessEmpty.classList.toggle("hidden", Boolean(readiness.status));
   readinessPanel.classList.toggle("hidden", !readiness.status);
   if (!readiness.status) {
@@ -1017,12 +1031,26 @@ function renderReadiness(readiness) {
       <strong>${escapeHtml(gate.level || "Internal review")}</strong>
       <span>${gate.can_submit_to_ahj ? "Candidate package may proceed to formal AHJ review." : `Next: ${escapeHtml(gate.next_level || "AHJ-ready candidate")}`}</span>
     </div>
+    <div class="gate-card ${pendingReviewCount ? "warn" : "pass"}">
+      <strong>Artifact reviews</strong>
+      <span>${requiredReviewCount ? `${approvedReviewCount}/${requiredReviewCount} required artifacts approved` : "No required artifact reviews for selected outputs"}</span>
+    </div>
     <dl class="readiness-counts">
       <dt>Ready</dt><dd>${counts.ready || 0}</dd>
       <dt>Simulated</dt><dd>${counts.simulated || 0}</dd>
       <dt>Missing</dt><dd>${counts.missing || 0}</dd>
       <dt>N/A</dt><dd>${counts.not_applicable || 0}</dd>
     </dl>
+    ${requiredReviews.length ? `
+      <ul class="gate-list handoff-review-list">
+        ${requiredReviews.slice(0, 8).map((item) => `
+          <li>
+            <span class="${item.status === "approved_internal" ? "review-approved" : "review-pending"}">${escapeHtml(reviewStatusLabel(item.status))}</span>
+            <em>${escapeHtml(item.label || item.path || "")}</em>
+          </li>
+        `).join("")}
+      </ul>
+    ` : ""}
     <ul class="gate-list">
       ${blockers.slice(0, 6).map((item) => `
         <li>
