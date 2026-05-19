@@ -7,8 +7,10 @@ toolchain instead of creating a second calculation path.
 """
 from __future__ import annotations
 
+import base64
 from concurrent.futures import ThreadPoolExecutor
 import csv
+import hmac
 import io
 import json
 import os
@@ -451,11 +453,15 @@ def create_app(
     *,
     jobs_dir: Path | None = None,
     access_token: str | None = None,
+    basic_auth: tuple[str, str] | None = None,
     cors_origins: list[str] | None = None,
 ) -> FastAPI:
     app = FastAPI(title="PVESS Web Generator", version="0.1.0")
     app.state.jobs_dir = jobs_dir or default_jobs_dir()
     app.state.access_token = access_token if access_token is not None else default_access_token()
+    app.state.basic_auth_credentials = (
+        basic_auth if basic_auth is not None else default_basic_auth_credentials()
+    )
     app.state.jobs: dict[str, WebJobState] = {}
     app.state.job_lock = threading.Lock()
     app.state.job_store = JobStore(app.state.jobs_dir)
@@ -475,6 +481,15 @@ def create_app(
                 "X-PVESS-Operator-Token",
             ],
         )
+
+    @app.middleware("http")
+    async def optional_basic_auth(request: Request, call_next):
+        if not _has_valid_basic_auth(app, request):
+            return Response(
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="TGE Solar"'},
+            )
+        return await call_next(request)
 
     @app.middleware("http")
     async def optional_access_token_auth(request: Request, call_next):
@@ -521,7 +536,8 @@ def create_app(
             "storage": _storage_status(app),
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
             "auth_required": bool(app.state.access_token),
-            "auth_modes": ["admin_token", "operator_token"],
+            "site_auth_required": bool(app.state.basic_auth_credentials),
+            "auth_modes": _auth_modes(app),
         }
 
     @app.get("/api/runtime-config")
@@ -529,9 +545,10 @@ def create_app(
         return {
             "app": "TGE Solar Project Generator",
             "auth_required": bool(app.state.access_token),
+            "site_auth_required": bool(app.state.basic_auth_credentials),
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
             "lookup_modes": ["online", "offline"],
-            "auth_modes": ["admin_token", "operator_token"],
+            "auth_modes": _auth_modes(app),
         }
 
     @app.get("/api/session")
@@ -835,6 +852,14 @@ def default_access_token() -> str:
     return os.environ.get("PVESS_WEB_ACCESS_TOKEN", "").strip()
 
 
+def default_basic_auth_credentials() -> tuple[str, str] | None:
+    user = os.environ.get("PVESS_WEB_BASIC_AUTH_USER", "").strip()
+    password = os.environ.get("PVESS_WEB_BASIC_AUTH_PASSWORD", "").strip()
+    if user and password:
+        return user, password
+    return None
+
+
 def default_cors_origins() -> list[str]:
     raw = os.environ.get("PVESS_WEB_CORS_ORIGINS", "").strip()
     if not raw:
@@ -887,6 +912,36 @@ def _request_requires_token(path: str) -> bool:
     if path in {"/api/health", "/api/runtime-config"}:
         return False
     return path.startswith("/api/") or path.startswith("/files/")
+
+
+def _auth_modes(app: FastAPI) -> list[str]:
+    modes = ["admin_token", "operator_token"]
+    if app.state.basic_auth_credentials:
+        modes.insert(0, "basic_auth")
+    return modes
+
+
+def _has_valid_basic_auth(app: FastAPI, request: Request) -> bool:
+    expected = app.state.basic_auth_credentials
+    if not expected:
+        return True
+    raw = request.headers.get("Authorization", "").strip()
+    if not raw.lower().startswith("basic "):
+        return False
+    try:
+        decoded = base64.b64decode(raw.split(" ", 1)[1], validate=True).decode(
+            "utf-8"
+        )
+    except Exception:
+        return False
+    if ":" not in decoded:
+        return False
+    user, password = decoded.split(":", 1)
+    expected_user, expected_password = expected
+    return hmac.compare_digest(user, expected_user) and hmac.compare_digest(
+        password,
+        expected_password,
+    )
 
 
 def _auth_context(app: FastAPI, request: Request) -> WebAuthContext | None:
@@ -3337,12 +3392,15 @@ def serve_cmd(
 
     app.state.jobs_dir = default_jobs_dir()
     app.state.access_token = default_access_token()
+    app.state.basic_auth_credentials = default_basic_auth_credentials()
     app.state.job_store = JobStore(app.state.jobs_dir)
     app.state.job_store.ensure_ready()
     click.echo(f"PVESS web UI: http://{host}:{port}")
     click.echo(f"Jobs directory: {default_jobs_dir()}")
     if app.state.access_token:
         click.echo("Access token: enabled")
+    if app.state.basic_auth_credentials:
+        click.echo("Site Basic Auth: enabled")
     uvicorn.run(
         "pvess_calc.web.server:app",
         host=host,

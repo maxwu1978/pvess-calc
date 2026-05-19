@@ -31,6 +31,28 @@ LaunchAgents:
 ```text
 ~/Library/LaunchAgents/com.tge.pvess-web.plist
 ~/Library/LaunchAgents/com.tge.cloudflared-tunnel.plist
+~/Library/LaunchAgents/com.tge.pvess-backup.plist
+~/Library/LaunchAgents/com.tge.pvess-healthcheck.plist
+```
+
+## Access Control
+
+Site-level Basic Auth is enabled through the service env file:
+
+```text
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/.env
+```
+
+The browser must pass Basic Auth before it can load the static UI. API and
+file routes still require the PVESS admin/operator token after the page loads.
+This closes the "anyone with the link can open the page" gap while Cloudflare
+Zero Trust Access remains a dashboard-managed follow-up.
+
+Unauthenticated check:
+
+```bash
+curl -sS -o /tmp/tge-noauth.html -w "%{http_code}\n" https://tge.reelamate.com/
+# expected: 401
 ```
 
 ## Health Checks
@@ -45,6 +67,8 @@ set +a
 ~/Services/pvess-calc/venv/bin/pvess web-smoke \
   --base-url http://127.0.0.1:8765 \
   --token "$PVESS_WEB_ACCESS_TOKEN" \
+  --basic-user "$PVESS_WEB_BASIC_AUTH_USER" \
+  --basic-password "$PVESS_WEB_BASIC_AUTH_PASSWORD" \
   --skip-generate
 ```
 
@@ -76,6 +100,8 @@ Status:
 ```bash
 launchctl print "gui/$UID/com.tge.pvess-web" | grep -E "state =|pid =|last exit code"
 launchctl print "gui/$UID/com.tge.cloudflared-tunnel" | grep -E "state =|pid =|last exit code"
+launchctl print "gui/$UID/com.tge.pvess-backup" | grep -E "state =|pid =|last exit code"
+launchctl print "gui/$UID/com.tge.pvess-healthcheck" | grep -E "state =|pid =|last exit code"
 lsof -nP -iTCP:8765 -sTCP:LISTEN
 ```
 
@@ -85,9 +111,17 @@ Logs:
 tail -f ~/.pvess/reelamate-web/local-server.launchd.log
 tail -f ~/.pvess/reelamate-web/local-server.launchd.err
 tail -f ~/.pvess/reelamate-web/cloudflared.launchd.err
+tail -f ~/.pvess/reelamate-web/backup.launchd.log
+tail -f ~/.pvess/reelamate-web/healthcheck.launchd.log
+tail -f ~/.pvess/reelamate-web/healthcheck.launchd.err
 ```
 
 ## Backup
+
+Automatic backup is installed as `com.tge.pvess-backup` and runs daily at
+02:15 local time.
+
+Manual backup:
 
 ```bash
 ~/Services/pvess-calc/deploy/reelamate/local-tunnel/backup-local.sh
@@ -99,24 +133,42 @@ Backups are written to:
 ~/.pvess/backups
 ```
 
+Restore drill:
+
+```bash
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/restore-drill.sh
+```
+
+The drill extracts the latest backup into a temporary directory and runs
+SQLite integrity checks when `web-jobs.sqlite3` is present.
+
+## Uptime Check
+
+Automatic public health checks are installed as `com.tge.pvess-healthcheck`
+and run every 5 minutes.
+
+Manual check:
+
+```bash
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/health-check-curl.sh
+```
+
 ## Token Rotation
 
-The initial Cloudflare and Spaceship tokens were exposed during setup. Rotate
-them after deployment verification:
+The initial Cloudflare and Spaceship tokens were exposed during setup. They
+were deleted/rotated after deployment verification on 2026-05-19.
 
-1. Delete or rotate the Cloudflare API token used for zone/DNS/tunnel setup.
-2. Delete or rotate the Spaceship API key/secret used for nameserver changes.
-3. Keep the Cloudflare tunnel token file private:
+Keep the Cloudflare tunnel token file private:
 
-   ```bash
-   chmod 600 ~/.cloudflared/tge-reelamate-pvess.token
-   ```
+```bash
+chmod 600 ~/.cloudflared/tge-reelamate-pvess.token
+```
 
-4. If rotating the tunnel token, update the token file and restart:
+If rotating the tunnel token, update the token file and restart:
 
-   ```bash
-   launchctl kickstart -k "gui/$UID/com.tge.cloudflared-tunnel"
-   ```
+```bash
+launchctl kickstart -k "gui/$UID/com.tge.cloudflared-tunnel"
+```
 
 Do not paste future provider tokens into chat. Store temporary provider tokens
 in a local file with `chmod 600`, then delete the file after use.

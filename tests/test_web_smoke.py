@@ -65,7 +65,7 @@ def test_web_smoke_verifies_health_static_auth_and_generation():
     assert messages == [
         "health ok: version=0.1.0 storage=/data/pvess-web",
         "static assets ok",
-        "auth mode ok: auth_required=True",
+        "auth mode ok: auth_required=True site_auth_required=False",
         "generation ok: job_id=smoke-job",
     ]
     assert calls == [
@@ -116,6 +116,7 @@ def test_web_smoke_cli_help_exits_zero():
 
     assert result.exit_code == 0
     assert "--base-url" in result.output
+    assert "--basic-user" in result.output
     assert "--skip-generate" in result.output
 
 

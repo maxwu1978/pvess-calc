@@ -131,6 +131,8 @@ Environment equivalents:
 
 - `PVESS_WEB_WORKDIR` — default generated-job directory
 - `PVESS_WEB_ACCESS_TOKEN` — same behavior as `--access-token`
+- `PVESS_WEB_BASIC_AUTH_USER` / `PVESS_WEB_BASIC_AUTH_PASSWORD` — optional
+  site-level HTTP Basic Auth for the static UI and every route
 - `PVESS_WEB_CORS_ORIGINS` — comma-separated allowed origins for hosted
   front-end/API deployments
 - `PVESS_QET_TEMPLATE` — optional override for the QET template path in
@@ -139,7 +141,7 @@ Environment equivalents:
 ### `pvess web-smoke`
 
 ```bash
-pvess web-smoke [--base-url URL] [--token TOKEN] [--timeout SECONDS] [--skip-generate]
+pvess web-smoke [--base-url URL] [--token TOKEN] [--basic-user USER] [--basic-password PASSWORD] [--timeout SECONDS] [--skip-generate]
 ```
 
 Smoke-tests a running Web deployment. It checks `/api/health`, static assets,
@@ -150,6 +152,8 @@ disabled.
 |---|---|
 | `--base-url` | Running Web service. Defaults to `http://127.0.0.1:8765` |
 | `--token` | Admin or operator token. Defaults from `PVESS_WEB_ACCESS_TOKEN` |
+| `--basic-user` | HTTP Basic Auth username. Defaults from `PVESS_WEB_BASIC_AUTH_USER` |
+| `--basic-password` | HTTP Basic Auth password. Defaults from `PVESS_WEB_BASIC_AUTH_PASSWORD` |
 | `--timeout` | Per-request timeout in seconds. Defaults to 30 |
 | `--skip-generate` | Skip the lightweight generated-job check |
 

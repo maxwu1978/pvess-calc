@@ -136,6 +136,10 @@ Local profile files live in `deploy/reelamate/local-tunnel/`:
 - `cloudflared-config.example.yml` maps `tge.reelamate.com` to the local app.
 - `online-smoke-curl.sh` verifies the public Cloudflare route with `curl`.
 - `backup-local.sh` creates a tar backup of the persistent local workdir.
+- `restore-drill.sh` validates the latest backup and SQLite database copy.
+- `health-check-curl.sh` runs the public smoke path for uptime checks.
+- `install-p1-launchagents.sh` installs scheduled backup and health-check
+  LaunchAgents.
 - `P0_RUNBOOK.md` contains the active operator runbook.
 
 Initial local setup:
@@ -144,6 +148,7 @@ Initial local setup:
 cp deploy/reelamate/local-tunnel/.env.example deploy/reelamate/local-tunnel/.env
 openssl rand -hex 32
 # paste the random value into local-tunnel/.env as PVESS_WEB_ACCESS_TOKEN
+# set PVESS_WEB_BASIC_AUTH_USER/PASSWORD to protect the whole site
 
 deploy/reelamate/local-tunnel/run-local.sh
 ```
@@ -173,6 +178,8 @@ Active smoke checks:
 ~/Services/pvess-calc/venv/bin/pvess web-smoke \
   --base-url http://127.0.0.1:8765 \
   --token "$PVESS_WEB_ACCESS_TOKEN" \
+  --basic-user "$PVESS_WEB_BASIC_AUTH_USER" \
+  --basic-password "$PVESS_WEB_BASIC_AUTH_PASSWORD" \
   --skip-generate
 
 ~/Services/pvess-calc/deploy/reelamate/local-tunnel/online-smoke-curl.sh
@@ -189,8 +196,21 @@ Operational constraints:
   `~/.pvess/reelamate-web` by default.
 - Keep `PVESS_WEB_ACCESS_TOKEN` private and add Cloudflare Access before
   sharing the URL outside the internal team.
+- Keep site-level Basic Auth enabled until Cloudflare Zero Trust Access is
+  configured; this protects the static page itself, not only API/file routes.
 - Rotate registrar and Cloudflare API tokens after setup if they were created
   for one-time provisioning.
+
+Scheduled P1 operations:
+
+```bash
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/install-p1-launchagents.sh
+```
+
+This installs:
+
+- `com.tge.pvess-backup`: daily local workdir backup at 02:15.
+- `com.tge.pvess-healthcheck`: public curl smoke every 5 minutes.
 
 Cloudflare references: locally managed tunnel creation, DNS route creation, and
 ingress config are documented at

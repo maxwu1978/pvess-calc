@@ -22,6 +22,9 @@ P0 operator scripts:
 ```bash
 deploy/reelamate/local-tunnel/online-smoke-curl.sh
 deploy/reelamate/local-tunnel/backup-local.sh
+deploy/reelamate/local-tunnel/restore-drill.sh
+deploy/reelamate/local-tunnel/health-check-curl.sh
+deploy/reelamate/local-tunnel/install-p1-launchagents.sh
 ```
 
 See `P0_RUNBOOK.md` for restart, status, backup, and token-rotation commands.
@@ -48,6 +51,8 @@ openssl rand -hex 32
 
 Paste the random value into
 `deploy/reelamate/local-tunnel/.env` as `PVESS_WEB_ACCESS_TOKEN`.
+Set `PVESS_WEB_BASIC_AUTH_USER` and `PVESS_WEB_BASIC_AUTH_PASSWORD` to enable
+site-level Basic Auth for the static UI and every route.
 
 Start the local app:
 
@@ -106,12 +111,31 @@ deploy/reelamate/local-tunnel/online-smoke-curl.sh
 
 The public smoke uses `curl`, because Cloudflare may reject Python urllib
 clients with Error 1010 browser-signature checks. For local loopback checks,
-use `pvess web-smoke --base-url http://127.0.0.1:8765 --skip-generate`.
+source the `.env` file and use
+`pvess web-smoke --base-url http://127.0.0.1:8765 --skip-generate`.
+
+## P1 Scheduled Operations
+
+Install daily backups and 5-minute public health checks:
+
+```bash
+deploy/reelamate/local-tunnel/install-p1-launchagents.sh
+```
+
+Manual commands:
+
+```bash
+deploy/reelamate/local-tunnel/backup-local.sh
+deploy/reelamate/local-tunnel/restore-drill.sh
+deploy/reelamate/local-tunnel/health-check-curl.sh
+```
 
 ## Security
 
 - Keep `PVESS_WEB_ACCESS_TOKEN` private. Do not commit `.env`.
+- Keep `PVESS_WEB_BASIC_AUTH_PASSWORD` private. Do not commit `.env`.
 - Leave the app bound to `127.0.0.1`; the tunnel is the only public entry.
-- Add Cloudflare Access before sharing the URL outside the internal team.
+- Site-level Basic Auth must stay enabled until Cloudflare Zero Trust Access is
+  configured in the Cloudflare dashboard.
 - Disable sleep on the host machine if the site needs to stay available.
 - Rotate any temporary Cloudflare or registrar API tokens used during setup.

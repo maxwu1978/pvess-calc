@@ -8,6 +8,20 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web Ops P1: access, backups, and uptime checks
+
+- Added optional site-level HTTP Basic Auth for the Web server via
+  `PVESS_WEB_BASIC_AUTH_USER` / `PVESS_WEB_BASIC_AUTH_PASSWORD`
+- Extended `pvess web-smoke` and the public curl smoke script for
+  Basic-Auth-protected deployments
+- Reworked local backup creation to stage the workdir and use SQLite `.backup`
+  for `web-jobs.sqlite3`
+- Added restore-drill and public health-check scripts
+- Added a LaunchAgent installer for daily backups and 5-minute public smoke
+  checks
+- Updated deployment docs and the operator runbook with access control,
+  backup, restore, uptime, and token-rotation status
+
 ### 2026-05-19 — Web Ops P0: Cloudflare production stabilization
 
 - Activated `reelamate.com` in Cloudflare and routed

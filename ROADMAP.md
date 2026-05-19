@@ -13,11 +13,43 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after P0. Next planned engineering work
+No active Web phases are queued after P1. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web Ops P1 — access, backups, and uptime checks ✅ DONE 2026-05-19
+
+Goal: close the immediate operational gaps after exposing the local generator
+at `https://tge.reelamate.com`.
+
+Completed:
+
+- Added optional site-level HTTP Basic Auth to the Web server using
+  `PVESS_WEB_BASIC_AUTH_USER` / `PVESS_WEB_BASIC_AUTH_PASSWORD`.
+- Enabled Basic Auth in the production service env so the static UI, assets,
+  health endpoint, API routes, and file routes are not anonymously reachable.
+- Extended `pvess web-smoke` and the public curl smoke script to work against
+  Basic-Auth-protected deployments.
+- Reworked local backups to stage the workdir and use SQLite `.backup` for
+  `web-jobs.sqlite3` when available.
+- Added a restore-drill script that extracts the latest backup and runs SQLite
+  integrity checks.
+- Added a health-check script and LaunchAgent for public smoke checks every
+  5 minutes.
+- Added a backup LaunchAgent for daily backups at 02:15 local time.
+- Updated the operator runbook with access-control, backup, restore, uptime,
+  and token-rotation status.
+
+Closing standards met:
+
+- Anonymous `https://tge.reelamate.com/` returns HTTP 401.
+- Authenticated public smoke passes for index, health, and app.js.
+- Local `pvess web-smoke --skip-generate` passes with Basic Auth enabled.
+- Manual backup creates a tarball under `~/.pvess/backups`.
+- Restore drill passes SQLite integrity check against the backup archive.
+- `com.tge.pvess-backup` and `com.tge.pvess-healthcheck` are installed.
 
 ### Web Ops P0 — Cloudflare production stabilization ✅ DONE 2026-05-19
 

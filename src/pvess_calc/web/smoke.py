@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+from base64 import b64encode
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
@@ -23,6 +24,8 @@ def run_smoke(
     *,
     base_url: str,
     token: str = "",
+    basic_user: str = "",
+    basic_password: str = "",
     timeout_s: float = 30.0,
     generate: bool = True,
     request_json: JsonRequester | None = None,
@@ -30,8 +33,26 @@ def run_smoke(
 ) -> list[str]:
     """Verify health, static assets, auth mode, and optional package output."""
     base = base_url.rstrip("/") + "/"
-    get_json = request_json or _request_json
-    get_text = request_text or _request_text
+    basic_auth = (basic_user, basic_password) if basic_user and basic_password else None
+    get_json = request_json or (
+        lambda base_url, path, token, timeout_s, payload: _request_json(
+            base_url,
+            path,
+            token,
+            timeout_s,
+            payload,
+            basic_auth=basic_auth,
+        )
+    )
+    get_text = request_text or (
+        lambda base_url, path, token, timeout_s: _request_text(
+            base_url,
+            path,
+            token,
+            timeout_s,
+            basic_auth=basic_auth,
+        )
+    )
     messages: list[str] = []
 
     health = get_json(base, "/api/health", "", timeout_s, None)
@@ -54,7 +75,11 @@ def run_smoke(
     auth_required = bool(runtime.get("auth_required"))
     if auth_required and not token:
         raise SmokeError("server requires auth; pass --token or PVESS_WEB_ACCESS_TOKEN")
-    messages.append(f"auth mode ok: auth_required={auth_required}")
+    site_auth_required = bool(runtime.get("site_auth_required"))
+    messages.append(
+        "auth mode ok: "
+        f"auth_required={auth_required} site_auth_required={site_auth_required}"
+    )
 
     if generate:
         result = get_json(base, "/api/projects/sync", token, timeout_s, _smoke_payload())
@@ -102,6 +127,8 @@ def _request_json(
     token: str,
     timeout_s: float,
     payload: dict[str, Any] | None,
+    *,
+    basic_auth: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     data = None
     method = "GET"
@@ -112,18 +139,40 @@ def _request_json(
         headers["Content-Type"] = "application/json"
     if token:
         headers["X-PVESS-Token"] = token
-    response = _open(base_url, path, timeout_s, method=method, headers=headers, data=data)
+    response = _open(
+        base_url,
+        path,
+        timeout_s,
+        method=method,
+        headers=headers,
+        data=data,
+        basic_auth=basic_auth,
+    )
     try:
         return json.loads(response)
     except json.JSONDecodeError as exc:
         raise SmokeError(f"{path} returned non-JSON response") from exc
 
 
-def _request_text(base_url: str, path: str, token: str, timeout_s: float) -> str:
+def _request_text(
+    base_url: str,
+    path: str,
+    token: str,
+    timeout_s: float,
+    *,
+    basic_auth: tuple[str, str] | None = None,
+) -> str:
     headers: dict[str, str] = {}
     if token:
         headers["X-PVESS-Token"] = token
-    return _open(base_url, path, timeout_s, method="GET", headers=headers)
+    return _open(
+        base_url,
+        path,
+        timeout_s,
+        method="GET",
+        headers=headers,
+        basic_auth=basic_auth,
+    )
 
 
 def _open(
@@ -134,8 +183,13 @@ def _open(
     method: str,
     headers: dict[str, str],
     data: bytes | None = None,
+    basic_auth: tuple[str, str] | None = None,
 ) -> str:
     url = urljoin(base_url, path.lstrip("/"))
+    if basic_auth:
+        raw = f"{basic_auth[0]}:{basic_auth[1]}".encode("utf-8")
+        headers = dict(headers)
+        headers["Authorization"] = "Basic " + b64encode(raw).decode("ascii")
     request = Request(url, data=data, headers=headers, method=method)
     try:
         with urlopen(request, timeout=timeout_s) as response:  # noqa: S310 - user URL.
@@ -164,6 +218,16 @@ def _require(condition: Any, message: str) -> None:
     default=lambda: os.environ.get("PVESS_WEB_ACCESS_TOKEN", ""),
     help="Admin or operator token when the Web service requires auth.",
 )
+@click.option(
+    "--basic-user",
+    default=lambda: os.environ.get("PVESS_WEB_BASIC_AUTH_USER", ""),
+    help="HTTP Basic Auth username when site-level auth is enabled.",
+)
+@click.option(
+    "--basic-password",
+    default=lambda: os.environ.get("PVESS_WEB_BASIC_AUTH_PASSWORD", ""),
+    help="HTTP Basic Auth password when site-level auth is enabled.",
+)
 @click.option("--timeout", "timeout_s", default=30.0, show_default=True, type=float)
 @click.option(
     "--skip-generate",
@@ -173,6 +237,8 @@ def _require(condition: Any, message: str) -> None:
 def smoke_cmd(
     base_url: str,
     token: str,
+    basic_user: str,
+    basic_password: str,
     timeout_s: float,
     skip_generate: bool,
 ) -> None:
@@ -181,6 +247,8 @@ def smoke_cmd(
         messages = run_smoke(
             base_url=base_url,
             token=token.strip(),
+            basic_user=basic_user.strip(),
+            basic_password=basic_password.strip(),
             timeout_s=timeout_s,
             generate=not skip_generate,
         )

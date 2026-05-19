@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import time
 import zipfile
@@ -222,6 +223,11 @@ def _token_headers(token: str) -> dict[str, str]:
     return {"X-PVESS-Token": token}
 
 
+def _basic_headers(user: str, password: str) -> dict[str, str]:
+    raw = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+    return {"Authorization": f"Basic {raw}"}
+
+
 def test_web_index_serves_static_page(tmp_path: Path):
     client = _client(tmp_path)
     response = client.get("/")
@@ -399,6 +405,30 @@ def test_web_optional_access_token_protects_api_and_files(tmp_path: Path):
     file_response = client.get(f"/files/{state['job_id']}/inputs.yaml?token=secret")
     assert file_response.status_code == 200
     assert "Web Smoke Test" in file_response.text
+
+
+def test_web_basic_auth_protects_static_and_health_pages(tmp_path: Path):
+    client = TestClient(
+        create_app(
+            jobs_dir=tmp_path,
+            access_token="secret",
+            basic_auth=("site-user", "site-pass"),
+        )
+    )
+
+    assert client.get("/").status_code == 401
+    assert client.get("/assets/app.js").status_code == 401
+    assert client.get("/api/health").status_code == 401
+
+    headers = _basic_headers("site-user", "site-pass")
+    assert client.get("/", headers=headers).status_code == 200
+    health = client.get("/api/health", headers=headers)
+    assert health.status_code == 200
+    assert health.json()["site_auth_required"] is True
+    assert "basic_auth" in health.json()["auth_modes"]
+
+    api_headers = {**headers, "X-PVESS-Token": "secret"}
+    assert client.get("/api/jobs", headers=api_headers).status_code == 200
 
 
 def test_web_admin_can_create_operator_tokens(tmp_path: Path):
