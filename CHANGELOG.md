@@ -8,6 +8,22 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web Ops P3: online end-to-end package validation
+
+- Generated four complete packages through the public
+  `https://tge.reelamate.com` path using Cloudflare Access service-token
+  headers plus local Basic Auth
+- Covered 905 Crossvine Drive and 2806 Green Circle Drive in PV-only and
+  PV + ESS variants
+- Ran Package QA for every online job and downloaded each Complete Project ZIP
+  through the public `/files` route
+- Verified every ZIP is readable and contains calculation, BOM, Package QA,
+  PDF, DXF, and PNG artifacts
+- Confirmed all four packages have zero doctor failures, zero PDF failures, and
+  archive status PASS
+- Confirmed the expected `Estimate only` readiness gate remains in place for
+  simulated source data
+
 ### 2026-05-20 — Web Ops P2 prep: Cloudflare Access automation
 
 - Added `configure-cloudflare-access.sh` for creating the Access self-hosted

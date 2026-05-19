@@ -13,11 +13,59 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web ops phases are queued after P2. Next planned engineering work
-should be selected from P3/P4 business workflow priorities or the non-Web
-backlog below.
+Next planned engineering work should be selected from P4/P5 business workflow
+priorities or the non-Web backlog below.
 
 ## Completed Milestones
+
+### Web Ops P3 — online end-to-end package validation ✅ DONE 2026-05-20
+
+Goal: verify that the secured public path at `https://tge.reelamate.com`
+can generate, QA, and download complete project packages.
+
+Validation matrix:
+
+| Address | Variant | Job ID | Result |
+|---|---|---|---|
+| 905 Crossvine Drive, Mansfield, TX | PV-only | `p3-online-905-crossvine-drive-pv-onl-20260520-004522-5c0602` | Generated, QA WARN, ZIP valid |
+| 905 Crossvine Drive, Mansfield, TX | PV + ESS | `p3-online-905-crossvine-drive-pv-ess-20260520-004541-b3bee0` | Generated, QA WARN, ZIP valid |
+| 2806 Green Circle Drive, Mansfield, TX | PV-only | `p3-online-2806-green-circle-drive-pv-20260520-004557-06fa25` | Generated, QA WARN, ZIP valid |
+| 2806 Green Circle Drive, Mansfield, TX | PV + ESS | `p3-online-2806-green-circle-drive-pv-20260520-004615-d1d1a9` | Generated, QA WARN, ZIP valid |
+
+Completed:
+
+- Generated all four packages through the public Cloudflare Access + Basic Auth
+  path using service-token automation headers.
+- Requested full outputs for each package: customer PDF, permit PDF, DXF/PNG,
+  NEC labels, QET, BOM/cost files, manifests, and complete ZIP.
+- Ran Package QA for every generated job.
+- Downloaded every Complete Project ZIP through the public `/files` route.
+- Verified ZIP integrity with `ZipFile.testzip()`.
+- Verified required archive entries:
+  `inputs.yaml`, `output/calculation.json`, `output/bom-cost.json`,
+  `output/package-qa.json`, and `output/package-qa.md`.
+- Verified each ZIP contains 3 PDFs, 3 DXFs, and 3 PNG previews.
+- Captured the validation report under
+  `~/.pvess/p3-online-validation/20260520-004522/p3-summary.json`.
+
+Findings:
+
+- Package QA is `WARN` for all four packages, with `doctor_failed=0`,
+  `pdf_failed=0`, and `archive_status=PASS`.
+- Warnings are expected for simulated/missing field data: coordinates, meter
+  details, ESID, signed structural letter, field photos, manufacturer spec
+  sheets, and field-proof grounding data.
+- Permit PDFs still warn on low extracted text for pages 9-10 because those
+  pages are DXF-derived drawing previews.
+- Readiness level remains `Estimate only` for all four packages because source
+  materials are simulated.
+
+Closing standards met:
+
+- Public authentication layers do not break generation, QA, or downloads.
+- Four complete online packages were generated and downloaded.
+- No package has doctor, PDF, or ZIP FAIL results.
+- Estimate-only gate behavior remains correct for simulated source data.
 
 ### Web Ops P2 — Cloudflare Zero Trust Access ✅ DONE 2026-05-20
 
