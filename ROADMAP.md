@@ -13,25 +13,6 @@ When a K-phase ships:
 
 ## Planned
 
-### W19 — Operator accounts and project isolation
-
-Goal: replace shared-token-only access with a lightweight operator model for
-multi-user internal use.
-
-Development plan:
-
-- Introduce operator identity, session token storage, and per-operator job
-  ownership.
-- Preserve `PVESS_WEB_ACCESS_TOKEN` as an admin/bootstrap mode.
-- Scope job history, payload loading, reruns, and file downloads by operator.
-- Add an admin-only all-jobs view for internal support.
-
-Closing standards:
-
-- An operator cannot load, rerun, delete, or download another operator's job.
-- Admin/bootstrap token can still inspect all jobs.
-- Auth failure paths return consistent 401/403 JSON and do not leak paths.
-
 ### W20 — Production deployment profile
 
 Goal: package the Web app for a repeatable hosted deployment without changing
@@ -236,6 +217,31 @@ Closing standards met:
 - Deleting a job removes the database row and generated project folder.
 - Regression tests cover empty database, legacy import, create/list/filter,
   delete, sync status persistence, and artifact-index consistency.
+
+### Web UI W19 — operator accounts and project isolation ✅ DONE 2026-05-19
+
+Goal: replace shared-token-only access with a lightweight operator model for
+multi-user internal use.
+
+Completed:
+
+- Added SQLite-backed operator token storage. Tokens are returned once at
+  creation and stored as hashes.
+- Preserved `PVESS_WEB_ACCESS_TOKEN` / `pvess serve --access-token` as the
+  admin/bootstrap token.
+- Added `owner_id` to Web job state and the SQLite job index.
+- Scoped job history, job detail, payload loading, rerun, delete, and file
+  downloads by operator owner.
+- Added admin-only all-jobs support through `/api/jobs?all_jobs=true` and the
+  Recent jobs **All jobs** filter.
+
+Closing standards met:
+
+- An operator cannot load, rerun, delete, or download another operator's job.
+- Admin/bootstrap token can inspect all jobs and create operator tokens.
+- Auth failures return 401/403 JSON without filesystem path leakage.
+- Regression tests cover operator creation, owner-scoped history, cross-owner
+  denial paths, admin all-jobs access, and owner delete/download behavior.
 
 ### Stage 5 — simulated site-data readiness path ✅ DONE 2026-05-18
 

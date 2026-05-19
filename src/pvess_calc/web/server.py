@@ -380,6 +380,7 @@ class WebJobResponse(BaseModel):
 class WebJobState(BaseModel):
     job_id: str
     project_dir: str
+    owner_id: str = "local"
     status: Literal["queued", "running", "done", "failed"]
     progress: int = 0
     stage: str = "queued"
@@ -388,6 +389,28 @@ class WebJobState(BaseModel):
     updated_at: str
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+class WebAuthContext(BaseModel):
+    operator_id: str
+    role: Literal["admin", "operator"]
+    display_name: str = ""
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == "admin"
+
+
+class WebOperatorCreateRequest(BaseModel):
+    operator_id: str = Field(default="", max_length=64)
+    display_name: str = Field(default="Operator", min_length=1, max_length=80)
+
+
+class WebOperatorCreateResponse(BaseModel):
+    operator_id: str
+    display_name: str
+    token: str
+    created_at: str
 
 
 def create_app(
@@ -411,17 +434,27 @@ def create_app(
             allow_origins=origins,
             allow_credentials=True,
             allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type", "X-PVESS-Token"],
+            allow_headers=[
+                "Authorization",
+                "Content-Type",
+                "X-PVESS-Token",
+                "X-PVESS-Operator-Token",
+            ],
         )
 
     @app.middleware("http")
     async def optional_access_token_auth(request: Request, call_next):
+        auth_context = _auth_context(app, request)
+        request.state.auth_context = auth_context
         if _request_requires_token(request.url.path):
-            expected = str(app.state.access_token or "").strip()
-            if expected and not _token_matches(request, expected):
+            if auth_context is None:
                 return JSONResponse(
                     status_code=401,
-                    content={"detail": "PVESS web access token required"},
+                    content={
+                        "detail": (
+                            "PVESS web admin token or operator token required"
+                        )
+                    },
                 )
         return await call_next(request)
 
@@ -452,6 +485,7 @@ def create_app(
             "jobs_dir": str(app.state.jobs_dir),
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
             "auth_required": bool(app.state.access_token),
+            "auth_modes": ["admin_token", "operator_token"],
         }
 
     @app.get("/api/runtime-config")
@@ -461,7 +495,33 @@ def create_app(
             "auth_required": bool(app.state.access_token),
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
             "lookup_modes": ["online", "offline"],
+            "auth_modes": ["admin_token", "operator_token"],
         }
+
+    @app.get("/api/session")
+    def current_session(request: Request) -> dict[str, Any]:
+        context = _require_auth_context(request)
+        return {
+            "operator_id": context.operator_id,
+            "role": context.role,
+            "display_name": context.display_name,
+            "is_admin": context.is_admin,
+        }
+
+    @app.post("/api/operators", response_model=WebOperatorCreateResponse)
+    def create_operator(
+        request: Request,
+        payload: WebOperatorCreateRequest,
+    ) -> WebOperatorCreateResponse:
+        context = _require_auth_context(request)
+        if not context.is_admin:
+            raise HTTPException(status_code=403, detail="admin token required")
+        return WebOperatorCreateResponse.model_validate(
+            app.state.job_store.create_operator(
+                operator_id=payload.operator_id,
+                display_name=payload.display_name,
+            )
+        )
 
     @app.get("/api/lookup/address", response_model=WebAddressLookupResponse)
     def lookup_address(
@@ -487,9 +547,13 @@ def create_app(
             raise HTTPException(status_code=500, detail=repr(exc)) from exc
 
     @app.post("/api/projects", response_model=WebJobState)
-    def create_project(payload: WebProjectRequest) -> WebJobState:
+    def create_project(request: Request, payload: WebProjectRequest) -> WebJobState:
         try:
-            return enqueue_project(payload, app)
+            return enqueue_project(
+                payload,
+                app,
+                owner_id=_require_auth_context(request).operator_id,
+            )
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
         except ValueError as exc:
@@ -499,6 +563,7 @@ def create_app(
 
     @app.post("/api/projects/form", response_model=WebJobState)
     async def create_project_form(
+        http_request: Request,
         payload: str = Form(...),
         front_elevation: UploadFile | None = File(None),
         roof: UploadFile | None = File(None),
@@ -544,6 +609,7 @@ def create_app(
             return enqueue_project(
                 request,
                 app,
+                owner_id=_require_auth_context(http_request).operator_id,
                 site_uploads=site_uploads,
                 utility_bill_upload=utility,
                 structural_upload=structural,
@@ -559,13 +625,18 @@ def create_app(
             raise HTTPException(status_code=500, detail=repr(exc)) from exc
 
     @app.post("/api/projects/sync", response_model=WebJobResponse)
-    def create_project_sync(payload: WebProjectRequest) -> WebJobResponse:
+    def create_project_sync(
+        request: Request,
+        payload: WebProjectRequest,
+    ) -> WebJobResponse:
         try:
             result = generate_project(payload, app.state.jobs_dir)
             now = datetime.now(timezone.utc).isoformat()
+            owner_id = _require_auth_context(request).operator_id
             state = WebJobState(
                 job_id=result.job_id,
                 project_dir=result.project_dir,
+                owner_id=owner_id,
                 status="done",
                 progress=100,
                 stage="done",
@@ -574,7 +645,7 @@ def create_app(
                 updated_at=now,
                 result=result.model_dump(mode="json"),
             )
-            _set_job_state(app, state, payload=payload)
+            _set_job_state(app, state, payload=payload, owner_id=owner_id)
             return result
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
@@ -585,13 +656,20 @@ def create_app(
 
     @app.get("/api/jobs")
     def list_jobs(
+        request: Request,
         status: Literal["queued", "running", "done", "failed"] | None = Query(None),
         q: str = Query("", max_length=120),
         created_from: str = Query("", max_length=40),
         created_to: str = Query("", max_length=40),
         limit: int = Query(25, ge=1, le=100),
+        all_jobs: bool = Query(False),
     ) -> dict[str, Any]:
+        context = _require_auth_context(request)
+        if all_jobs and not context.is_admin:
+            raise HTTPException(status_code=403, detail="admin token required")
         jobs = app.state.job_store.list_jobs(
+            owner_id=context.operator_id,
+            include_all=context.is_admin and all_jobs,
             status=status,
             query=q,
             created_from=created_from,
@@ -606,35 +684,45 @@ def create_app(
                 "created_from": created_from,
                 "created_to": created_to,
                 "limit": limit,
+                "all_jobs": all_jobs,
             },
         }
 
     @app.get("/api/jobs/{job_id}", response_model=WebJobState)
-    def get_job(job_id: str) -> WebJobState:
-        return load_job_state(app, job_id)
+    def get_job(request: Request, job_id: str) -> WebJobState:
+        return load_job_state(app, job_id, context=_require_auth_context(request))
 
     @app.get("/api/jobs/{job_id}/payload")
-    def get_job_payload(job_id: str) -> dict[str, Any]:
-        project_dir = _job_project_dir(app, job_id)
+    def get_job_payload(request: Request, job_id: str) -> dict[str, Any]:
+        project_dir = _job_project_dir(
+            app, job_id, context=_require_auth_context(request),
+        )
         request_path = project_dir / "request.json"
         if not request_path.exists():
             raise HTTPException(status_code=404, detail="job payload not found")
         return json.loads(request_path.read_text(encoding="utf-8"))
 
     @app.post("/api/jobs/{job_id}/rerun", response_model=WebJobState)
-    def rerun_job(job_id: str) -> WebJobState:
-        project_dir = _job_project_dir(app, job_id)
+    def rerun_job(request: Request, job_id: str) -> WebJobState:
+        context = _require_auth_context(request)
+        project_dir = _job_project_dir(app, job_id, context=context)
         request_path = project_dir / "request.json"
         if not request_path.exists():
             raise HTTPException(status_code=404, detail="job payload not found")
         payload = WebProjectRequest.model_validate_json(
             request_path.read_text(encoding="utf-8")
         )
-        return enqueue_project(payload, app)
+        owner_id = (
+            app.state.job_store.job_owner(job_id)
+            if context.is_admin else context.operator_id
+        )
+        return enqueue_project(payload, app, owner_id=owner_id or context.operator_id)
 
     @app.delete("/api/jobs/{job_id}")
-    def delete_job(job_id: str) -> dict[str, str]:
-        project_dir = _job_project_dir(app, job_id)
+    def delete_job(request: Request, job_id: str) -> dict[str, str]:
+        project_dir = _job_project_dir(
+            app, job_id, context=_require_auth_context(request),
+        )
         with app.state.job_lock:
             app.state.jobs.pop(job_id, None)
         app.state.job_store.delete_job(job_id)
@@ -643,10 +731,12 @@ def create_app(
 
     @app.get("/files/{job_id}/{file_path:path}", include_in_schema=False)
     def download(
+        request: Request,
         job_id: str,
         file_path: str,
         download: bool = Query(False),
     ) -> FileResponse:
+        _authorize_job_access(app, job_id, _require_auth_context(request))
         path = resolve_job_file(app.state.jobs_dir, job_id, file_path)
         filename = path.name if download else None
         return FileResponse(path, filename=filename)
@@ -680,12 +770,71 @@ def _request_requires_token(path: str) -> bool:
     return path.startswith("/api/") or path.startswith("/files/")
 
 
-def _token_matches(request: Request, expected: str) -> bool:
-    header_token = request.headers.get("X-PVESS-Token", "").strip()
+def _auth_context(app: FastAPI, request: Request) -> WebAuthContext | None:
+    admin_token = str(app.state.access_token or "").strip()
+    if not admin_token:
+        return WebAuthContext(
+            operator_id="local",
+            role="admin",
+            display_name="Local operator",
+        )
+
+    tokens = _request_tokens(request)
+    if admin_token in tokens:
+        return WebAuthContext(
+            operator_id="admin",
+            role="admin",
+            display_name="Admin",
+        )
+    for token in tokens:
+        operator = app.state.job_store.operator_for_token(token)
+        if operator is not None:
+            return WebAuthContext(
+                operator_id=operator["operator_id"],
+                role="operator",
+                display_name=operator["display_name"],
+            )
+    return None
+
+
+def _request_tokens(request: Request) -> set[str]:
     auth = request.headers.get("Authorization", "").strip()
     bearer_token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    query_token = request.query_params.get("token", "").strip()
-    return expected in {header_token, bearer_token, query_token}
+    return {
+        token
+        for token in {
+            request.headers.get("X-PVESS-Token", "").strip(),
+            request.headers.get("X-PVESS-Operator-Token", "").strip(),
+            bearer_token,
+            request.query_params.get("token", "").strip(),
+            request.query_params.get("operator_token", "").strip(),
+        }
+        if token
+    }
+
+
+def _require_auth_context(request: Request) -> WebAuthContext:
+    context = getattr(request.state, "auth_context", None)
+    if context is None:
+        raise HTTPException(
+            status_code=401,
+            detail="PVESS web admin token or operator token required",
+        )
+    return context
+
+
+def _authorize_job_access(
+    app: FastAPI,
+    job_id: str,
+    context: WebAuthContext,
+) -> None:
+    if context.is_admin:
+        return
+    owner_id = app.state.job_store.job_owner(job_id)
+    if owner_id is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if owner_id != context.operator_id:
+        raise HTTPException(status_code=403, detail="job access denied")
 
 
 app = create_app()
@@ -695,6 +844,7 @@ def enqueue_project(
     payload: WebProjectRequest,
     app: FastAPI,
     *,
+    owner_id: str = "local",
     site_uploads: dict[str, UploadedMaterial] | None = None,
     utility_bill_upload: UploadedMaterial | None = None,
     structural_upload: UploadedMaterial | None = None,
@@ -708,6 +858,7 @@ def enqueue_project(
     state = WebJobState(
         job_id=job_id,
         project_dir=str(project_dir),
+        owner_id=owner_id,
         status="queued",
         progress=0,
         stage="queued",
@@ -715,7 +866,7 @@ def enqueue_project(
         created_at=now,
         updated_at=now,
     )
-    _set_job_state(app, state, payload=payload)
+    _set_job_state(app, state, payload=payload, owner_id=owner_id)
     app.state.executor.submit(
         _run_job,
         app,
@@ -729,9 +880,16 @@ def enqueue_project(
     return state
 
 
-def _job_project_dir(app: FastAPI, job_id: str) -> Path:
+def _job_project_dir(
+    app: FastAPI,
+    job_id: str,
+    *,
+    context: WebAuthContext | None = None,
+) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", job_id):
         raise HTTPException(status_code=404, detail="job not found")
+    if context is not None:
+        _authorize_job_access(app, job_id, context)
     project_dir = (app.state.jobs_dir / job_id).resolve()
     jobs_dir = app.state.jobs_dir.resolve()
     if not project_dir.is_relative_to(jobs_dir) or not project_dir.exists():
@@ -739,9 +897,16 @@ def _job_project_dir(app: FastAPI, job_id: str) -> Path:
     return project_dir
 
 
-def load_job_state(app: FastAPI, job_id: str) -> WebJobState:
+def load_job_state(
+    app: FastAPI,
+    job_id: str,
+    *,
+    context: WebAuthContext | None = None,
+) -> WebJobState:
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", job_id):
         raise HTTPException(status_code=404, detail="job not found")
+    if context is not None:
+        _authorize_job_access(app, job_id, context)
     with app.state.job_lock:
         if job_id in app.state.jobs:
             return app.state.jobs[job_id]
@@ -813,6 +978,7 @@ def _set_job_state(
     state: WebJobState,
     *,
     payload: WebProjectRequest | None = None,
+    owner_id: str | None = None,
 ) -> None:
     with app.state.job_lock:
         app.state.jobs[state.job_id] = state
@@ -825,6 +991,7 @@ def _set_job_state(
     app.state.job_store.upsert_state(
         state.model_dump(mode="json"),
         payload=payload.model_dump(mode="json") if payload is not None else None,
+        owner_id=owner_id or state.owner_id,
     )
 
 

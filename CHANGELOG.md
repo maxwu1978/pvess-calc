@@ -8,6 +8,20 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W19: operator accounts and isolation
+
+- Added SQLite-backed operator token storage with hashed tokens and one-time
+  token return on creation
+- Preserved `PVESS_WEB_ACCESS_TOKEN` / `pvess serve --access-token` as the
+  admin/bootstrap mode
+- Added `owner_id` to Web job state and job index records
+- Scoped job history, job detail, payload loading, rerun, delete, and file
+  downloads by operator owner
+- Added admin-only all-jobs support via `/api/jobs?all_jobs=true` and the
+  Recent jobs **All jobs** filter
+- Added regression tests for operator creation, cross-owner denial, admin
+  all-jobs access, and owner-scoped delete/download behavior
+
 ### 2026-05-19 — Web UI W18: durable job storage
 
 - Added a SQLite-backed Web job index at `<workdir>/web-jobs.sqlite3` while

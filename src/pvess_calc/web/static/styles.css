@@ -319,7 +319,7 @@ button:disabled {
   margin-bottom: 10px;
 }
 
-.history-toolbar input,
+.history-toolbar input:not([type="checkbox"]),
 .history-toolbar select {
   min-width: 0;
   min-height: 34px;
@@ -334,6 +334,21 @@ button:disabled {
   min-height: 34px;
   padding: 0 10px;
   font-size: 12px;
+}
+
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.inline-check input {
+  width: 14px;
+  height: 14px;
 }
 
 .history-actions {

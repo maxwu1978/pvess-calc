@@ -121,7 +121,11 @@ The workdir also contains `web-jobs.sqlite3`, a searchable job index for
 history, filters, source-material/readiness metadata, and artifact records.
 Generated files remain in each job folder. Existing job folders with
 `job-status.json` are imported into the index automatically when history is
-listed.
+listed. In access-token mode, the same database stores hashed operator tokens
+and job `owner_id` values so history, payload, rerun, delete, and file
+downloads are scoped to the operator that created the job. The admin token can
+create operators with `POST /api/operators` and inspect all jobs through
+`/api/jobs?all_jobs=true`.
 
 Environment equivalents:
 

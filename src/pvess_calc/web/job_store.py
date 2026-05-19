@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import sqlite3
 import threading
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +47,7 @@ class JobStore:
                         progress INTEGER NOT NULL DEFAULT 0,
                         stage TEXT NOT NULL DEFAULT '',
                         message TEXT NOT NULL DEFAULT '',
+                        owner_id TEXT NOT NULL DEFAULT 'local',
                         project_name TEXT NOT NULL DEFAULT '',
                         site_address TEXT NOT NULL DEFAULT '',
                         created_at TEXT NOT NULL,
@@ -69,6 +73,16 @@ class JobStore:
                         FOREIGN KEY (job_id)
                             REFERENCES web_jobs(job_id) ON DELETE CASCADE
                     );
+                    CREATE TABLE IF NOT EXISTS web_operators (
+                        operator_id TEXT PRIMARY KEY,
+                        display_name TEXT NOT NULL,
+                        token_hash TEXT NOT NULL UNIQUE,
+                        role TEXT NOT NULL DEFAULT 'operator',
+                        created_at TEXT NOT NULL,
+                        last_seen_at TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_web_jobs_owner
+                        ON web_jobs(owner_id);
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_status
                         ON web_jobs(status);
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_created_at
@@ -78,6 +92,12 @@ class JobStore:
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_site_address
                         ON web_jobs(site_address);
                     """
+                )
+                _ensure_column(
+                    conn,
+                    "web_jobs",
+                    "owner_id",
+                    "TEXT NOT NULL DEFAULT 'local'",
                 )
             self._initialized = True
 
@@ -104,6 +124,7 @@ class JobStore:
         state: dict[str, Any],
         *,
         payload: dict[str, Any] | None = None,
+        owner_id: str | None = None,
         imported_from_legacy: bool = False,
     ) -> None:
         self.ensure_ready()
@@ -111,6 +132,12 @@ class JobStore:
         if not VALID_JOB_ID.fullmatch(job_id):
             raise ValueError("invalid job_id")
         existing = self._job_row(job_id)
+        resolved_owner_id = _clean_operator_id(
+            owner_id
+            or state.get("owner_id")
+            or (existing["owner_id"] if existing is not None else "")
+            or "local"
+        )
         payload_summary = (
             summarize_payload(payload)
             if payload is not None
@@ -161,17 +188,18 @@ class JobStore:
                 """
                 INSERT INTO web_jobs (
                     job_id, project_dir, status, progress, stage, message,
-                    project_name, site_address, created_at, updated_at,
+                    owner_id, project_name, site_address, created_at, updated_at,
                     source_status, readiness_status, installed_cost_usd,
                     state_json, payload_summary_json, source_materials_json,
                     artifact_count, imported_from_legacy
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
                     project_dir = excluded.project_dir,
                     status = excluded.status,
                     progress = excluded.progress,
                     stage = excluded.stage,
                     message = excluded.message,
+                    owner_id = excluded.owner_id,
                     project_name = excluded.project_name,
                     site_address = excluded.site_address,
                     created_at = excluded.created_at,
@@ -195,6 +223,7 @@ class JobStore:
                     int(state.get("progress") or 0),
                     str(state.get("stage") or ""),
                     str(state.get("message") or ""),
+                    resolved_owner_id,
                     project_name,
                     site_address,
                     str(state.get("created_at") or ""),
@@ -237,6 +266,8 @@ class JobStore:
     def list_jobs(
         self,
         *,
+        owner_id: str | None = None,
+        include_all: bool = False,
         status: str | None = None,
         query: str = "",
         created_from: str = "",
@@ -246,6 +277,9 @@ class JobStore:
         self.import_legacy_jobs()
         clauses: list[str] = []
         params: list[Any] = []
+        if owner_id and not include_all:
+            clauses.append("owner_id = ?")
+            params.append(_clean_operator_id(owner_id))
         if status:
             clauses.append("status = ?")
             params.append(status)
@@ -283,6 +317,16 @@ class JobStore:
             row = self._job_row(job_id)
         return json.loads(row["state_json"]) if row is not None else None
 
+    def job_owner(self, job_id: str) -> str | None:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(job_id):
+            return None
+        row = self._job_row(job_id)
+        if row is None:
+            self.import_legacy_jobs()
+            row = self._job_row(job_id)
+        return str(row["owner_id"]) if row is not None else None
+
     def list_artifacts(self, job_id: str) -> list[dict[str, Any]]:
         self.ensure_ready()
         if not VALID_JOB_ID.fullmatch(job_id):
@@ -305,6 +349,67 @@ class JobStore:
             return
         with self._connect() as conn:
             conn.execute("DELETE FROM web_jobs WHERE job_id = ?", (job_id,))
+
+    def create_operator(
+        self,
+        *,
+        display_name: str,
+        operator_id: str = "",
+    ) -> dict[str, str]:
+        self.ensure_ready()
+        base_id = _clean_operator_id(operator_id or display_name or "operator")
+        token = f"op_{secrets.token_urlsafe(24)}"
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            resolved_id = base_id
+            suffix = 2
+            while conn.execute(
+                "SELECT 1 FROM web_operators WHERE operator_id = ?",
+                (resolved_id,),
+            ).fetchone():
+                resolved_id = f"{base_id}-{suffix}"
+                suffix += 1
+            conn.execute(
+                """
+                INSERT INTO web_operators (
+                    operator_id, display_name, token_hash, role, created_at
+                ) VALUES (?, ?, ?, 'operator', ?)
+                """,
+                (
+                    resolved_id,
+                    display_name.strip() or resolved_id,
+                    _hash_token(token),
+                    now,
+                ),
+            )
+        return {
+            "operator_id": resolved_id,
+            "display_name": display_name.strip() or resolved_id,
+            "token": token,
+            "created_at": now,
+        }
+
+    def operator_for_token(self, token: str) -> dict[str, str] | None:
+        self.ensure_ready()
+        text = token.strip()
+        if not text:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT operator_id, display_name, role, created_at, last_seen_at
+                FROM web_operators
+                WHERE token_hash = ?
+                """,
+                (_hash_token(text),),
+            ).fetchone()
+            if row is None:
+                return None
+            conn.execute(
+                "UPDATE web_operators SET last_seen_at = ? WHERE operator_id = ?",
+                (datetime.now(timezone.utc).isoformat(), row["operator_id"]),
+            )
+        return {key: str(row[key] or "") for key in row.keys()}
 
     def _job_row(self, job_id: str) -> sqlite3.Row | None:
         with self._connect() as conn:
@@ -331,6 +436,30 @@ def summarize_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
         "battery_quantity": payload.get("battery_quantity"),
         "inverter_choice": payload.get("inverter_choice"),
     }
+
+
+def _ensure_column(
+    conn: sqlite3.Connection,
+    table: str,
+    column: str,
+    definition: str,
+) -> None:
+    columns = {
+        row["name"]
+        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _clean_operator_id(raw: Any) -> str:
+    text = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(raw or "").strip().lower())
+    text = text.strip(".-")
+    return text[:64] or "operator"
+
+
+def _hash_token(token: str) -> str:
+    return sha256(token.encode("utf-8")).hexdigest()
 
 
 def _load_payload(path: Path) -> dict[str, Any] | None:

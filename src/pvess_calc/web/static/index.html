@@ -13,7 +13,7 @@
         <p>Enter site and equipment data, run preflight, generate package outputs, and review BOM cost.</p>
       </div>
       <div class="access-token-card" aria-label="Optional server access token">
-        <label>Access token
+        <label>Admin/operator token
           <span class="token-row">
             <input id="access-token" type="password" autocomplete="off" placeholder="Optional" />
             <button id="save-token" type="button" class="secondary-button">Save</button>
@@ -630,6 +630,10 @@
             >
             <input id="history-from" type="date" aria-label="Created from">
             <input id="history-to" type="date" aria-label="Created to">
+            <label class="inline-check">
+              <input id="history-all" type="checkbox">
+              All jobs
+            </label>
             <button id="history-refresh" type="button" class="secondary-button">Refresh</button>
           </div>
           <div id="history-empty" class="empty">No generated jobs yet.</div>

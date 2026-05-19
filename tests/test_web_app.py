@@ -64,14 +64,20 @@ def _mansfield_payload(address: str, **overrides):
     return payload
 
 
-def _submit_and_wait(client: TestClient, payload: dict, *, timeout_s: float = 20.0):
-    response = client.post("/api/projects", json=payload)
+def _submit_and_wait(
+    client: TestClient,
+    payload: dict,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout_s: float = 20.0,
+):
+    response = client.post("/api/projects", json=payload, headers=headers or {})
     assert response.status_code == 200, response.text
     state = response.json()
     assert state["status"] in {"queued", "running", "done"}
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        status = client.get(f"/api/jobs/{state['job_id']}")
+        status = client.get(f"/api/jobs/{state['job_id']}", headers=headers or {})
         assert status.status_code == 200, status.text
         state = status.json()
         if state["status"] == "done":
@@ -111,6 +117,10 @@ def _submit_form_and_wait(
     raise AssertionError(f"job did not finish: {state}")
 
 
+def _token_headers(token: str) -> dict[str, str]:
+    return {"X-PVESS-Token": token}
+
+
 def test_web_index_serves_static_page(tmp_path: Path):
     client = _client(tmp_path)
     response = client.get("/")
@@ -129,7 +139,7 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Run preflight" in response.text
     assert "Preflight" in response.text
     assert "Preview" in response.text
-    assert "Access token" in response.text
+    assert "Admin/operator token" in response.text
     assert "Lookup address" in response.text
     assert "Lookup: online if configured" in response.text
     assert "Address sample" in response.text
@@ -274,6 +284,115 @@ def test_web_optional_access_token_protects_api_and_files(tmp_path: Path):
     file_response = client.get(f"/files/{state['job_id']}/inputs.yaml?token=secret")
     assert file_response.status_code == 200
     assert "Web Smoke Test" in file_response.text
+
+
+def test_web_admin_can_create_operator_tokens(tmp_path: Path):
+    client = TestClient(create_app(jobs_dir=tmp_path, access_token="admin-secret"))
+
+    unauthorized = client.post(
+        "/api/operators",
+        json={"operator_id": "alice", "display_name": "Alice"},
+    )
+    assert unauthorized.status_code == 401
+    assert str(tmp_path) not in unauthorized.text
+
+    response = client.post(
+        "/api/operators",
+        json={"operator_id": "alice", "display_name": "Alice"},
+        headers=_token_headers("admin-secret"),
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["operator_id"] == "alice"
+    assert data["display_name"] == "Alice"
+    assert data["token"].startswith("op_")
+
+    operator_forbidden = client.post(
+        "/api/operators",
+        json={"operator_id": "bob", "display_name": "Bob"},
+        headers=_token_headers(data["token"]),
+    )
+    assert operator_forbidden.status_code == 403
+    assert str(tmp_path) not in operator_forbidden.text
+
+
+def test_web_operator_tokens_scope_jobs_payloads_reruns_deletes_and_files(tmp_path: Path):
+    client = TestClient(create_app(jobs_dir=tmp_path, access_token="admin-secret"))
+    admin_headers = _token_headers("admin-secret")
+    alice = client.post(
+        "/api/operators",
+        json={"operator_id": "alice", "display_name": "Alice"},
+        headers=admin_headers,
+    ).json()["token"]
+    bob = client.post(
+        "/api/operators",
+        json={"operator_id": "bob", "display_name": "Bob"},
+        headers=admin_headers,
+    ).json()["token"]
+    alice_headers = _token_headers(alice)
+    bob_headers = _token_headers(bob)
+
+    alice_state = _submit_and_wait(
+        client,
+        _light_payload(project_name="Alice Project"),
+        headers=alice_headers,
+    )
+    bob_state = _submit_and_wait(
+        client,
+        _light_payload(project_name="Bob Project"),
+        headers=bob_headers,
+    )
+
+    alice_jobs = client.get("/api/jobs", headers=alice_headers).json()["jobs"]
+    bob_jobs = client.get("/api/jobs", headers=bob_headers).json()["jobs"]
+    assert [job["job_id"] for job in alice_jobs] == [alice_state["job_id"]]
+    assert [job["job_id"] for job in bob_jobs] == [bob_state["job_id"]]
+
+    all_jobs = client.get(
+        "/api/jobs",
+        params={"all_jobs": "true"},
+        headers=admin_headers,
+    ).json()["jobs"]
+    assert {job["job_id"] for job in all_jobs} == {
+        alice_state["job_id"],
+        bob_state["job_id"],
+    }
+
+    bob_job = bob_state["job_id"]
+    for method, path in [
+        ("get", f"/api/jobs/{bob_job}"),
+        ("get", f"/api/jobs/{bob_job}/payload"),
+        ("post", f"/api/jobs/{bob_job}/rerun"),
+        ("delete", f"/api/jobs/{bob_job}"),
+        ("get", f"/files/{bob_job}/inputs.yaml"),
+    ]:
+        response = getattr(client, method)(path, headers=alice_headers)
+        assert response.status_code == 403
+        assert str(tmp_path) not in response.text
+
+    admin_payload = client.get(
+        f"/api/jobs/{bob_job}/payload",
+        headers=admin_headers,
+    )
+    assert admin_payload.status_code == 200
+    assert admin_payload.json()["project_name"] == "Bob Project"
+
+    bob_file = client.get(f"/files/{bob_job}/inputs.yaml", headers=bob_headers)
+    assert bob_file.status_code == 200
+    assert "Bob Project" in bob_file.text
+
+    alice_all_jobs = client.get(
+        "/api/jobs",
+        params={"all_jobs": "true"},
+        headers=alice_headers,
+    )
+    assert alice_all_jobs.status_code == 403
+    assert str(tmp_path) not in alice_all_jobs.text
+
+    delete_response = client.delete(f"/api/jobs/{bob_job}", headers=bob_headers)
+    assert delete_response.status_code == 200
+    assert client.get(f"/api/jobs/{bob_job}", headers=bob_headers).status_code == 404
 
 
 def test_web_project_generation_writes_core_outputs(tmp_path: Path):

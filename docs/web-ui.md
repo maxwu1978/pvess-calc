@@ -19,6 +19,15 @@ pvess serve --host 0.0.0.0 --port 8765 --access-token "$PVESS_WEB_ACCESS_TOKEN"
 The static page still loads, then the browser sends the saved access token
 with API requests and generated-file preview/download URLs.
 
+The same token field accepts either:
+
+- the admin/bootstrap token from `PVESS_WEB_ACCESS_TOKEN` or
+  `pvess serve --access-token`
+- an operator token created by an admin through `POST /api/operators`
+
+Admin tokens can create operators and inspect all jobs. Operator tokens are
+scoped to the jobs they create.
+
 ## Workflow
 
 1. Fill **Project**, **Field intake**, **System**, **Service/roof/cost**, and
@@ -102,8 +111,26 @@ Job history is indexed in SQLite at `<workdir>/web-jobs.sqlite3`. Generated
 artifacts stay in their job folders; SQLite stores searchable metadata,
 payload summaries, source-material/readiness status, and artifact records.
 Existing filesystem-only jobs with `job-status.json` are imported into the
-index the first time history is listed.
+index the first time history is listed. New W19 jobs also store `owner_id` so
+history, payload loading, rerun, delete, and file download permissions can be
+scoped by operator.
 
 The **Recent jobs** panel can filter by status, project/address text, and
 created date range. The same filters are available through `/api/jobs` using
 `status`, `q`, `created_from`, `created_to`, and `limit` query parameters.
+Admins can add `all_jobs=true` or select **All jobs** in the UI for internal
+support review. Operators cannot enable all-jobs mode.
+
+## Operators
+
+When access-token mode is enabled, create operator tokens with the admin token:
+
+```bash
+curl -X POST http://127.0.0.1:8765/api/operators \
+  -H "X-PVESS-Token: $PVESS_WEB_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"operator_id":"designer-1","display_name":"Designer 1"}'
+```
+
+The response includes the operator token once. Store it in the browser token
+field for that operator. The server stores only a hash of the token.

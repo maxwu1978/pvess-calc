@@ -34,6 +34,7 @@ const historyStatus = document.querySelector("#history-status");
 const historyQuery = document.querySelector("#history-query");
 const historyFrom = document.querySelector("#history-from");
 const historyTo = document.querySelector("#history-to");
+const historyAll = document.querySelector("#history-all");
 const historyRefresh = document.querySelector("#history-refresh");
 const accessTokenInput = document.querySelector("#access-token");
 const saveTokenButton = document.querySelector("#save-token");
@@ -59,6 +60,7 @@ const batteryQtyInput = document.querySelector('input[name="battery_quantity"]')
 let activePoll = null;
 let currentFiles = [];
 let currentPreviewItems = [];
+let runtimeConfig = { auth_required: false };
 
 const numberFields = new Set([
   "modules",
@@ -216,7 +218,21 @@ loadAccessToken();
 syncModuleOption();
 syncInverterOption();
 syncBatteryOption({ preserveQuantity: true });
-loadHistory();
+loadRuntimeConfig().then(loadHistory);
+
+async function loadRuntimeConfig() {
+  try {
+    const response = await fetch("/api/runtime-config");
+    if (response.ok) {
+      runtimeConfig = await response.json();
+    }
+  } catch {
+    runtimeConfig = { auth_required: false };
+  }
+  if (runtimeConfig.auth_required && !currentAccessToken()) {
+    tokenStatus.textContent = "Token required for API and file requests";
+  }
+}
 
 function loadAccessToken() {
   const token = localStorage.getItem("pvess_access_token") || "";
@@ -866,6 +882,13 @@ function renderError(message) {
 }
 
 async function loadHistory() {
+  if (runtimeConfig.auth_required && !currentAccessToken()) {
+    historyList.innerHTML = "";
+    historyEmpty.textContent = "Enter an admin/operator token to view recent jobs.";
+    historyEmpty.classList.remove("hidden");
+    return;
+  }
+  historyEmpty.textContent = "No generated jobs yet.";
   try {
     const response = await apiFetch(`/api/jobs${historyQueryString()}`);
     const data = await response.json();
@@ -906,11 +929,14 @@ function historyQueryString() {
   if (historyTo.value) {
     params.set("created_to", historyTo.value);
   }
+  if (historyAll.checked) {
+    params.set("all_jobs", "true");
+  }
   const text = params.toString();
   return text ? `?${text}` : "";
 }
 
-for (const element of [historyStatus, historyFrom, historyTo]) {
+for (const element of [historyStatus, historyFrom, historyTo, historyAll]) {
   element.addEventListener("change", loadHistory);
 }
 
