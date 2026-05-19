@@ -1138,10 +1138,15 @@ async function loadHistory() {
     for (const job of jobs) {
       const item = document.createElement("li");
       const title = job.result?.summary?.project_name || job.job_id;
+      const gateLevel = job.result?.readiness?.gate?.level || "not gated";
+      const qaStatus = job.result?.package_qa?.status || "QA not run";
       item.innerHTML = `
         <button type="button" class="history-button" data-job-id="${job.job_id}">
           ${escapeHtml(title)}
         </button>
+        <span class="history-meta">
+          ${escapeHtml(gateLevel)} · ${escapeHtml(qaStatus)}
+        </span>
         <span class="history-actions">
           <button type="button" data-job-action="load" data-job-id="${job.job_id}">Load</button>
           <button type="button" data-job-action="rerun" data-job-id="${job.job_id}">Rerun</button>

@@ -8,6 +8,16 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W25: QA-gated AHJ handoff
+
+- Added Package QA status to the Web AHJ gate
+- Packages now stay in `Internal review` until Package QA is `PASS`; missing,
+  WARN, or FAIL QA blocks `AHJ-ready candidate`
+- Running Package QA now refreshes and persists the job readiness gate
+- Added `package_qa_status` to the SQLite job index
+- Recent jobs now show gate level and Package QA status
+- Added regression coverage for missing-QA blocking and QA persistence
+
 ### 2026-05-19 — Web UI W24: package QA workbench
 
 - Added a Web package QA action for completed jobs

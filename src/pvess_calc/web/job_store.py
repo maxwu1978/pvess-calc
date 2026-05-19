@@ -54,6 +54,7 @@ class JobStore:
                         updated_at TEXT NOT NULL,
                         source_status TEXT NOT NULL DEFAULT '',
                         readiness_status TEXT NOT NULL DEFAULT '',
+                        package_qa_status TEXT NOT NULL DEFAULT '',
                         installed_cost_usd REAL,
                         state_json TEXT NOT NULL,
                         payload_summary_json TEXT NOT NULL DEFAULT '{}',
@@ -98,6 +99,12 @@ class JobStore:
                     "web_jobs",
                     "owner_id",
                     "TEXT NOT NULL DEFAULT 'local'",
+                )
+                _ensure_column(
+                    conn,
+                    "web_jobs",
+                    "package_qa_status",
+                    "TEXT NOT NULL DEFAULT ''",
                 )
             self._initialized = True
 
@@ -156,6 +163,11 @@ class JobStore:
         readiness = (
             result.get("readiness") if isinstance(result.get("readiness"), dict) else {}
         )
+        package_qa = (
+            result.get("package_qa")
+            if isinstance(result.get("package_qa"), dict)
+            else {}
+        )
         files = result.get("files") if isinstance(result.get("files"), list) else []
 
         project_name = _first_text(
@@ -176,6 +188,10 @@ class JobStore:
             readiness.get("status"),
             existing["readiness_status"] if existing is not None else "",
         )
+        package_qa_status = _first_text(
+            package_qa.get("status"),
+            existing["package_qa_status"] if existing is not None else "",
+        )
         installed_cost = _float_or_none(
             bom.get("installed_cost_usd")
             if isinstance(bom, dict) else None
@@ -189,10 +205,11 @@ class JobStore:
                 INSERT INTO web_jobs (
                     job_id, project_dir, status, progress, stage, message,
                     owner_id, project_name, site_address, created_at, updated_at,
-                    source_status, readiness_status, installed_cost_usd,
+                    source_status, readiness_status, package_qa_status,
+                    installed_cost_usd,
                     state_json, payload_summary_json, source_materials_json,
                     artifact_count, imported_from_legacy
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO UPDATE SET
                     project_dir = excluded.project_dir,
                     status = excluded.status,
@@ -206,6 +223,7 @@ class JobStore:
                     updated_at = excluded.updated_at,
                     source_status = excluded.source_status,
                     readiness_status = excluded.readiness_status,
+                    package_qa_status = excluded.package_qa_status,
                     installed_cost_usd = excluded.installed_cost_usd,
                     state_json = excluded.state_json,
                     payload_summary_json = excluded.payload_summary_json,
@@ -230,6 +248,7 @@ class JobStore:
                     str(state.get("updated_at") or ""),
                     source_status,
                     readiness_status,
+                    package_qa_status,
                     installed_cost,
                     json.dumps(state, ensure_ascii=False),
                     json.dumps(payload_summary, ensure_ascii=False),

@@ -138,7 +138,8 @@ The **Readiness** panel includes a package gate:
 Simulated source materials can never produce `AHJ-ready candidate`. The gate
 also blocks missing parsed utility usage, signed structural packet, selected
 equipment spec sheets, PV-7 photos, roof/field data, selected permit/DXF/label
-outputs, and generated artifacts marked `needs revision`.
+outputs, package QA that has not passed, and generated artifacts marked
+`needs revision`.
 
 ## Package QA
 
@@ -150,7 +151,8 @@ After a job completes, click **Run QA** to create:
 The QA pass runs `pvess-doctor`, verifies the Complete Project ZIP can be read,
 and checks generated PDFs for page count and searchable text. The job result is
 updated with the QA status and the ZIP is rebuilt so the QA reports are included
-in the handoff archive.
+in the handoff archive. A package cannot reach `AHJ-ready candidate` until
+Package QA is `PASS`.
 
 ## History
 
@@ -172,6 +174,10 @@ created date range. The same filters are available through `/api/jobs` using
 `status`, `q`, `created_from`, `created_to`, and `limit` query parameters.
 Admins can add `all_jobs=true` or select **All jobs** in the UI for internal
 support review. Operators cannot enable all-jobs mode.
+
+Each job row shows its current AHJ gate level and Package QA status, so
+operators can distinguish estimate-only packages from QA-cleared handoff
+candidates without opening every job.
 
 ## Operators
 

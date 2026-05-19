@@ -1278,6 +1278,7 @@ def generate_project(
         payload=payload,
         source_materials=source_materials,
         readiness=readiness_payload,
+        package_qa={},
         files=files,
         review_state={},
     )
@@ -2346,6 +2347,7 @@ def build_ahj_gate(
     payload: WebProjectRequest,
     source_materials: dict[str, Any],
     readiness: dict[str, Any],
+    package_qa: dict[str, Any] | None = None,
     files: list[GeneratedFile],
     review_state: dict[str, Any],
 ) -> dict[str, Any]:
@@ -2506,6 +2508,20 @@ def build_ahj_gate(
         field="artifact_reviews",
     )
 
+    qa_status = str((package_qa or {}).get("status") or "NOT_RUN").upper()
+    check(
+        "package_qa.status",
+        qa_status == "PASS",
+        "Package QA passed doctor, ZIP, and PDF checks."
+        if qa_status == "PASS"
+        else (
+            f"Package QA status is {qa_status}; run QA and resolve failures/warnings "
+            "before AHJ-ready handoff."
+        ),
+        field="package_qa",
+        artifact="Package QA",
+    )
+
     level = (
         "AHJ-ready candidate"
         if not blockers
@@ -2546,6 +2562,7 @@ def build_ahj_gate(
         "blockers": displayed_blockers,
         "checks": checks,
         "strict_readiness_status": readiness.get("status"),
+        "package_qa_status": qa_status,
     }
 
 
@@ -2799,6 +2816,7 @@ def refresh_job_gate(
             payload=payload,
             source_materials=dict(result_data.get("source_materials") or {}),
             readiness=readiness,
+            package_qa=dict(result_data.get("package_qa") or {}),
             files=files,
             review_state=review_state,
         )
@@ -2891,6 +2909,24 @@ def run_package_qa_for_job(
 
     result_data["package_qa"] = package_qa
     result_data["files"] = [file.model_dump(mode="json") for file in files]
+    if isinstance(result_data.get("readiness"), dict):
+        request_path = project_dir / "request.json"
+        try:
+            payload = WebProjectRequest.model_validate_json(
+                request_path.read_text(encoding="utf-8")
+            )
+            readiness = dict(result_data["readiness"])
+            readiness["gate"] = build_ahj_gate(
+                payload=payload,
+                source_materials=dict(result_data.get("source_materials") or {}),
+                readiness=readiness,
+                package_qa=package_qa,
+                files=files,
+                review_state=read_artifact_reviews(project_dir),
+            )
+            result_data["readiness"] = readiness
+        except (OSError, ValidationError, ValueError, TypeError):
+            pass
     updated = state.model_copy(update={
         "result": result_data,
         "updated_at": datetime.now(timezone.utc).isoformat(),

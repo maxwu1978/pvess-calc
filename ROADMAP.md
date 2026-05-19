@@ -13,11 +13,35 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W24. Next planned engineering work
+No active Web phases are queued after W25. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web UI W25 — QA-gated AHJ handoff ✅ DONE 2026-05-19
+
+Goal: make Package QA an actual gate for AHJ-ready handoff, not just a
+sidecar report.
+
+Completed:
+
+- Added Package QA status to AHJ gate checks.
+- Packages now remain `Internal review` until Package QA is `PASS`; missing,
+  WARN, or FAIL QA states block `AHJ-ready candidate`.
+- Running Package QA automatically refreshes the job's readiness gate and
+  persists the updated gate in `job-status.json` and SQLite-backed state.
+- Added `package_qa_status` to the Web job index and surfaced gate/QA status
+  in the Recent jobs list.
+
+Closing standards met:
+
+- A real-source package that otherwise satisfies source/readiness/output
+  checks is blocked when Package QA has not run.
+- A real-source package with strict readiness PASS, selected outputs, approved
+  review state, and Package QA PASS can become `AHJ-ready candidate`.
+- Package QA results remain visible after reload and in Recent jobs.
+- Regression tests cover missing-QA blocking and QA persistence.
 
 ### Web UI W24 — package QA workbench ✅ DONE 2026-05-19
 

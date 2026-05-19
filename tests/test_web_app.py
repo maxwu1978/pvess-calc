@@ -1144,7 +1144,13 @@ def test_web_package_qa_runs_and_persists_outputs(tmp_path: Path):
     reloaded = _client(tmp_path)
     status = reloaded.get(f"/api/jobs/{job_id}")
     assert status.status_code == 200
-    assert status.json()["result"]["package_qa"]["archive"]["status"] == "PASS"
+    result = status.json()["result"]
+    assert result["package_qa"]["archive"]["status"] == "PASS"
+    assert result["readiness"]["gate"]["package_qa_status"] == qa["status"]
+
+    jobs = reloaded.get("/api/jobs").json()["jobs"]
+    listed = next(job for job in jobs if job["job_id"] == job_id)
+    assert listed["result"]["package_qa"]["archive"]["status"] == "PASS"
 
 
 def test_web_ahj_gate_blocks_simulated_source_materials(tmp_path: Path):
@@ -1174,6 +1180,7 @@ def test_web_ahj_gate_allows_real_pv_only_candidate(tmp_path: Path):
         payload=payload,
         source_materials=build_source_materials(payload),
         readiness={"status": "PASS"},
+        package_qa={"status": "PASS"},
         files=_gate_files(tmp_path),
         review_state={},
     )
@@ -1181,6 +1188,28 @@ def test_web_ahj_gate_allows_real_pv_only_candidate(tmp_path: Path):
     assert gate["level"] == "AHJ-ready candidate"
     assert gate["can_submit_to_ahj"] is True
     assert gate["blockers"] == []
+
+
+def test_web_ahj_gate_blocks_missing_package_qa(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(
+        _complete_real_payload(
+            battery_choice="none",
+            battery_quantity=0,
+            battery_capacity_kwh_each=0,
+        )
+    )
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(payload),
+        readiness={"status": "PASS"},
+        files=_gate_files(tmp_path),
+        review_state={},
+    )
+
+    assert gate["level"] == "Internal review"
+    assert gate["can_submit_to_ahj"] is False
+    assert gate["package_qa_status"] == "NOT_RUN"
+    assert any(blocker["field"] == "package_qa" for blocker in gate["blockers"])
 
 
 def test_web_ahj_gate_blocks_pv_ess_missing_battery_spec(tmp_path: Path):
