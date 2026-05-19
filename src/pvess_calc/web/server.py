@@ -2423,6 +2423,41 @@ def build_ahj_gate(
         artifact="Spec sheets",
     )
 
+    readiness_status = str(readiness.get("status") or "UNKNOWN").upper()
+    readiness_review_items = [
+        item for item in readiness.get("review_items") or []
+        if isinstance(item, dict)
+        and str(item.get("status") or "").lower() in {"missing", "simulated"}
+    ]
+    if readiness_status == "PASS":
+        check(
+            "readiness.strict",
+            True,
+            "Reference readiness passed strict review.",
+            field="reference_readiness",
+            artifact="Reference readiness",
+        )
+    elif readiness_review_items:
+        for item in readiness_review_items:
+            item_key = str(item.get("key") or "reference_readiness")
+            item_status = str(item.get("status") or "needs_review").upper()
+            item_detail = str(item.get("detail") or "Strict readiness requires review.")
+            check(
+                f"readiness.{item_key}",
+                False,
+                f"{item_status}: {item_detail}",
+                field=item_key,
+                artifact="Reference readiness",
+            )
+    else:
+        check(
+            "readiness.strict",
+            False,
+            str(readiness.get("detail") or "Strict readiness requires internal review."),
+            field="reference_readiness",
+            artifact="Reference readiness",
+        )
+
     for field, passed, detail in _gate_field_checks(payload):
         check(field, passed, detail, field=field)
 
@@ -2475,12 +2510,30 @@ def build_ahj_gate(
         if level == "Estimate only"
         else "AHJ-ready candidate"
     )
+
+    def blocker_priority(row: dict[str, Any]) -> int:
+        field = str(row.get("field") or "")
+        key = str(row.get("key") or "")
+        if field == "artifact_reviews":
+            return 0
+        if field == "site_data_source":
+            return 1
+        if key.startswith("readiness."):
+            return 2
+        return 3
+
+    displayed_blockers = [
+        row for _idx, row in sorted(
+            enumerate(blockers),
+            key=lambda item: (blocker_priority(item[1]), item[0]),
+        )
+    ][:20]
     return {
         "level": level,
         "next_level": next_level,
         "can_submit_to_ahj": level == "AHJ-ready candidate",
         "blocker_count": len(blockers),
-        "blockers": blockers[:20],
+        "blockers": displayed_blockers,
         "checks": checks,
         "strict_readiness_status": readiness.get("status"),
     }

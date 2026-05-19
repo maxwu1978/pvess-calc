@@ -668,7 +668,7 @@ class Mounting(BaseModel):
     max_x_spacing_in: float = 48.0          # rail span (max along-array)
     max_y_spacing_in: float = 32.0          # cross-array spacing
     max_cantilever_in: float = 18.0
-    fastener: str = "5/16\" lag screw, 3\" embedment"
+    fastener: str = "5/16\" lag screw"
     lag_screw_length_in: float = 4.25       # PV-5 detail callout
     min_embedment_in: float = 2.5           # structural/PV-5 minimum
     max_roof_surface_gap_in: float = 6.0    # PV-5 rail/module height note

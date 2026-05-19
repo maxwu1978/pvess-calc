@@ -333,7 +333,7 @@ site:
     max_x_spacing_in: 48.0
     max_y_spacing_in: 32.0
     max_cantilever_in: 18.0
-    fastener: "5/16\" lag screw, 3\" embedment"
+    fastener: "5/16\" lag screw"
 ```
 
 ## `wire_lengths` (Phase D)

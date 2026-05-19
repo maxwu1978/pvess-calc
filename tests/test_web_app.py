@@ -1173,3 +1173,41 @@ def test_web_ahj_gate_blocks_pv_ess_missing_battery_spec(tmp_path: Path):
         blocker["field"] == "spec_sheets" and "battery" in blocker["detail"]
         for blocker in gate["blockers"]
     )
+
+
+def test_web_ahj_gate_blocks_strict_readiness_review_items(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(_complete_real_payload())
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(payload),
+        readiness={
+            "status": "WARN",
+            "review_items": [
+                {
+                    "key": "site.plan_geometry",
+                    "status": "missing",
+                    "detail": "EE-4 trace or property context is missing.",
+                },
+                {
+                    "key": "project.site_photos",
+                    "status": "simulated",
+                    "detail": "Mock PV-7 photos are present.",
+                },
+            ],
+        },
+        files=_gate_files(tmp_path),
+        review_state={},
+    )
+
+    assert gate["level"] == "Internal review"
+    assert gate["can_submit_to_ahj"] is False
+    assert any(
+        blocker["field"] == "site.plan_geometry"
+        and "MISSING" in blocker["detail"]
+        for blocker in gate["blockers"]
+    )
+    assert any(
+        blocker["field"] == "project.site_photos"
+        and "SIMULATED" in blocker["detail"]
+        for blocker in gate["blockers"]
+    )
