@@ -96,22 +96,94 @@ Operator tokens are bearer tokens sent by the browser with API/file requests.
 
 ## reelamate.com Rollout
 
-Current DNS for `reelamate.com` / `www.reelamate.com` points to Vercel. Keep
-those records in place and deploy the PVESS tool on a dedicated subdomain:
+The selected public hostname for the generator is:
 
 ```text
-pvess.reelamate.com
+tge.reelamate.com
 ```
 
-This avoids disrupting any existing site on the apex domain while giving the
-generator a production URL.
+This keeps the apex domain available for the existing marketing/site property
+while giving the generator a dedicated URL.
 
-The repo includes a Docker Compose + Caddy profile in
-`deploy/reelamate/`:
+### Option A: Local App + Cloudflare Tunnel
+
+Use this first when the system should keep running on the local workstation
+instead of a rented Docker host. The app stays bound to `127.0.0.1:8765`; only
+`cloudflared` exposes it publicly.
+
+Current DNS check result:
+
+- `tge.reelamate.com` has no A or CNAME record yet.
+- `reelamate.com` currently uses Spaceship nameservers
+  (`launch1.spaceship.net`, `launch2.spaceship.net`).
+
+Cloudflare Tunnel custom hostnames require the zone to be managed by
+Cloudflare. Add `reelamate.com` to Cloudflare, switch the domain nameservers at
+Spaceship, and recreate any existing apex / `www` records in Cloudflare before
+expecting `tge.reelamate.com` to resolve.
+
+Local profile files live in `deploy/reelamate/local-tunnel/`:
+
+- `.env.example` stores the local Web token, port, workdir, and optional lookup
+  API keys.
+- `run-local.sh` starts `pvess serve` on `127.0.0.1`.
+- `cloudflared-config.example.yml` maps `tge.reelamate.com` to the local app.
+- `README.md` contains the full operator runbook.
+
+Setup:
+
+```bash
+cp deploy/reelamate/local-tunnel/.env.example deploy/reelamate/local-tunnel/.env
+openssl rand -hex 32
+# paste the random value into local-tunnel/.env as PVESS_WEB_ACCESS_TOKEN
+
+deploy/reelamate/local-tunnel/run-local.sh
+```
+
+In a second terminal, after installing and authenticating `cloudflared`:
+
+```bash
+cloudflared tunnel create tge-reelamate-pvess
+cloudflared tunnel route dns tge-reelamate-pvess tge.reelamate.com
+mkdir -p ~/.cloudflared
+cp deploy/reelamate/local-tunnel/cloudflared-config.example.yml \
+  ~/.cloudflared/tge-reelamate-pvess.yml
+# edit tunnel, credentials-file, and user path in the copied config
+cloudflared tunnel --config ~/.cloudflared/tge-reelamate-pvess.yml run tge-reelamate-pvess
+```
+
+Smoke test:
+
+```bash
+export PVESS_WEB_ACCESS_TOKEN="$(grep '^PVESS_WEB_ACCESS_TOKEN=' deploy/reelamate/local-tunnel/.env | cut -d= -f2-)"
+pvess web-smoke \
+  --base-url https://tge.reelamate.com \
+  --token "$PVESS_WEB_ACCESS_TOKEN"
+```
+
+Operational constraints:
+
+- The local machine must stay powered on, awake, and online.
+- Generated source files remain on the local machine under
+  `~/.pvess/reelamate-web` by default.
+- Keep `PVESS_WEB_ACCESS_TOKEN` private and add Cloudflare Access before
+  sharing the URL outside the internal team.
+
+Cloudflare references: locally managed tunnel creation, DNS route creation, and
+ingress config are documented at
+`https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/`,
+`https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/`,
+and
+`https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/`.
+
+### Option B: Docker Host + Caddy
+
+The repo also includes a Docker Compose + Caddy profile in
+`deploy/reelamate/` for a future Docker-capable Linux host:
 
 - `docker-compose.yml` builds the PVESS image and mounts persistent job storage
   at `/data/pvess-web`.
-- `Caddyfile` terminates TLS for `pvess.reelamate.com` and proxies to the
+- `Caddyfile` terminates TLS for `tge.reelamate.com` and proxies to the
   FastAPI container.
 - `.env.example` lists the required access token and optional lookup-provider
   API keys.
@@ -120,11 +192,9 @@ DNS record:
 
 | Host | Type | Value |
 |---|---|---|
-| `pvess` | `A` | public IPv4 of the Docker host |
+| `tge` | `A` | public IPv4 of the Docker host |
 
-Add `AAAA` as well if the host has IPv6. If you later want the root domain to
-serve the generator, change the Caddy site address to `reelamate.com` and
-replace the current Vercel apex DNS records with records for the Docker host.
+Add `AAAA` as well if the host has IPv6.
 
 Deployment:
 
@@ -142,7 +212,7 @@ Smoke test:
 ```bash
 export PVESS_WEB_ACCESS_TOKEN="$(grep '^PVESS_WEB_ACCESS_TOKEN=' deploy/reelamate/.env | cut -d= -f2-)"
 pvess web-smoke \
-  --base-url https://pvess.reelamate.com \
+  --base-url https://tge.reelamate.com \
   --token "$PVESS_WEB_ACCESS_TOKEN"
 ```
 

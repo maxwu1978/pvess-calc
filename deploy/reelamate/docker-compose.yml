@@ -7,7 +7,7 @@ services:
       PORT: "8765"
       PVESS_WEB_WORKDIR: /data/pvess-web
       PVESS_WEB_ACCESS_TOKEN: ${PVESS_WEB_ACCESS_TOKEN:?set PVESS_WEB_ACCESS_TOKEN}
-      PVESS_WEB_CORS_ORIGINS: https://pvess.reelamate.com
+      PVESS_WEB_CORS_ORIGINS: https://tge.reelamate.com
       PVESS_MAPBOX_TOKEN: ${PVESS_MAPBOX_TOKEN:-}
       PVESS_NREL_API_KEY: ${PVESS_NREL_API_KEY:-}
       PVESS_GOOGLE_SOLAR_KEY: ${PVESS_GOOGLE_SOLAR_KEY:-}

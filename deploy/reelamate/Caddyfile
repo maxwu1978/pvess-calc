@@ -1,4 +1,4 @@
-pvess.reelamate.com {
+tge.reelamate.com {
 	encode gzip
 	request_body {
 		max_size 64MB

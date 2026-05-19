@@ -1,7 +1,7 @@
 # reelamate.com Deployment
 
 This profile runs the TGE Solar Project Generator at
-`https://pvess.reelamate.com` with Docker, Caddy TLS, and persistent job
+`https://tge.reelamate.com` with Docker, Caddy TLS, and persistent job
 storage.
 
 ## DNS
@@ -11,9 +11,9 @@ Create a new DNS record for the PVESS tool:
 
 | Host | Type | Value |
 |---|---|---|
-| `pvess` | `A` | public IPv4 of the Docker host |
+| `tge` | `A` | public IPv4 of the Docker host |
 
-If the host also has IPv6, add an `AAAA` record for `pvess`.
+If the host also has IPv6, add an `AAAA` record for `tge`.
 
 ## Server Setup
 
@@ -37,14 +37,14 @@ docker compose --env-file deploy/reelamate/.env \
 ```
 
 Caddy will request and renew TLS certificates automatically once
-`pvess.reelamate.com` resolves to the server.
+`tge.reelamate.com` resolves to the server.
 
 ## Smoke Check
 
 ```bash
 export PVESS_WEB_ACCESS_TOKEN="$(grep '^PVESS_WEB_ACCESS_TOKEN=' deploy/reelamate/.env | cut -d= -f2-)"
 pvess web-smoke \
-  --base-url https://pvess.reelamate.com \
+  --base-url https://tge.reelamate.com \
   --token "$PVESS_WEB_ACCESS_TOKEN"
 ```
 

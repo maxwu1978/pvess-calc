@@ -8,10 +8,23 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web UI W30: local Cloudflare Tunnel profile
+
+- Added a local workstation deployment profile for
+  `https://tge.reelamate.com` using `pvess serve` plus Cloudflare Tunnel
+- Added a loopback-only local startup script, env template, and example
+  `cloudflared` ingress config under `deploy/reelamate/local-tunnel/`
+- Documented the DNS precondition: `reelamate.com` must be managed by
+  Cloudflare before `cloudflared tunnel route dns` can create the public
+  hostname route
+- Retargeted the Docker/Caddy fallback profile from `pvess.reelamate.com` to
+  `tge.reelamate.com`
+- Added smoke-check and security notes for local tunnel operation
+
 ### 2026-05-19 — Web UI W29: reelamate.com deployment profile
 
 - Added a Docker Compose + Caddy deployment profile for
-  `pvess.reelamate.com`
+  the dedicated reelamate generator subdomain
 - Documented DNS setup that keeps the current `reelamate.com` / `www`
   Vercel records intact while routing the PVESS tool through a subdomain
 - Added an env template for the production access token and optional lookup

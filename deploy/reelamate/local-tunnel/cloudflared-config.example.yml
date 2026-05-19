@@ -1,0 +1,7 @@
+tunnel: TUNNEL_UUID_OR_NAME
+credentials-file: /Users/YOUR_USER/.cloudflared/TUNNEL_UUID.json
+
+ingress:
+  - hostname: tge.reelamate.com
+    service: http://127.0.0.1:8765
+  - service: http_status:404

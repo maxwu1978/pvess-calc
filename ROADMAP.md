@@ -13,11 +13,43 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W29. Next planned engineering work
+No active Web phases are queued after W30. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web UI W30 — local Cloudflare Tunnel profile ✅ DONE 2026-05-19
+
+Goal: expose the local workstation-hosted TGE Solar Project Generator at
+`https://tge.reelamate.com` without requiring an immediate Docker VPS.
+
+Completed:
+
+- Confirmed current DNS state: `tge.reelamate.com` has no A/CNAME record and
+  `reelamate.com` is still delegated to Spaceship nameservers.
+- Documented the required Cloudflare precondition: add the zone to Cloudflare,
+  switch nameservers, and recreate any existing apex / `www` records before
+  routing the tunnel hostname.
+- Added `deploy/reelamate/local-tunnel/.env.example` for the local Web token,
+  port, workdir, and optional lookup-provider API keys.
+- Added `deploy/reelamate/local-tunnel/run-local.sh` to start `pvess serve`
+  on `127.0.0.1` with persistent local storage.
+- Added `deploy/reelamate/local-tunnel/cloudflared-config.example.yml` mapping
+  `tge.reelamate.com` to `http://127.0.0.1:8765`.
+- Added an operator runbook for installing `cloudflared`, creating the tunnel,
+  routing DNS, starting both processes, and running `pvess web-smoke`.
+- Retargeted the Docker/Caddy fallback deployment from `pvess.reelamate.com`
+  to `tge.reelamate.com`.
+
+Closing standards met:
+
+- The local app remains loopback-only; the tunnel is the only public ingress.
+- No secrets are committed; operators copy `.env.example` to `.env`.
+- Persistent generated files stay outside the repo under
+  `~/.pvess/reelamate-web` by default.
+- The public validation path uses `pvess web-smoke` against
+  `https://tge.reelamate.com`.
 
 ### Web UI W29 — reelamate.com deployment profile ✅ DONE 2026-05-19
 
@@ -29,8 +61,8 @@ Completed:
 
 - Confirmed current DNS: `reelamate.com` and `www.reelamate.com` point to
   Vercel.
-- Chose `pvess.reelamate.com` as the production tool hostname so the apex
-  domain can remain untouched.
+- Added the initial dedicated-subdomain deployment profile so the apex domain
+  can remain untouched. W30 retargeted the hostname to `tge.reelamate.com`.
 - Added `deploy/reelamate/docker-compose.yml` for the PVESS Docker image,
   persistent `/data/pvess-web` storage, and provider API-key env passthrough.
 - Added `deploy/reelamate/Caddyfile` to terminate TLS and reverse proxy to the
@@ -47,8 +79,8 @@ Closing standards met:
   and `web-jobs.sqlite3` on a persistent Docker volume.
 - TLS and reverse proxy settings are explicit.
 - `docker compose ... config` validates the compose file.
-- Production validation path uses `pvess web-smoke` against
-  `https://pvess.reelamate.com`.
+- Production validation path uses `pvess web-smoke` against the dedicated
+  generator hostname.
 
 ### Web UI W28 — generated package review pass ✅ DONE 2026-05-19
 
