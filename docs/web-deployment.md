@@ -111,16 +111,22 @@ Use this first when the system should keep running on the local workstation
 instead of a rented Docker host. The app stays bound to `127.0.0.1:8765`; only
 `cloudflared` exposes it publicly.
 
-Current DNS check result:
+Current production state as of 2026-05-19:
 
-- `tge.reelamate.com` has no A or CNAME record yet.
-- `reelamate.com` currently uses Spaceship nameservers
-  (`launch1.spaceship.net`, `launch2.spaceship.net`).
+- `reelamate.com` is delegated to Cloudflare.
+- The apex `reelamate.com` record remains pointed at the existing Vercel site.
+- `www.reelamate.com` remains pointed at `cname.vercel-dns.com`.
+- `tge.reelamate.com` is routed through Cloudflare Tunnel.
+- The Web service runs from `~/Services/pvess-calc` and listens on
+  `127.0.0.1:8765`.
+- The Cloudflare Tunnel and Web service are managed by user LaunchAgents.
+- Generated jobs and `web-jobs.sqlite3` live under `~/.pvess/reelamate-web`.
 
 Cloudflare Tunnel custom hostnames require the zone to be managed by
-Cloudflare. Add `reelamate.com` to Cloudflare, switch the domain nameservers at
-Spaceship, and recreate any existing apex / `www` records in Cloudflare before
-expecting `tge.reelamate.com` to resolve.
+Cloudflare. If the deployment has to be recreated, add `reelamate.com` to
+Cloudflare, switch the domain nameservers at the registrar, recreate existing
+apex / `www` records in Cloudflare, then create the `tge.reelamate.com` tunnel
+route.
 
 Local profile files live in `deploy/reelamate/local-tunnel/`:
 
@@ -128,9 +134,11 @@ Local profile files live in `deploy/reelamate/local-tunnel/`:
   API keys.
 - `run-local.sh` starts `pvess serve` on `127.0.0.1`.
 - `cloudflared-config.example.yml` maps `tge.reelamate.com` to the local app.
-- `README.md` contains the full operator runbook.
+- `online-smoke-curl.sh` verifies the public Cloudflare route with `curl`.
+- `backup-local.sh` creates a tar backup of the persistent local workdir.
+- `P0_RUNBOOK.md` contains the active operator runbook.
 
-Setup:
+Initial local setup:
 
 ```bash
 cp deploy/reelamate/local-tunnel/.env.example deploy/reelamate/local-tunnel/.env
@@ -140,7 +148,8 @@ openssl rand -hex 32
 deploy/reelamate/local-tunnel/run-local.sh
 ```
 
-In a second terminal, after installing and authenticating `cloudflared`:
+In a second terminal, after installing and authenticating `cloudflared`, create
+or recreate the tunnel:
 
 ```bash
 cloudflared tunnel create tge-reelamate-pvess
@@ -152,14 +161,26 @@ cp deploy/reelamate/local-tunnel/cloudflared-config.example.yml \
 cloudflared tunnel --config ~/.cloudflared/tge-reelamate-pvess.yml run tge-reelamate-pvess
 ```
 
-Smoke test:
+For the active deployment, the canonical service checkout is:
+
+```text
+~/Services/pvess-calc
+```
+
+Active smoke checks:
 
 ```bash
-export PVESS_WEB_ACCESS_TOKEN="$(grep '^PVESS_WEB_ACCESS_TOKEN=' deploy/reelamate/local-tunnel/.env | cut -d= -f2-)"
-pvess web-smoke \
-  --base-url https://tge.reelamate.com \
-  --token "$PVESS_WEB_ACCESS_TOKEN"
+~/Services/pvess-calc/venv/bin/pvess web-smoke \
+  --base-url http://127.0.0.1:8765 \
+  --token "$PVESS_WEB_ACCESS_TOKEN" \
+  --skip-generate
+
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/online-smoke-curl.sh
 ```
+
+Use the curl-based public smoke for `https://tge.reelamate.com`, because
+Cloudflare may reject Python urllib clients with Error 1010 browser-signature
+checks.
 
 Operational constraints:
 
@@ -168,6 +189,8 @@ Operational constraints:
   `~/.pvess/reelamate-web` by default.
 - Keep `PVESS_WEB_ACCESS_TOKEN` private and add Cloudflare Access before
   sharing the URL outside the internal team.
+- Rotate registrar and Cloudflare API tokens after setup if they were created
+  for one-time provisioning.
 
 Cloudflare references: locally managed tunnel creation, DNS route creation, and
 ingress config are documented at

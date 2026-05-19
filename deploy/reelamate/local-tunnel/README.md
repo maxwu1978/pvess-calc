@@ -6,21 +6,36 @@ This profile exposes the local TGE Solar Project Generator at
 Use this when a Docker VPS is not ready yet. The tradeoff is operational: the
 Mac running the app must stay powered on, awake, and online.
 
+## Current Production State
+
+As of 2026-05-19, the local tunnel deployment is active:
+
+- `reelamate.com` is delegated to Cloudflare nameservers.
+- `reelamate.com` keeps the existing Vercel apex record.
+- `www.reelamate.com` keeps the existing Vercel `cname.vercel-dns.com` record.
+- `tge.reelamate.com` points to the Cloudflare Tunnel hostname and is proxied.
+- The Web app runs from `~/Services/pvess-calc` on `127.0.0.1:8765`.
+- Generated jobs and `web-jobs.sqlite3` live under `~/.pvess/reelamate-web`.
+
+P0 operator scripts:
+
+```bash
+deploy/reelamate/local-tunnel/online-smoke-curl.sh
+deploy/reelamate/local-tunnel/backup-local.sh
+```
+
+See `P0_RUNBOOK.md` for restart, status, backup, and token-rotation commands.
+
 ## DNS Prerequisite
 
 Cloudflare Tunnel custom hostnames require the zone to be managed in
-Cloudflare. Current DNS checks show:
-
-- `tge.reelamate.com` has no A or CNAME record.
-- `reelamate.com` currently uses `launch1.spaceship.net` and
-  `launch2.spaceship.net` nameservers.
-
-Before the tunnel can serve the public hostname:
+Cloudflare. If this deployment has to be rebuilt from scratch:
 
 1. Add `reelamate.com` to Cloudflare.
 2. Change the domain nameservers at Spaceship to the Cloudflare nameservers.
 3. Recreate any existing apex / `www` records in Cloudflare so the current site
    keeps working.
+4. Add or recreate the `tge.reelamate.com` tunnel route.
 
 ## Local App
 
@@ -43,6 +58,12 @@ deploy/reelamate/local-tunnel/run-local.sh
 The app listens only on `127.0.0.1:8765`. Generated jobs, uploaded evidence,
 PDFs, DXFs, ZIPs, and `web-jobs.sqlite3` are stored in
 `~/.pvess/reelamate-web` by default.
+
+For the active production instance, the canonical env file is:
+
+```text
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/.env
+```
 
 ## Cloudflare Tunnel
 
@@ -80,11 +101,12 @@ cloudflared tunnel --config ~/.cloudflared/tge-reelamate-pvess.yml run tge-reela
 With both processes running:
 
 ```bash
-export PVESS_WEB_ACCESS_TOKEN="$(grep '^PVESS_WEB_ACCESS_TOKEN=' deploy/reelamate/local-tunnel/.env | cut -d= -f2-)"
-pvess web-smoke \
-  --base-url https://tge.reelamate.com \
-  --token "$PVESS_WEB_ACCESS_TOKEN"
+deploy/reelamate/local-tunnel/online-smoke-curl.sh
 ```
+
+The public smoke uses `curl`, because Cloudflare may reject Python urllib
+clients with Error 1010 browser-signature checks. For local loopback checks,
+use `pvess web-smoke --base-url http://127.0.0.1:8765 --skip-generate`.
 
 ## Security
 
@@ -92,3 +114,4 @@ pvess web-smoke \
 - Leave the app bound to `127.0.0.1`; the tunnel is the only public entry.
 - Add Cloudflare Access before sharing the URL outside the internal team.
 - Disable sleep on the host machine if the site needs to stay available.
+- Rotate any temporary Cloudflare or registrar API tokens used during setup.

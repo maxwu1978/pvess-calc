@@ -8,6 +8,22 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-19 — Web Ops P0: Cloudflare production stabilization
+
+- Activated `reelamate.com` in Cloudflare and routed
+  `https://tge.reelamate.com` through Cloudflare Tunnel
+- Preserved the existing apex and `www` Vercel DNS records in Cloudflare
+- Moved the running Web service into `~/Services/pvess-calc` for launchd-safe
+  operation outside the Desktop privacy boundary
+- Added user LaunchAgent runbooks for the local Web service and Cloudflare
+  Tunnel
+- Added `online-smoke-curl.sh` to verify the public Cloudflare path with
+  `curl`
+- Added `backup-local.sh` to archive the persistent Web workdir under
+  `~/.pvess/reelamate-web`
+- Added a P0 operator runbook covering health checks, restart, logs, backup,
+  and token rotation
+
 ### 2026-05-19 — Web UI W30: local Cloudflare Tunnel profile
 
 - Added a local workstation deployment profile for

@@ -13,11 +13,41 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after W30. Next planned engineering work
+No active Web phases are queued after P0. Next planned engineering work
 should be selected from the non-Web backlog below after another generated
 package review pass.
 
 ## Completed Milestones
+
+### Web Ops P0 — Cloudflare production stabilization ✅ DONE 2026-05-19
+
+Goal: turn the W30 local tunnel profile into a stable operator-managed
+production path for `https://tge.reelamate.com`.
+
+Completed:
+
+- Added `reelamate.com` to Cloudflare and confirmed the zone became active.
+- Switched registrar nameservers to the Cloudflare-assigned nameservers.
+- Recreated the existing apex and `www` records in Cloudflare to preserve the
+  existing Vercel-hosted site.
+- Created the `tge.reelamate.com` Cloudflare Tunnel route.
+- Moved the runtime checkout to `~/Services/pvess-calc` to avoid Desktop
+  privacy restrictions under launchd.
+- Installed user LaunchAgents for the local Web service and the Cloudflare
+  Tunnel.
+- Added a curl-based public smoke script for the Cloudflare route.
+- Added a local workdir backup script for `~/.pvess/reelamate-web`.
+- Added a P0 operator runbook covering health checks, restart, logs, backup,
+  and token rotation.
+
+Closing standards met:
+
+- Public index, authenticated `/api/health`, and `/assets/app.js` load through
+  `https://tge.reelamate.com`.
+- Local loopback smoke passes against `http://127.0.0.1:8765`.
+- The app remains loopback-only; public ingress is through Cloudflare Tunnel.
+- Runtime secrets stay in local env/token files and are not committed.
+- Generated jobs remain on local persistent storage outside the repo.
 
 ### Web UI W30 — local Cloudflare Tunnel profile ✅ DONE 2026-05-19
 
