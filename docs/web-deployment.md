@@ -140,6 +140,8 @@ Local profile files live in `deploy/reelamate/local-tunnel/`:
 - `health-check-curl.sh` runs the public smoke path for uptime checks.
 - `install-p1-launchagents.sh` installs scheduled backup and health-check
   LaunchAgents.
+- `configure-cloudflare-access.sh` creates the Zero Trust Access app, operator
+  email policy, health-check service token, and service-auth policy.
 - `P0_RUNBOOK.md` contains the active operator runbook.
 
 Initial local setup:
@@ -211,6 +213,23 @@ This installs:
 
 - `com.tge.pvess-backup`: daily local workdir backup at 02:15.
 - `com.tge.pvess-healthcheck`: public curl smoke every 5 minutes.
+
+Cloudflare Access setup:
+
+```bash
+mkdir -p ~/.pvess/secrets
+chmod 700 ~/.pvess/secrets
+nano ~/.pvess/secrets/cloudflare-token
+nano ~/.pvess/secrets/cloudflare-access-emails
+chmod 600 ~/.pvess/secrets/cloudflare-token ~/.pvess/secrets/cloudflare-access-emails
+
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/configure-cloudflare-access.sh
+```
+
+The Cloudflare API token must be scoped to the account and include
+`Access: Apps and Policies Write/Edit` plus
+`Access: Service Tokens Write/Edit`. The script intentionally refuses to
+create an `Include Everyone` policy.
 
 Cloudflare references: locally managed tunnel creation, DNS route creation, and
 ingress config are documented at

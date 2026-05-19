@@ -8,6 +8,19 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web Ops P2 prep: Cloudflare Access automation
+
+- Added `configure-cloudflare-access.sh` for creating the Access self-hosted
+  application, operator email allow policy, health-check service token, and
+  service-auth policy
+- Extended `online-smoke-curl.sh` to send Cloudflare Access service-token
+  headers from `~/.pvess/secrets/cloudflare-access-service.env`
+- Extended `pvess web-smoke` with Cloudflare Access service-token options
+- Documented the required Cloudflare token permissions and operator email
+  inputs
+- Recorded the current blocker: the provided token verifies and can read the
+  zone, but Cloudflare Access API endpoints return 403
+
 ### 2026-05-19 — Web Ops P1: access, backups, and uptime checks
 
 - Added optional site-level HTTP Basic Auth for the Web server via

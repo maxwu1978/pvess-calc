@@ -117,6 +117,7 @@ def test_web_smoke_cli_help_exits_zero():
     assert result.exit_code == 0
     assert "--base-url" in result.output
     assert "--basic-user" in result.output
+    assert "--cf-access-client-id" in result.output
     assert "--skip-generate" in result.output
 
 

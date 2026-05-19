@@ -22,6 +22,7 @@ P0 operator scripts:
 ```bash
 deploy/reelamate/local-tunnel/online-smoke-curl.sh
 deploy/reelamate/local-tunnel/backup-local.sh
+deploy/reelamate/local-tunnel/configure-cloudflare-access.sh
 deploy/reelamate/local-tunnel/restore-drill.sh
 deploy/reelamate/local-tunnel/health-check-curl.sh
 deploy/reelamate/local-tunnel/install-p1-launchagents.sh
@@ -130,12 +131,36 @@ deploy/reelamate/local-tunnel/restore-drill.sh
 deploy/reelamate/local-tunnel/health-check-curl.sh
 ```
 
+## P2 Cloudflare Access
+
+Configure Cloudflare Zero Trust Access after creating an account-scoped API
+token with:
+
+- `Access: Apps and Policies Write/Edit`
+- `Access: Service Tokens Write/Edit`
+
+Then provide the allowed operator emails:
+
+```bash
+mkdir -p ~/.pvess/secrets
+chmod 700 ~/.pvess/secrets
+nano ~/.pvess/secrets/cloudflare-token
+nano ~/.pvess/secrets/cloudflare-access-emails
+chmod 600 ~/.pvess/secrets/cloudflare-token ~/.pvess/secrets/cloudflare-access-emails
+```
+
+Run:
+
+```bash
+deploy/reelamate/local-tunnel/configure-cloudflare-access.sh
+```
+
 ## Security
 
 - Keep `PVESS_WEB_ACCESS_TOKEN` private. Do not commit `.env`.
 - Keep `PVESS_WEB_BASIC_AUTH_PASSWORD` private. Do not commit `.env`.
 - Leave the app bound to `127.0.0.1`; the tunnel is the only public entry.
-- Site-level Basic Auth must stay enabled until Cloudflare Zero Trust Access is
-  configured in the Cloudflare dashboard.
+- Site-level Basic Auth should stay enabled as a fallback even after
+  Cloudflare Zero Trust Access is configured.
 - Disable sleep on the host machine if the site needs to stay available.
 - Rotate any temporary Cloudflare or registrar API tokens used during setup.

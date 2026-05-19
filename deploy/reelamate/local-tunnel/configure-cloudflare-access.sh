@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ACCOUNT_ID="${CF_ACCOUNT_ID:-343e382e126eecf807cc94b006d8466a}"
+HOSTNAME="${CF_ACCESS_HOSTNAME:-tge.reelamate.com}"
+APP_NAME="${CF_ACCESS_APP_NAME:-TGE Solar Project Generator}"
+TOKEN_FILE="${CF_API_TOKEN_FILE:-$HOME/.pvess/secrets/cloudflare-token}"
+EMAIL_FILE="${CF_ACCESS_EMAIL_FILE:-$HOME/.pvess/secrets/cloudflare-access-emails}"
+SERVICE_FILE="${CF_ACCESS_SERVICE_TOKEN_FILE:-$HOME/.pvess/secrets/cloudflare-access-service.env}"
+API_BASE="https://api.cloudflare.com/client/v4"
+
+if [[ ! -f "$TOKEN_FILE" ]]; then
+  echo "Missing Cloudflare API token file: $TOKEN_FILE" >&2
+  exit 2
+fi
+
+CF_API_TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE")"
+if [[ -z "$CF_API_TOKEN" ]]; then
+  echo "Cloudflare API token file is empty: $TOKEN_FILE" >&2
+  exit 2
+fi
+
+emails_raw="${PVESS_ACCESS_EMAILS:-}"
+if [[ -z "$emails_raw" && -f "$EMAIL_FILE" ]]; then
+  emails_raw="$(tr '\n' ',' < "$EMAIL_FILE")"
+fi
+if [[ -z "$emails_raw" ]]; then
+  cat >&2 <<EOF
+Missing allowed operator email list.
+
+Set one of:
+  export PVESS_ACCESS_EMAILS="you@example.com,ops@example.com"
+  or write emails to: $EMAIL_FILE
+
+The script intentionally does not create an Include Everyone policy.
+EOF
+  exit 2
+fi
+
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+
+api() {
+  local method="$1"
+  local path="$2"
+  local body="${3:-}"
+  local out="$tmpdir/response.json"
+  local args=(-sS -o "$out" -w '%{http_code}' -X "$method"
+    -H "Authorization: Bearer $CF_API_TOKEN"
+    -H "Content-Type: application/json")
+  if [[ -n "$body" ]]; then
+    args+=(-d "$body")
+  fi
+  local code
+  code="$(curl "${args[@]}" "$API_BASE$path")"
+  python3 - <<'PY' "$code" "$out" "$method" "$path"
+import json, sys
+code, path, method, endpoint = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    data = json.load(open(path, encoding="utf-8"))
+except Exception as exc:
+    print(f"{method} {endpoint} HTTP {code} parse-error {exc}", file=sys.stderr)
+    raise SystemExit(1)
+if not data.get("success"):
+    print(f"{method} {endpoint} HTTP {code} failed", file=sys.stderr)
+    for err in (data.get("errors") or [])[:5]:
+        print(f"ERROR {err.get('code')} {err.get('message')}", file=sys.stderr)
+    raise SystemExit(1)
+json.dump(data.get("result"), sys.stdout)
+PY
+}
+
+verify_access_permissions() {
+  if ! api GET "/accounts/$ACCOUNT_ID/access/apps" >/dev/null; then
+    cat >&2 <<EOF
+
+The token can be read, but it cannot manage Cloudflare Access.
+Required Cloudflare token permissions:
+  - Access: Apps and Policies Write/Edit
+  - Access: Service Tokens Write/Edit
+
+Scope it to account: $ACCOUNT_ID
+EOF
+    exit 3
+  fi
+}
+
+email_rules_json() {
+  python3 - <<'PY' "$1"
+import json, re, sys
+emails = [x.strip() for x in re.split(r"[\n,]+", sys.argv[1]) if x.strip()]
+print(json.dumps([{"email": {"email": email}} for email in emails]))
+PY
+}
+
+find_app_id() {
+  local apps_json
+  apps_json="$(api GET "/accounts/$ACCOUNT_ID/access/apps")"
+  python3 -c '
+import json, sys
+hostname = sys.argv[1]
+apps = json.load(sys.stdin)
+for app in apps:
+    if app.get("domain") == hostname:
+        print(app.get("id", ""))
+        break
+' "$HOSTNAME" <<< "$apps_json"
+}
+
+verify_access_permissions
+
+app_id="$(find_app_id || true)"
+if [[ -z "$app_id" ]]; then
+  body="$(python3 - <<'PY' "$APP_NAME" "$HOSTNAME"
+import json, sys
+print(json.dumps({
+    "name": sys.argv[1],
+    "domain": sys.argv[2],
+    "type": "self_hosted",
+    "session_duration": "24h",
+    "app_launcher_visible": False,
+    "auto_redirect_to_identity": False,
+}))
+PY
+)"
+  app_id="$(api POST "/accounts/$ACCOUNT_ID/access/apps" "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  echo "Created Access app for $HOSTNAME"
+else
+  echo "Access app already exists for $HOSTNAME"
+fi
+echo "ACCESS_APP_ID=$app_id"
+
+service_token_name="${CF_ACCESS_SERVICE_TOKEN_NAME:-TGE Solar Project Generator healthcheck}"
+service_id=""
+client_id=""
+client_secret=""
+if [[ -f "$SERVICE_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$SERVICE_FILE"
+  client_id="${CF_ACCESS_CLIENT_ID:-}"
+  client_secret="${CF_ACCESS_CLIENT_SECRET:-}"
+fi
+
+service_tokens_json="$(api GET "/accounts/$ACCOUNT_ID/access/service_tokens")"
+service_id="$(python3 -c '
+import json, sys
+name = sys.argv[1]
+tokens = json.load(sys.stdin)
+for token in tokens:
+    if token.get("name") == name:
+        print(token.get("id", ""))
+        break
+' "$service_token_name" <<< "$service_tokens_json")"
+if [[ -z "$service_id" || -z "$client_id" || -z "$client_secret" ]]; then
+  body="$(python3 - <<'PY' "$service_token_name"
+import json, sys
+print(json.dumps({"name": sys.argv[1], "duration": "8760h"}))
+PY
+)"
+  service_json="$(api POST "/accounts/$ACCOUNT_ID/access/service_tokens" "$body")"
+  service_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$service_json")"
+  client_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["client_id"])' <<< "$service_json")"
+  client_secret="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["client_secret"])' <<< "$service_json")"
+  mkdir -p "$(dirname "$SERVICE_FILE")"
+  {
+    printf 'CF_ACCESS_CLIENT_ID=%q\n' "$client_id"
+    printf 'CF_ACCESS_CLIENT_SECRET=%q\n' "$client_secret"
+  } > "$SERVICE_FILE"
+  chmod 600 "$SERVICE_FILE"
+  echo "Created Access service token and wrote $SERVICE_FILE"
+else
+  echo "Access service token already exists and local credentials file is present"
+fi
+echo "ACCESS_SERVICE_TOKEN_ID=$service_id"
+
+policies_json="$(api GET "/accounts/$ACCOUNT_ID/access/apps/$app_id/policies")"
+policy_exists() {
+  python3 - <<'PY' "$policies_json" "$1"
+import json, sys
+policies = json.loads(sys.argv[1])
+name = sys.argv[2]
+print("yes" if any(p.get("name") == name for p in policies) else "no")
+PY
+}
+
+email_policy_name="TGE operator email allow"
+if [[ "$(policy_exists "$email_policy_name")" != "yes" ]]; then
+  include_json="$(email_rules_json "$emails_raw")"
+  body="$(python3 - <<'PY' "$email_policy_name" "$include_json"
+import json, sys
+print(json.dumps({
+    "name": sys.argv[1],
+    "decision": "allow",
+    "include": json.loads(sys.argv[2]),
+    "session_duration": "24h",
+}))
+PY
+)"
+  api POST "/accounts/$ACCOUNT_ID/access/apps/$app_id/policies" "$body" >/dev/null
+  echo "Created email allow policy"
+else
+  echo "Email allow policy already exists"
+fi
+
+service_policy_name="TGE healthcheck service auth"
+if [[ "$(policy_exists "$service_policy_name")" != "yes" ]]; then
+  body="$(python3 - <<'PY' "$service_policy_name" "$service_id"
+import json, sys
+print(json.dumps({
+    "name": sys.argv[1],
+    "decision": "non_identity",
+    "include": [{"service_token": {"token_id": sys.argv[2]}}],
+}))
+PY
+)"
+  api POST "/accounts/$ACCOUNT_ID/access/apps/$app_id/policies" "$body" >/dev/null
+  echo "Created service auth policy"
+else
+  echo "Service auth policy already exists"
+fi
+
+echo "Cloudflare Access configuration complete for $HOSTNAME"

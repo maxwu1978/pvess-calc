@@ -55,6 +55,51 @@ curl -sS -o /tmp/tge-noauth.html -w "%{http_code}\n" https://tge.reelamate.com/
 # expected: 401
 ```
 
+## Cloudflare Access
+
+P2 automation is available at:
+
+```bash
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/configure-cloudflare-access.sh
+```
+
+Prerequisites:
+
+```bash
+mkdir -p ~/.pvess/secrets
+chmod 700 ~/.pvess/secrets
+
+# Cloudflare API token with Access: Apps and Policies Write/Edit
+# and Access: Service Tokens Write/Edit at the account scope.
+nano ~/.pvess/secrets/cloudflare-token
+chmod 600 ~/.pvess/secrets/cloudflare-token
+
+# One email per line, or comma-separated emails.
+nano ~/.pvess/secrets/cloudflare-access-emails
+chmod 600 ~/.pvess/secrets/cloudflare-access-emails
+```
+
+Run:
+
+```bash
+~/Services/pvess-calc/deploy/reelamate/local-tunnel/configure-cloudflare-access.sh
+```
+
+The script creates or reuses:
+
+- a self-hosted Access application for `tge.reelamate.com`
+- an email Allow policy for the listed operators
+- a Service Auth token and policy for the automated health check
+
+The Access service token is stored locally at:
+
+```text
+~/.pvess/secrets/cloudflare-access-service.env
+```
+
+`online-smoke-curl.sh` automatically reads that file and sends
+`CF-Access-Client-Id` / `CF-Access-Client-Secret` headers.
+
 ## Health Checks
 
 Local:

@@ -13,9 +13,39 @@ When a K-phase ships:
 
 ## Planned
 
-No active Web phases are queued after P1. Next planned engineering work
-should be selected from the non-Web backlog below after another generated
-package review pass.
+### Web Ops P2 — Cloudflare Zero Trust Access
+
+Goal: put Cloudflare Access in front of `https://tge.reelamate.com` while
+keeping site-level Basic Auth as a fallback layer.
+
+Current status:
+
+- The local token file is readable and the token verifies as active.
+- The token can read the `reelamate.com` zone.
+- The token cannot manage Cloudflare Access; account and zone Access endpoints
+  return 403.
+- P2 automation has been added and is ready to run when a token with the
+  required Access permissions is available.
+
+Required token permissions:
+
+- `Access: Apps and Policies Write/Edit`
+- `Access: Service Tokens Write/Edit`
+
+Required local input:
+
+- allowed operator emails in `~/.pvess/secrets/cloudflare-access-emails` or
+  `PVESS_ACCESS_EMAILS`
+
+Closing standards:
+
+- Cloudflare Access self-hosted application exists for `tge.reelamate.com`.
+- Email Allow policy exists for named operators; no `Include Everyone` policy.
+- Service Auth policy exists for automated health checks.
+- `~/.pvess/secrets/cloudflare-access-service.env` contains the service-token
+  client id/secret with `600` permissions.
+- Anonymous public access is blocked by Cloudflare before Basic Auth.
+- Public smoke passes using Cloudflare service-token headers plus Basic Auth.
 
 ## Completed Milestones
 

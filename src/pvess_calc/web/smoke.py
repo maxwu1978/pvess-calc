@@ -26,6 +26,8 @@ def run_smoke(
     token: str = "",
     basic_user: str = "",
     basic_password: str = "",
+    cf_access_client_id: str = "",
+    cf_access_client_secret: str = "",
     timeout_s: float = 30.0,
     generate: bool = True,
     request_json: JsonRequester | None = None,
@@ -34,6 +36,11 @@ def run_smoke(
     """Verify health, static assets, auth mode, and optional package output."""
     base = base_url.rstrip("/") + "/"
     basic_auth = (basic_user, basic_password) if basic_user and basic_password else None
+    cf_access = (
+        (cf_access_client_id, cf_access_client_secret)
+        if cf_access_client_id and cf_access_client_secret
+        else None
+    )
     get_json = request_json or (
         lambda base_url, path, token, timeout_s, payload: _request_json(
             base_url,
@@ -42,6 +49,7 @@ def run_smoke(
             timeout_s,
             payload,
             basic_auth=basic_auth,
+            cf_access=cf_access,
         )
     )
     get_text = request_text or (
@@ -51,6 +59,7 @@ def run_smoke(
             token,
             timeout_s,
             basic_auth=basic_auth,
+            cf_access=cf_access,
         )
     )
     messages: list[str] = []
@@ -129,6 +138,7 @@ def _request_json(
     payload: dict[str, Any] | None,
     *,
     basic_auth: tuple[str, str] | None = None,
+    cf_access: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     data = None
     method = "GET"
@@ -147,6 +157,7 @@ def _request_json(
         headers=headers,
         data=data,
         basic_auth=basic_auth,
+        cf_access=cf_access,
     )
     try:
         return json.loads(response)
@@ -161,6 +172,7 @@ def _request_text(
     timeout_s: float,
     *,
     basic_auth: tuple[str, str] | None = None,
+    cf_access: tuple[str, str] | None = None,
 ) -> str:
     headers: dict[str, str] = {}
     if token:
@@ -172,6 +184,7 @@ def _request_text(
         method="GET",
         headers=headers,
         basic_auth=basic_auth,
+        cf_access=cf_access,
     )
 
 
@@ -184,12 +197,17 @@ def _open(
     headers: dict[str, str],
     data: bytes | None = None,
     basic_auth: tuple[str, str] | None = None,
+    cf_access: tuple[str, str] | None = None,
 ) -> str:
     url = urljoin(base_url, path.lstrip("/"))
-    if basic_auth:
-        raw = f"{basic_auth[0]}:{basic_auth[1]}".encode("utf-8")
+    if basic_auth or cf_access:
         headers = dict(headers)
-        headers["Authorization"] = "Basic " + b64encode(raw).decode("ascii")
+        if basic_auth:
+            raw = f"{basic_auth[0]}:{basic_auth[1]}".encode("utf-8")
+            headers["Authorization"] = "Basic " + b64encode(raw).decode("ascii")
+        if cf_access:
+            headers["CF-Access-Client-Id"] = cf_access[0]
+            headers["CF-Access-Client-Secret"] = cf_access[1]
     request = Request(url, data=data, headers=headers, method=method)
     try:
         with urlopen(request, timeout=timeout_s) as response:  # noqa: S310 - user URL.
@@ -228,6 +246,16 @@ def _require(condition: Any, message: str) -> None:
     default=lambda: os.environ.get("PVESS_WEB_BASIC_AUTH_PASSWORD", ""),
     help="HTTP Basic Auth password when site-level auth is enabled.",
 )
+@click.option(
+    "--cf-access-client-id",
+    default=lambda: os.environ.get("CF_ACCESS_CLIENT_ID", ""),
+    help="Cloudflare Access service-token client ID for protected deployments.",
+)
+@click.option(
+    "--cf-access-client-secret",
+    default=lambda: os.environ.get("CF_ACCESS_CLIENT_SECRET", ""),
+    help="Cloudflare Access service-token client secret for protected deployments.",
+)
 @click.option("--timeout", "timeout_s", default=30.0, show_default=True, type=float)
 @click.option(
     "--skip-generate",
@@ -239,6 +267,8 @@ def smoke_cmd(
     token: str,
     basic_user: str,
     basic_password: str,
+    cf_access_client_id: str,
+    cf_access_client_secret: str,
     timeout_s: float,
     skip_generate: bool,
 ) -> None:
@@ -249,6 +279,8 @@ def smoke_cmd(
             token=token.strip(),
             basic_user=basic_user.strip(),
             basic_password=basic_password.strip(),
+            cf_access_client_id=cf_access_client_id.strip(),
+            cf_access_client_secret=cf_access_client_secret.strip(),
             timeout_s=timeout_s,
             generate=not skip_generate,
         )
