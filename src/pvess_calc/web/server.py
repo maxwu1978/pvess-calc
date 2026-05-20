@@ -72,6 +72,13 @@ from .intake import (
     spec_sheet_coverage,
 )
 from .job_store import JobStore
+from .notifications import (
+    LeadNotificationConfig,
+    build_new_lead_notification,
+    default_lead_notification_config,
+    dispatch_lead_notification,
+    lead_notification_config_summary,
+)
 from .package_qa import build_package_qa, write_package_qa_artifacts
 from .quote import categorize_bom, installed_breakdown, quote_tiers_for_result
 
@@ -504,6 +511,32 @@ class WebLeadDigestResponse(BaseModel):
     summary: str
 
 
+LeadNotificationStatus = Literal["pending", "sent", "failed", "skipped"]
+
+
+class WebLeadNotificationRecord(BaseModel):
+    notification_id: str
+    lead_id: str
+    event: str
+    channel: str
+    status: LeadNotificationStatus
+    attempts: int
+    recipient: str = ""
+    subject: str = ""
+    body: str = ""
+    payload: dict[str, Any] = Field(default_factory=dict)
+    response_text: str = ""
+    error: str = ""
+    created_at: str
+    sent_at: str = ""
+    updated_at: str
+
+
+class WebLeadNotificationListResponse(BaseModel):
+    notifications: list[WebLeadNotificationRecord]
+    filters: dict[str, Any]
+
+
 def create_app(
     *,
     jobs_dir: Path | None = None,
@@ -520,6 +553,7 @@ def create_app(
     app.state.jobs: dict[str, WebJobState] = {}
     app.state.job_lock = threading.Lock()
     app.state.job_store = JobStore(app.state.jobs_dir)
+    app.state.lead_notification_config = default_lead_notification_config()
     app.state.executor = ThreadPoolExecutor(max_workers=2)
 
     origins = cors_origins if cors_origins is not None else default_cors_origins()
@@ -528,7 +562,7 @@ def create_app(
             CORSMiddleware,
             allow_origins=origins,
             allow_credentials=True,
-            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=[
                 "Authorization",
                 "Content-Type",
@@ -599,6 +633,9 @@ def create_app(
             "auth_required": bool(app.state.access_token),
             "site_auth_required": bool(app.state.basic_auth_credentials),
             "auth_modes": _auth_modes(app),
+            "lead_notifications": lead_notification_config_summary(
+                _lead_notification_config(app)
+            ),
         }
 
     @app.get("/api/runtime-config")
@@ -610,6 +647,9 @@ def create_app(
             "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
             "lookup_modes": ["online", "offline"],
             "auth_modes": _auth_modes(app),
+            "lead_notifications": lead_notification_config_summary(
+                _lead_notification_config(app)
+            ),
         }
 
     @app.get("/api/session")
@@ -662,6 +702,7 @@ def create_app(
                 notes=notes,
                 utility_bill=await _read_upload(utility_bill),
             )
+            record_and_dispatch_lead_notification(app, lead.model_dump())
             return WebLeadCreateResponse(
                 lead=lead,
                 message="Lead received. TGE Solar will review the address and follow up.",
@@ -714,6 +755,46 @@ def create_app(
         _require_auth_context(request)
         active = app.state.job_store.list_leads(status="active", limit=10000)
         return build_lead_digest_response(active)
+
+    @app.get(
+        "/api/leads/notifications",
+        response_model=WebLeadNotificationListResponse,
+    )
+    def list_lead_notifications(
+        request: Request,
+        status: LeadNotificationStatus | None = Query(None),
+        lead_id: str = Query("", max_length=80),
+        limit: int = Query(25, ge=1, le=100),
+    ) -> WebLeadNotificationListResponse:
+        _require_auth_context(request)
+        notifications = app.state.job_store.list_lead_notifications(
+            status=status,
+            lead_id=lead_id,
+            limit=limit,
+        )
+        return WebLeadNotificationListResponse(
+            notifications=[
+                WebLeadNotificationRecord.model_validate(item)
+                for item in notifications
+            ],
+            filters={"status": status, "lead_id": lead_id, "limit": limit},
+        )
+
+    @app.post(
+        "/api/leads/notifications/{notification_id}/retry",
+        response_model=WebLeadNotificationRecord,
+    )
+    def retry_lead_notification(
+        request: Request,
+        notification_id: str,
+    ) -> WebLeadNotificationRecord:
+        _require_auth_context(request)
+        notification = app.state.job_store.get_lead_notification(notification_id)
+        if notification is None:
+            raise HTTPException(status_code=404, detail="notification not found")
+        return WebLeadNotificationRecord.model_validate(
+            dispatch_stored_lead_notification(app, notification)
+        )
 
     @app.get("/api/leads/{lead_id}/payload", response_model=WebProjectRequest)
     def lead_payload(
@@ -3353,6 +3434,47 @@ def create_lead_record(
         "updated_at": now,
     })
     return WebLeadRecord.model_validate(record)
+
+
+def record_and_dispatch_lead_notification(
+    app: FastAPI,
+    lead: dict[str, Any],
+) -> WebLeadNotificationRecord | None:
+    try:
+        config = _lead_notification_config(app)
+        notification = app.state.job_store.create_lead_notification(
+            build_new_lead_notification(lead, config=config)
+        )
+        return WebLeadNotificationRecord.model_validate(
+            dispatch_stored_lead_notification(app, notification)
+        )
+    except Exception:
+        return None
+
+
+def dispatch_stored_lead_notification(
+    app: FastAPI,
+    notification: dict[str, Any],
+) -> dict[str, Any]:
+    config = _lead_notification_config(app)
+    result = dispatch_lead_notification(notification, config=config)
+    attempts = int(notification.get("attempts") or 0) + (1 if result.attempted else 0)
+    return app.state.job_store.update_lead_notification_result(
+        str(notification.get("notification_id") or ""),
+        status=result.status,
+        attempts=attempts,
+        response_text=result.response_text,
+        error=result.error,
+        sent_at=result.sent_at or str(notification.get("sent_at") or ""),
+        channel=config.normalized_mode,
+    )
+
+
+def _lead_notification_config(app: FastAPI) -> LeadNotificationConfig:
+    config = getattr(app.state, "lead_notification_config", None)
+    if isinstance(config, LeadNotificationConfig):
+        return config
+    return default_lead_notification_config()
 
 
 def web_request_from_lead(lead: dict[str, Any]) -> WebProjectRequest:

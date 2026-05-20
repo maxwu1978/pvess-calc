@@ -18,6 +18,33 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P7 — lead notification channel ✅ DONE 2026-05-20
+
+Goal: notify operators when a public estimate request arrives without making
+the homeowner submission depend on an external email or messaging provider.
+
+Completed:
+
+- Added persistent lead-notification events in the Web SQLite job store.
+- Added a default `dry_run` notification mode for audit-only local operation.
+- Added optional webhook delivery through
+  `PVESS_LEAD_NOTIFICATION_MODE=webhook` and
+  `PVESS_LEAD_NOTIFICATION_WEBHOOK_URL`.
+- Added protected notification listing and retry endpoints.
+- Extended the **Public leads** panel with recent notification delivery status
+  and retry buttons for failed webhook attempts.
+- Added regression coverage for protected notification access, dry-run
+  recording, webhook failure capture, and retry success.
+
+Closing standards met:
+
+- Public lead submission succeeds after the lead is saved even if notification
+  delivery fails.
+- Notification body/payload includes lead contact, address, project type,
+  usage summary, and notes.
+- Notification list and retry endpoints require admin/operator auth.
+- No external credentials are required for default local operation.
+
 ### Web UI P6 — lead follow-up loop ✅ DONE 2026-05-20
 
 Goal: close the loop between a public lead and the next operator action without

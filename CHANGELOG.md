@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P7: lead notification channel
+
+- Added persistent lead-notification events for every new public estimate
+  request
+- Added default dry-run notification mode plus optional webhook delivery via
+  environment variables
+- Added authenticated lead notification list and retry endpoints
+- Extended **Public leads** with recent notification delivery status and retry
+  actions
+- Added regression tests for notification auth, dry-run recording, webhook
+  failure capture, and retry success
+
 ### 2026-05-20 — Web UI P6: lead follow-up loop
 
 - Added an authenticated lead digest endpoint with active counts, new leads,

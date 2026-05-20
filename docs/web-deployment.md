@@ -152,6 +152,10 @@ cp deploy/reelamate/local-tunnel/.env.example deploy/reelamate/local-tunnel/.env
 openssl rand -hex 32
 # paste the random value into local-tunnel/.env as PVESS_WEB_ACCESS_TOKEN
 # set PVESS_WEB_BASIC_AUTH_USER/PASSWORD to protect the whole site
+# optional lead notifications:
+# PVESS_LEAD_NOTIFICATION_MODE=dry_run
+# PVESS_LEAD_NOTIFICATION_MODE=webhook
+# PVESS_LEAD_NOTIFICATION_WEBHOOK_URL=https://example.com/tge-leads
 
 deploy/reelamate/local-tunnel/run-local.sh
 ```
@@ -242,6 +246,18 @@ Each path app has a Bypass policy with `Include Everyone`, while the root
 This matches Cloudflare's application-path model: a more specific path rule
 takes precedence over a broader application rule, and Bypass should be scoped
 as tightly as possible.
+
+P7 lead notifications do not require Cloudflare changes. The protected
+notification list and retry endpoints live under the existing operator app:
+
+- `GET /api/leads/notifications`
+- `POST /api/leads/notifications/<notification_id>/retry`
+
+Use `PVESS_LEAD_NOTIFICATION_MODE=dry_run` for local audit-only operation.
+Use `PVESS_LEAD_NOTIFICATION_MODE=webhook` plus
+`PVESS_LEAD_NOTIFICATION_WEBHOOK_URL` to post JSON to an external notification
+service. Webhook failures are stored and retried from the operator UI; public
+lead submission still returns success after the lead is saved.
 
 Cloudflare references: locally managed tunnel creation, DNS route creation, and
 ingress config are documented at

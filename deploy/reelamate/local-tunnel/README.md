@@ -55,6 +55,18 @@ Paste the random value into
 Set `PVESS_WEB_BASIC_AUTH_USER` and `PVESS_WEB_BASIC_AUTH_PASSWORD` to enable
 site-level Basic Auth for the static UI and every route.
 
+Lead notifications default to `PVESS_LEAD_NOTIFICATION_MODE=dry_run`, which
+records every new public lead notification in SQLite without calling an
+external service. To connect a real notification service, set:
+
+```bash
+PVESS_LEAD_NOTIFICATION_MODE=webhook
+PVESS_LEAD_NOTIFICATION_WEBHOOK_URL=https://example.com/tge-leads
+```
+
+Webhook delivery failures are visible in the operator **Public leads** panel
+and can be retried after the lead has already been saved.
+
 Start the local app:
 
 ```bash

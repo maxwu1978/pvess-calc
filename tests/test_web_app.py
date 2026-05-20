@@ -18,6 +18,7 @@ from pvess_calc.web.server import (
     create_app,
     default_qet_template,
 )
+from pvess_calc.web.notifications import LeadNotificationConfig, WebhookResult
 
 
 DFW_SIMULATED_MONTHLY_KWH = [
@@ -626,6 +627,101 @@ def test_web_lead_digest_draft_and_payload_are_protected(tmp_path: Path):
     assert payload_data["battery_choice"] == "inhouse_16kwh_hv"
     assert payload_data["outputs"]["customer"] is True
     assert payload_data["outputs"]["permit"] is False
+
+
+def test_web_lead_notifications_are_recorded_and_protected(tmp_path: Path):
+    app = create_app(jobs_dir=tmp_path, access_token="secret")
+    client = TestClient(app)
+    headers = _token_headers("secret")
+
+    lead_response = client.post(
+        "/api/leads",
+        data={
+            "contact_name": "Notify Homeowner",
+            "email": "notify@example.com",
+            "phone": "817-555-0177",
+            "site_address": "2806 Green Circle Drive, Mansfield, TX",
+            "project_type": "not_sure",
+            "monthly_kwh_text": "1000",
+        },
+    )
+    assert lead_response.status_code == 200, lead_response.text
+    lead = lead_response.json()["lead"]
+
+    assert client.get("/api/leads/notifications").status_code == 401
+    response = client.get("/api/leads/notifications", headers=headers)
+    assert response.status_code == 200, response.text
+    notifications = response.json()["notifications"]
+    assert len(notifications) == 1
+    notification = notifications[0]
+    assert notification["lead_id"] == lead["lead_id"]
+    assert notification["event"] == "new_lead"
+    assert notification["channel"] == "dry_run"
+    assert notification["status"] == "sent"
+    assert notification["attempts"] == 1
+    assert "New TGE Solar lead" in notification["subject"]
+    assert notification["payload"]["lead"]["email"] == "notify@example.com"
+
+
+def test_web_lead_notification_webhook_failure_and_retry(
+    tmp_path: Path,
+    monkeypatch,
+):
+    app = create_app(jobs_dir=tmp_path, access_token="secret")
+    app.state.lead_notification_config = LeadNotificationConfig(
+        mode="webhook",
+        webhook_url="https://hooks.example.test/tge-leads",
+        timeout_s=0.5,
+    )
+    client = TestClient(app)
+    headers = _token_headers("secret")
+    calls: list[dict] = []
+
+    def failing_webhook(url: str, payload: dict, *, timeout_s: float):
+        calls.append(payload)
+        raise RuntimeError("webhook unavailable")
+
+    monkeypatch.setattr(
+        "pvess_calc.web.notifications.post_webhook_json",
+        failing_webhook,
+    )
+    lead_response = client.post(
+        "/api/leads",
+        data={
+            "contact_name": "Webhook Homeowner",
+            "email": "webhook@example.com",
+            "site_address": "905 Crossvine Drive, Mansfield, TX",
+            "project_type": "pv_ess",
+        },
+    )
+    assert lead_response.status_code == 200, lead_response.text
+    notifications = client.get("/api/leads/notifications", headers=headers)
+    assert notifications.status_code == 200, notifications.text
+    notification = notifications.json()["notifications"][0]
+    assert notification["status"] == "failed"
+    assert notification["channel"] == "webhook"
+    assert notification["attempts"] == 1
+    assert "webhook unavailable" in notification["error"]
+    assert calls[0]["lead"]["email"] == "webhook@example.com"
+
+    def successful_webhook(url: str, payload: dict, *, timeout_s: float):
+        calls.append(payload)
+        return WebhookResult(status_code=202, body="accepted")
+
+    monkeypatch.setattr(
+        "pvess_calc.web.notifications.post_webhook_json",
+        successful_webhook,
+    )
+    retry = client.post(
+        f"/api/leads/notifications/{notification['notification_id']}/retry",
+        headers=headers,
+    )
+    assert retry.status_code == 200, retry.text
+    retried = retry.json()
+    assert retried["status"] == "sent"
+    assert retried["attempts"] == 2
+    assert "HTTP 202" in retried["response_text"]
+    assert calls[-1]["notification_id"] == notification["notification_id"]
 
 
 def test_web_lead_conversion_creates_customer_estimate_job(tmp_path: Path):

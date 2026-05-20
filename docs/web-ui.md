@@ -63,8 +63,9 @@ The internal **Public leads** panel is visible in the main operator UI after
 login. Operators can filter by status, search by name/email/address, save
 follow-up notes, update lifecycle status, archive inactive leads, export the
 visible queue to CSV, view the active lead digest, prepare a follow-up email
-draft, load intake fields back into the project form, and click
-**Generate estimate**. Lead conversion creates an estimate-only package:
+draft, review lead notification delivery, load intake fields back into the
+project form, and click **Generate estimate**. Lead conversion creates an
+estimate-only package:
 
 - customer summary enabled
 - permit, DXF, labels, and QET disabled
@@ -88,6 +89,14 @@ through the `Archived` filter and CSV export.
 P6 follow-up helpers are intentionally local-first. The system generates a
 mailto draft and prefilled payload, but it does not send email or submit a
 permit package without an operator action.
+
+P7 lead notifications are audit-first. Every new public lead creates a
+notification event in SQLite. The default `dry_run` mode records the event and
+marks it sent without contacting an external service. Setting
+`PVESS_LEAD_NOTIFICATION_MODE=webhook` and
+`PVESS_LEAD_NOTIFICATION_WEBHOOK_URL` sends the same event payload to a
+configured webhook; failures are recorded in the operator panel and can be
+retried without blocking the homeowner submission.
 
 ## Address Lookup
 

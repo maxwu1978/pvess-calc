@@ -27,6 +27,7 @@ const leadDraftPanel = document.querySelector("#lead-draft-panel");
 const leadDraftSubject = document.querySelector("#lead-draft-subject");
 const leadDraftBody = document.querySelector("#lead-draft-body");
 const leadDraftMailto = document.querySelector("#lead-draft-mailto");
+const leadNotificationPanel = document.querySelector("#lead-notification-panel");
 const readinessEmpty = document.querySelector("#readiness-empty");
 const readinessPanel = document.querySelector("#readiness-panel");
 const packageQaEmpty = document.querySelector("#package-qa-empty");
@@ -244,7 +245,6 @@ syncBatteryOption({ preserveQuantity: true });
 loadRuntimeConfig().then(() => {
   loadHistory();
   loadLeads();
-  loadLeadDigest();
 });
 
 async function loadRuntimeConfig() {
@@ -278,7 +278,6 @@ function saveAccessToken() {
   }
   loadHistory();
   loadLeads();
-  loadLeadDigest();
 }
 
 function currentAccessToken() {
@@ -1030,6 +1029,7 @@ async function loadLeads() {
     leadEmpty.textContent = "Enter an operator token to view public estimate requests.";
     leadEmpty.classList.remove("hidden");
     leadDigest.classList.add("hidden");
+    leadNotificationPanel.classList.add("hidden");
     return;
   }
   leadEmpty.textContent = "Public estimate requests appear here.";
@@ -1041,10 +1041,12 @@ async function loadLeads() {
     }
     renderLeads(data.leads || []);
     loadLeadDigest();
+    loadLeadNotifications();
   } catch {
     leadList.innerHTML = "";
     leadEmpty.textContent = "Lead list is unavailable.";
     leadEmpty.classList.remove("hidden");
+    leadNotificationPanel.classList.add("hidden");
   }
 }
 
@@ -1063,6 +1065,62 @@ async function loadLeadDigest() {
   } catch {
     leadDigest.classList.add("hidden");
   }
+}
+
+async function loadLeadNotifications() {
+  if (runtimeConfig.auth_required && !currentAccessToken()) {
+    leadNotificationPanel.classList.add("hidden");
+    return;
+  }
+  try {
+    const response = await apiFetch("/api/leads/notifications?limit=5");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    renderLeadNotifications(data.notifications || []);
+  } catch {
+    leadNotificationPanel.classList.add("hidden");
+  }
+}
+
+function renderLeadNotifications(notifications) {
+  leadNotificationPanel.classList.toggle("hidden", notifications.length === 0);
+  if (!notifications.length) {
+    leadNotificationPanel.innerHTML = "";
+    return;
+  }
+  leadNotificationPanel.innerHTML = `
+    <div class="lead-notification-head">
+      <strong>Lead notifications</strong>
+      <span>${notifications.length} recent events</span>
+    </div>
+    <ul>
+      ${notifications.map((item) => `
+        <li class="lead-notification ${escapeHtml(item.status || "pending")}">
+          <span>
+            <strong>${escapeHtml(notificationStatusLabel(item.status))}</strong>
+            <em>${escapeHtml(item.subject || item.event || "Lead notification")}</em>
+            <small>${escapeHtml(item.channel || "")} · ${escapeHtml(formatLeadDate(item.created_at) || "recent")}${item.error ? ` · ${escapeHtml(item.error)}` : ""}</small>
+          </span>
+          ${item.status === "failed" ? `<button type="button" data-lead-notification-retry="${escapeHtml(item.notification_id)}">Retry</button>` : ""}
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+function notificationStatusLabel(value) {
+  if (value === "sent") {
+    return "Sent";
+  }
+  if (value === "failed") {
+    return "Failed";
+  }
+  if (value === "skipped") {
+    return "Skipped";
+  }
+  return "Pending";
 }
 
 function renderLeadDigest(data) {
@@ -1175,6 +1233,32 @@ leadStatus.addEventListener("change", loadLeads);
 leadQuery.addEventListener("input", () => {
   window.clearTimeout(leadQuery._timer);
   leadQuery._timer = window.setTimeout(loadLeads, 250);
+});
+
+leadNotificationPanel.addEventListener("click", async (event) => {
+  const retryButton = event.target.closest("[data-lead-notification-retry]");
+  if (!retryButton) {
+    return;
+  }
+  retryButton.disabled = true;
+  retryButton.textContent = "Retrying...";
+  try {
+    const response = await apiFetch(`/api/leads/notifications/${encodeURIComponent(retryButton.dataset.leadNotificationRetry)}/retry`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    statusEl.textContent = `Retried lead notification ${data.notification_id}`;
+    await loadLeadNotifications();
+  } catch (error) {
+    retryButton.disabled = false;
+    retryButton.textContent = "Retry";
+    statusEl.textContent = error.message;
+    statusEl.classList.add("error");
+    renderError(error.message);
+  }
 });
 
 leadList.addEventListener("click", async (event) => {

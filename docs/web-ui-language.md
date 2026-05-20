@@ -34,6 +34,7 @@ Avoid:
 | Public leads | Internal queue of public estimate requests | Operator panel |
 | Follow-up notes | Internal sales/design notes for a public lead | Lead row notes |
 | Email follow-up draft | Operator-reviewed email text generated from a lead | Lead follow-up panel |
+| Lead notification | Internal alert event created when a public lead arrives | Notification panel |
 | Load intake | Pre-fill the project form from a lead without generating output | Lead action |
 
 ## Button Language
@@ -95,6 +96,9 @@ Use these status labels consistently:
 - `Qualified` — lead has enough detail for estimate/design follow-up
 - `Converted` — estimate package has been generated from the lead
 - `Archived` — inactive lead hidden from the default active queue
+- `Lead notification` — internal alert event created when a public lead arrives
+- `Dry-run notification` — notification recorded locally without external send
+- `Webhook failed` — external notification delivery failed; lead data is still saved
 
 ## Mansfield Test Addresses
 

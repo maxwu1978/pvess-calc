@@ -100,6 +100,23 @@ class JobStore:
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     );
+                    CREATE TABLE IF NOT EXISTS web_lead_notifications (
+                        notification_id TEXT PRIMARY KEY,
+                        lead_id TEXT NOT NULL DEFAULT '',
+                        event TEXT NOT NULL DEFAULT 'new_lead',
+                        channel TEXT NOT NULL DEFAULT 'dry_run',
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        attempts INTEGER NOT NULL DEFAULT 0,
+                        recipient TEXT NOT NULL DEFAULT '',
+                        subject TEXT NOT NULL DEFAULT '',
+                        body TEXT NOT NULL DEFAULT '',
+                        payload_json TEXT NOT NULL DEFAULT '{}',
+                        response_text TEXT NOT NULL DEFAULT '',
+                        error TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        sent_at TEXT NOT NULL DEFAULT '',
+                        updated_at TEXT NOT NULL
+                    );
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_owner
                         ON web_jobs(owner_id);
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_status
@@ -118,6 +135,12 @@ class JobStore:
                         ON web_leads(email);
                     CREATE INDEX IF NOT EXISTS idx_web_leads_site_address
                         ON web_leads(site_address);
+                    CREATE INDEX IF NOT EXISTS idx_web_lead_notifications_created_at
+                        ON web_lead_notifications(created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_web_lead_notifications_status
+                        ON web_lead_notifications(status);
+                    CREATE INDEX IF NOT EXISTS idx_web_lead_notifications_lead
+                        ON web_lead_notifications(lead_id);
                     """
                 )
                 _ensure_column(
@@ -136,6 +159,12 @@ class JobStore:
                     conn,
                     "web_leads",
                     "last_contacted_at",
+                    "TEXT NOT NULL DEFAULT ''",
+                )
+                _ensure_column(
+                    conn,
+                    "web_lead_notifications",
+                    "response_text",
                     "TEXT NOT NULL DEFAULT ''",
                 )
             self._initialized = True
@@ -560,6 +589,142 @@ class JobStore:
             raise ValueError("lead not found")
         return _lead_from_row(row)
 
+    def create_lead_notification(
+        self,
+        notification: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.ensure_ready()
+        notification_id = str(notification.get("notification_id") or "")
+        if not VALID_JOB_ID.fullmatch(notification_id):
+            raise ValueError("invalid notification_id")
+        now = str(
+            notification.get("created_at")
+            or datetime.now(timezone.utc).isoformat()
+        )
+        payload = notification.get("payload") or {}
+        row = {
+            "notification_id": notification_id,
+            "lead_id": str(notification.get("lead_id") or ""),
+            "event": str(notification.get("event") or "new_lead"),
+            "channel": str(notification.get("channel") or "dry_run"),
+            "status": str(notification.get("status") or "pending"),
+            "attempts": int(notification.get("attempts") or 0),
+            "recipient": str(notification.get("recipient") or ""),
+            "subject": str(notification.get("subject") or ""),
+            "body": str(notification.get("body") or ""),
+            "payload_json": json.dumps(payload, ensure_ascii=False),
+            "response_text": str(notification.get("response_text") or ""),
+            "error": str(notification.get("error") or ""),
+            "created_at": now,
+            "sent_at": str(notification.get("sent_at") or ""),
+            "updated_at": str(notification.get("updated_at") or now),
+        }
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_lead_notifications (
+                    notification_id, lead_id, event, channel, status,
+                    attempts, recipient, subject, body, payload_json,
+                    response_text, error, created_at, sent_at, updated_at
+                ) VALUES (
+                    :notification_id, :lead_id, :event, :channel, :status,
+                    :attempts, :recipient, :subject, :body, :payload_json,
+                    :response_text, :error, :created_at, :sent_at, :updated_at
+                )
+                """,
+                row,
+            )
+        return _lead_notification_from_row(row)
+
+    def list_lead_notifications(
+        self,
+        *,
+        status: str | None = None,
+        lead_id: str = "",
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        self.ensure_ready()
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if lead_id:
+            clauses.append("lead_id = ?")
+            params.append(lead_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(max(1, min(int(limit), 100)))
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM web_lead_notifications
+                {where}
+                ORDER BY created_at DESC, notification_id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [_lead_notification_from_row(row) for row in rows]
+
+    def get_lead_notification(
+        self,
+        notification_id: str,
+    ) -> dict[str, Any] | None:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(notification_id):
+            return None
+        row = self._lead_notification_row(notification_id)
+        return _lead_notification_from_row(row) if row is not None else None
+
+    def update_lead_notification_result(
+        self,
+        notification_id: str,
+        *,
+        status: str,
+        attempts: int,
+        response_text: str = "",
+        error: str = "",
+        sent_at: str = "",
+        channel: str | None = None,
+    ) -> dict[str, Any]:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(notification_id):
+            raise ValueError("invalid notification_id")
+        assignments = [
+            "status = ?",
+            "attempts = ?",
+            "response_text = ?",
+            "error = ?",
+            "sent_at = ?",
+            "updated_at = ?",
+        ]
+        params: list[Any] = [
+            status,
+            max(0, int(attempts)),
+            response_text[:1000],
+            error[:1000],
+            sent_at,
+            datetime.now(timezone.utc).isoformat(),
+        ]
+        if channel is not None:
+            assignments.append("channel = ?")
+            params.append(channel)
+        params.append(notification_id)
+        with self._connect() as conn:
+            conn.execute(
+                f"""
+                UPDATE web_lead_notifications
+                SET {', '.join(assignments)}
+                WHERE notification_id = ?
+                """,
+                params,
+            )
+        row = self._lead_notification_row(notification_id)
+        if row is None:
+            raise ValueError("notification not found")
+        return _lead_notification_from_row(row)
+
     def create_operator(
         self,
         *,
@@ -635,6 +800,16 @@ class JobStore:
                 (lead_id,),
             ).fetchone()
 
+    def _lead_notification_row(
+        self,
+        notification_id: str,
+    ) -> sqlite3.Row | None:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT * FROM web_lead_notifications WHERE notification_id = ?",
+                (notification_id,),
+            ).fetchone()
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
@@ -678,6 +853,34 @@ def _lead_from_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         "converted_job_id": str(row["converted_job_id"] or ""),
         "last_contacted_at": str(row["last_contacted_at"] or ""),
         "created_at": str(row["created_at"] or ""),
+        "updated_at": str(row["updated_at"] or ""),
+    }
+
+
+def _lead_notification_from_row(
+    row: sqlite3.Row | dict[str, Any],
+) -> dict[str, Any]:
+    keys = set(row.keys())
+    payload_raw = row["payload_json"] if "payload_json" in keys else "{}"
+    try:
+        payload = json.loads(payload_raw or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    return {
+        "notification_id": str(row["notification_id"]),
+        "lead_id": str(row["lead_id"] or ""),
+        "event": str(row["event"] or "new_lead"),
+        "channel": str(row["channel"] or "dry_run"),
+        "status": str(row["status"] or "pending"),
+        "attempts": int(row["attempts"] or 0),
+        "recipient": str(row["recipient"] or ""),
+        "subject": str(row["subject"] or ""),
+        "body": str(row["body"] or ""),
+        "payload": payload if isinstance(payload, dict) else {},
+        "response_text": str(row["response_text"] or ""),
+        "error": str(row["error"] or ""),
+        "created_at": str(row["created_at"] or ""),
+        "sent_at": str(row["sent_at"] or ""),
         "updated_at": str(row["updated_at"] or ""),
     }
 
