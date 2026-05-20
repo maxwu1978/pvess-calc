@@ -7,7 +7,10 @@ const wizardBackButton = document.querySelector("#wizard-back");
 const wizardContinueButton = document.querySelector("#wizard-continue");
 const saveDraftButton = document.querySelector("#save-draft");
 const stepFeedback = document.querySelector("#step-feedback");
+const stepFeedbackPanel = document.querySelector(".step-feedback-panel");
+const stepFeedbackTitle = document.querySelector("#step-feedback-title");
 const checklistStatus = document.querySelector("#checklist-status");
+const checklistStatusTitle = document.querySelector("#checklist-status-title");
 const resultsAside = document.querySelector(".results");
 const sideConsoleTitle = document.querySelector("#side-console-title");
 const sideConsoleLink = document.querySelector("#side-console-link");
@@ -519,11 +522,20 @@ function renderStepValidation(validation) {
   markIssueFields(validation);
   renderChecklistStatus(validation);
   const step = wizardSteps[currentStepId()];
+  const isReviewStep = currentStepId() === "package-outputs";
   const issues = [
     ...validation.errors.map((item) => ({ ...item, level: "error", label: "Error" })),
     ...validation.warnings.map((item) => ({ ...item, level: "warning", label: "Warning" })),
   ];
-  const visiblePasses = validation.passes.slice(0, Math.max(2, 5 - issues.length));
+  if (!isReviewStep && issues.length === 0) {
+    stepFeedbackPanel.classList.add("hidden");
+    stepFeedback.innerHTML = "";
+    return;
+  }
+
+  stepFeedbackPanel.classList.remove("hidden");
+  stepFeedbackTitle.textContent = isReviewStep ? "Step validation" : "Needs attention";
+  const visiblePasses = isReviewStep ? validation.passes.slice(0, Math.max(2, 5 - issues.length)) : [];
   stepFeedback.innerHTML = `
     <div class="step-feedback-head">
       <strong>${escapeHtml(step.title)}</strong>
@@ -551,15 +563,19 @@ function renderChecklistStatus(validation) {
   const warningCount = validation.warnings?.length || 0;
   const passCount = validation.passes?.length || 0;
   const isReviewStep = currentStepId() === "package-outputs";
+  const step = wizardSteps[currentStepId()];
+  const stepNumber = wizardStepOrder.indexOf(currentStepId()) + 1;
+  checklistStatusTitle.textContent = isReviewStep ? "Review status" : "Current step";
   const action = errorCount
     ? `Fix ${errorCount} blocking item${errorCount === 1 ? "" : "s"} before continuing.`
-    : (isReviewStep ? "Ready for readiness check and generation review." : "Ready to continue to the next step.");
+    : (isReviewStep ? "Ready for readiness check and generation review." : "Ready to continue.");
   const detail = errorCount
     ? "The first blocking field is focused when you click Continue."
     : (warningCount
       ? "Warnings stay visible for estimate-stage review but do not block progress."
-      : "Current step inputs are clean for the estimate workflow.");
+      : `${step.title} inputs are clean for the estimate workflow.`);
   checklistStatus.innerHTML = `
+    <span class="step-status-eyebrow">Step ${stepNumber} of ${wizardStepOrder.length}</span>
     <strong>${escapeHtml(action)}</strong>
     <p>${escapeHtml(detail)}</p>
     <div class="checklist-counts">
@@ -574,15 +590,22 @@ function markIssueFields(validation) {
   for (const label of form.querySelectorAll(".field-invalid, .field-warning")) {
     label.classList.remove("field-invalid", "field-warning");
   }
+  for (const message of form.querySelectorAll(".field-message")) {
+    message.remove();
+  }
+  const errorFields = new Set((validation.errors || []).map((item) => item.field).filter(Boolean));
   for (const item of validation.errors || []) {
-    markField(item.field, "field-invalid");
+    markField(item.field, "field-invalid", item.message);
   }
   for (const item of validation.warnings || []) {
-    markField(item.field, "field-warning");
+    if (errorFields.has(item.field)) {
+      continue;
+    }
+    markField(item.field, "field-warning", item.message);
   }
 }
 
-function markField(name, className) {
+function markField(name, className, message) {
   if (!name) {
     return;
   }
@@ -590,6 +613,12 @@ function markField(name, className) {
   const wrapper = field?.closest?.("label");
   if (wrapper) {
     wrapper.classList.add(className);
+    if (message) {
+      const hint = document.createElement("span");
+      hint.className = `field-message ${className === "field-invalid" ? "error" : "warning"}`;
+      hint.textContent = message;
+      wrapper.appendChild(hint);
+    }
   }
 }
 

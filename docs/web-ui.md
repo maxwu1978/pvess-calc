@@ -60,9 +60,9 @@ marketing page:
   optional operator token
 - a sticky workflow rail for quick jumps through basics, site data, equipment,
   costs, evidence, and generation
-- a left-side intake form and a right-side panel that behaves as a
-  **Project checklist** during intake, then becomes **Review and generate** on
-  the final step
+- a left-side intake form and a right-side panel that behaves as a compact
+  **Step status** during intake, then becomes **Review and generate** on the
+  final step
 - a sticky generate action bar so long intake forms keep the primary run
   actions visible
 
@@ -113,8 +113,11 @@ stay visible while completing each step.
 
 P11 reduces attention cost in the right-side panel:
 
-- Steps 1-5 show **Project checklist** only: current-step validation, next
-  action, error count, warning count, and passed checks.
+- Steps 1-5 show compact **Step status** only: step number, next action, and
+  error/warning/pass counts. Detailed cards appear only when a step has an
+  error or warning.
+- Field-level error and warning text is written directly below the affected
+  input whenever a step check identifies a specific field.
 - Step 6 switches to **Review and generate**: readiness check, generation
   progress, delivery ZIP, handoff readiness, preview, BOM, generated files,
   and source-material status.

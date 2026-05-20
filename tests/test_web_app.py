@@ -311,14 +311,14 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Structural letter" in response.text
     assert "Check readiness" in response.text
     assert "Readiness check" in response.text
-    assert "Project checklist" in response.text
+    assert "Step status" in response.text
     assert "Review and generate" in response.text
     assert "Operator tools" in response.text
-    assert "Next action" in response.text
+    assert "Current step" in response.text
     assert "Package QA" in response.text
     assert "Package outputs" in response.text
     assert "Review preview" in response.text
-    assert "Step validation" in response.text
+    assert "Needs attention" in response.text
     assert "Save draft" in response.text
     assert "Continue" in response.text
     assert "Back" in response.text
