@@ -135,7 +135,7 @@ generation still uses.
 |---|---|---|
 | Project | System type, customer name, standard U.S. address | Keep in the primary path. These are the only fields a normal user must know. |
 | Project | Utility, AHJ, code basis | Keep visible as **Address check result**. These are derived from lookup and editable for correction, but should not block estimate-stage continuation. |
-| Project | Project name, coordinates, APN, lookup mode, permit profile, sample project | Move behind **Advanced project settings**. Project name is auto-generated from address and system type when blank. |
+| Project | Project name, coordinates, APN, lookup mode, permit profile, sample project | Hide from the user path. Keep them as system metadata: project name is auto-generated, coordinates come from address lookup, permit profile and lookup mode use defaults, and APN is filled only when a parcel provider returns it. |
 | Usage | Meter number, ESID | Keep typed; project-specific utility identifiers. |
 | Usage | Meter location | Convert to select + Other in P12 (`Exterior garage wall`, `Exterior side wall`, `Basement`, `Meter bank`, `Other`). |
 | Usage | ESS install location, roof condition, attic access | Already good as selects. Keep. |
@@ -276,16 +276,16 @@ Utility, AHJ, and NEC code basis appear under **Address check result**. They
 are editable because lookup data can be incomplete, but they are not required
 knowledge for a customer starting an estimate.
 
-The **Load sample project** selector lives under **Advanced project settings**
-because it is a demo/smoke-test helper, not normal address entry. W17a includes
-these Mansfield, TX samples:
+Project title overrides, coordinates, permit profile, lookup mode, and sample
+projects are hidden from the normal UI. They remain in the DOM/payload as system
+metadata so operators can still run smoke tests and downstream generation keeps
+the same schema contract.
 
-- `905 Crossvine Drive, Mansfield, TX 76063`
-- `2806 Green Circle Drive, Mansfield, TX 76063`
-
-Both use the DFW simulated residential monthly usage curve documented in
-**[Web UI language](web-ui-language.md)** until a real utility bill or Smart
-Meter Texas export is uploaded.
+Parcel/APN is also hidden from the user path. `_lookup_suggested_payload()` will
+map `apn`, `parcel_id`, `parcel_number`, `property_id`, `account_number`, or
+`cad_account_number` into the project APN field when a county parcel provider is
+configured. The built-in Mapbox/NREL/Google Solar providers do not currently
+guarantee APN data.
 
 ## Source Materials
 

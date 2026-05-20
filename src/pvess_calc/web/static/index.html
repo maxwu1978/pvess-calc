@@ -152,46 +152,19 @@
             </div>
           </div>
 
-          <details class="advanced-settings">
-            <summary>
-              <span>Advanced project settings</span>
-              <small>Project title, parcel, coordinates, lookup mode, and demo samples</small>
-            </summary>
-            <div class="grid two">
-              <label>Project name override
-                <input name="project_name" placeholder="Auto-generated from address and system type" />
-              </label>
-              <label>APN / parcel
-                <input name="apn" placeholder="optional" />
-              </label>
-              <label>Coordinates
-                <input name="coordinates" placeholder="33.1414, -96.8012" />
-              </label>
-              <label>Permit profile
-                <select name="permit_profile">
-                  <option value="wyssling_like" selected>Wyssling-like</option>
-                  <option value="tx_residential_pv">TX residential PV</option>
-                  <option value="internal">Internal</option>
-                </select>
-              </label>
-              <label>Lookup mode
-                <select id="lookup-mode" aria-label="Address lookup mode">
-                  <option value="online" selected>Use online lookup when available</option>
-                  <option value="offline">Use offline reference data only</option>
-                </select>
-              </label>
-              <label>Load sample project
-                <select id="address-sample">
-                  <option value="" selected>Manual address entry</option>
-                  <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX 75035</option>
-                  <option value="crossvine">905 Crossvine Drive, Mansfield, TX 76063</option>
-                  <option value="green_circle">2806 Green Circle Drive, Mansfield, TX 76063</option>
-                </select>
-              </label>
-            </div>
-          </details>
+          <input type="hidden" name="project_name" value="" />
+          <input type="hidden" name="apn" value="" />
+          <input type="hidden" name="coordinates" value="" />
+          <input type="hidden" name="permit_profile" value="wyssling_like" />
+          <input type="hidden" id="lookup-mode" value="online" />
           <input type="hidden" name="site_address" value="7652 Glasshouse Walk, Frisco, TX 75035" />
           <input type="hidden" name="location" value="Frisco, TX" />
+          <select id="address-sample" hidden aria-hidden="true">
+            <option value="" selected>Manual address entry</option>
+            <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX 75035</option>
+            <option value="crossvine">905 Crossvine Drive, Mansfield, TX 76063</option>
+            <option value="green_circle">2806 Green Circle Drive, Mansfield, TX 76063</option>
+          </select>
           <div id="lookup-panel" class="lookup-panel hidden"></div>
         </section>
 

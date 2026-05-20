@@ -2052,6 +2052,18 @@ def _lookup_suggested_payload(fields: dict[str, Any], address) -> dict[str, Any]
         suggested["ahj"] = ahj
     if str(fields.get("nec_edition", "")) in {"2017", "2020", "2023"}:
         suggested["nec_edition"] = str(fields["nec_edition"])
+    for parcel_key in (
+        "apn",
+        "parcel_id",
+        "parcel_number",
+        "property_id",
+        "account_number",
+        "cad_account_number",
+    ):
+        parcel_value = str(fields.get(parcel_key, "")).strip()
+        if parcel_value:
+            suggested["apn"] = parcel_value
+            break
     if tariff := fields.get("recommended_export_tariff"):
         suggested["export_tariff_model"] = tariff
 

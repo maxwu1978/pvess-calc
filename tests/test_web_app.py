@@ -18,7 +18,9 @@ from pvess_calc.web.server import (
     build_source_materials,
     create_app,
     default_qet_template,
+    _lookup_suggested_payload,
 )
+from pvess_calc.lookup.address import parse_address
 from pvess_calc.web.job_store import JOB_DB_FILENAME, JobStore
 from pvess_calc.web.notifications import LeadNotificationConfig, WebhookResult
 
@@ -325,9 +327,9 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert response.text.count('name="engineer_phone"') == 1
     assert "Check address" in response.text
     assert "Address check result" in response.text
-    assert "Advanced project settings" in response.text
-    assert "Use online lookup when available" in response.text
-    assert "Load sample project" in response.text
+    assert "Advanced project settings" not in response.text
+    assert 'id="lookup-mode"' in response.text
+    assert 'id="address-sample" hidden' in response.text
     assert "Street address" in response.text
     assert "Unit / suite" in response.text
     assert "ZIP code" in response.text
@@ -343,6 +345,15 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Frisco PV + ESS Estimate" not in response.text
     assert "Project Estimator" not in response.text
     assert client.get("/favicon.ico").status_code == 204
+
+
+def test_lookup_suggested_payload_maps_parcel_identifier_to_apn():
+    suggested = _lookup_suggested_payload(
+        {"parcel_id": "R-12345", "utility_name": "Oncor Electric Delivery"},
+        parse_address("905 Crossvine Drive, Mansfield, TX 76063"),
+    )
+
+    assert suggested["apn"] == "R-12345"
 
 
 def test_web_draft_api_round_trip(tmp_path: Path):

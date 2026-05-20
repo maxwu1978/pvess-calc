@@ -21,9 +21,9 @@ Avoid:
 | Project | One address + one selected system configuration | Project name, project history |
 | Project basics | System type, customer, address, and address-check result | First form section |
 | System type | Starting configuration such as Solar + battery or Solar only | Form selector |
-| Load sample project | Built-in example project used for smoke tests or demos | Optional form helper |
 | Street address / Unit / City / State / ZIP code | Standard U.S. project address fields | Project basics |
 | Check address | Utility/AHJ/NEC/roof-data prefill from lookup providers | Button/API label |
+| Parcel / APN | County parcel/account identifier, auto-filled when parcel lookup is configured | Hidden project metadata |
 | Readiness check | Generation-before-check for schema, cost, intake, and code warnings | Button and panel |
 | Estimate package | Generated output bundle for review/handoff | Generate button and delivery copy |
 | Review preview | Embedded PDF/PNG review surface | Preview panel |

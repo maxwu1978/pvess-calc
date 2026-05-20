@@ -365,46 +365,6 @@ label {
   line-height: 1.4;
 }
 
-.advanced-settings {
-  margin-top: 16px;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 12px;
-}
-
-.advanced-settings summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 760;
-  cursor: pointer;
-}
-
-.advanced-settings summary small {
-  grid-column: 1 / -1;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.advanced-settings summary::after {
-  content: "+";
-  color: var(--blue);
-  font-size: 18px;
-  line-height: 1;
-}
-
-.advanced-settings[open] summary {
-  margin-bottom: 12px;
-}
-
-.advanced-settings[open] summary::after {
-  content: "-";
-}
-
 input,
 select,
 textarea {
