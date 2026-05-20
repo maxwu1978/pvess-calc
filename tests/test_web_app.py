@@ -296,7 +296,7 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert response.status_code == 200
     assert "TGE Solar Project Generator" in response.text
     assert "Project basics" in response.text
-    assert "Project type" in response.text
+    assert "System type" in response.text
     assert "Talesun TP7G54M-415" in response.text
     assert "InHouse HV-16" in response.text
     assert "Megarova / Megarevo" in response.text
@@ -323,7 +323,9 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Operator access token" not in response.text
     assert "Open public request page" in response.text
     assert response.text.count('name="engineer_phone"') == 1
-    assert "Auto-fill from address" in response.text
+    assert "Check address" in response.text
+    assert "Address check result" in response.text
+    assert "Advanced project settings" in response.text
     assert "Use online lookup when available" in response.text
     assert "Load sample project" in response.text
     assert "Street address" in response.text

@@ -19,11 +19,11 @@ Avoid:
 | Term | Meaning | Use |
 |---|---|---|
 | Project | One address + one selected system configuration | Project name, project history |
-| Project basics | Address, client, AHJ, utility, and project type | First form section |
-| Project type | Starting configuration such as PV + ESS or PV-only | Form selector |
+| Project basics | System type, customer, address, and address-check result | First form section |
+| System type | Starting configuration such as Solar + battery or Solar only | Form selector |
 | Load sample project | Built-in example project used for smoke tests or demos | Optional form helper |
 | Street address / Unit / City / State / ZIP code | Standard U.S. project address fields | Project basics |
-| Auto-fill from address | Utility/AHJ/NEC/roof-data prefill from lookup providers | Button/API label |
+| Check address | Utility/AHJ/NEC/roof-data prefill from lookup providers | Button/API label |
 | Readiness check | Generation-before-check for schema, cost, intake, and code warnings | Button and panel |
 | Estimate package | Generated output bundle for review/handoff | Generate button and delivery copy |
 | Review preview | Embedded PDF/PNG review surface | Preview panel |
@@ -53,7 +53,7 @@ Avoid:
 
 Use direct verb phrases:
 
-- `Auto-fill from address`
+- `Check address`
 - `Check readiness`
 - `Generate estimate package`
 - `Request estimate`

@@ -33,130 +33,163 @@
         <section id="project-basics" class="panel flow-section active-step" data-step="01" data-wizard-title="Project & Address">
           <div class="section-head">
             <h2>Project basics</h2>
-            <div class="lookup-controls">
-              <select id="lookup-mode" aria-label="Address lookup mode">
-                <option value="online" selected>Use online lookup when available</option>
-                <option value="offline">Use offline reference data only</option>
-              </select>
-              <button id="lookup-address" type="button" class="secondary-button">Auto-fill from address</button>
+            <button id="lookup-address" type="button" class="secondary-button">Check address</button>
+          </div>
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Project goal</h3>
+              <p>Select the customer-facing scope. Detailed equipment choices come later.</p>
+            </div>
+            <div class="grid two">
+              <label>System type
+                <select id="project-template">
+                  <option value="pv_ess" selected>Solar + battery</option>
+                  <option value="pv_only">Solar only</option>
+                  <option value="retrofit_existing_pv">Battery retrofit with existing solar</option>
+                </select>
+              </label>
+              <label>Customer name
+                <input name="client_name" value="Homeowner" autocomplete="name" />
+              </label>
             </div>
           </div>
-          <div class="grid two">
-            <label>Project type
-              <select id="project-template">
-                <option value="pv_ess" selected>PV + ESS</option>
-                <option value="pv_only">PV-only</option>
-                <option value="retrofit_existing_pv">Retrofit with existing PV</option>
-              </select>
-            </label>
-            <label>Load sample project
-              <select id="address-sample">
-                <option value="" selected>Manual address entry</option>
-                <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX 75035</option>
-                <option value="crossvine">905 Crossvine Drive, Mansfield, TX 76063</option>
-                <option value="green_circle">2806 Green Circle Drive, Mansfield, TX 76063</option>
-              </select>
-            </label>
-            <label>Project name
-              <input name="project_name" value="Frisco PV + ESS Package" />
-            </label>
-            <label>Client
-              <input name="client_name" value="Homeowner" />
-            </label>
-            <label>Street address
-              <input name="address_line1" value="7652 Glasshouse Walk" autocomplete="address-line1" />
-            </label>
-            <label>Unit / suite
-              <input name="address_line2" placeholder="optional" autocomplete="address-line2" />
-            </label>
-            <label>City
-              <input name="address_city" value="Frisco" autocomplete="address-level2" />
-            </label>
-            <label>State
-              <select name="address_state" autocomplete="address-level1">
-                <option value="">Select state</option>
-                <option value="AL">AL</option>
-                <option value="AK">AK</option>
-                <option value="AZ">AZ</option>
-                <option value="AR">AR</option>
-                <option value="CA">CA</option>
-                <option value="CO">CO</option>
-                <option value="CT">CT</option>
-                <option value="DE">DE</option>
-                <option value="FL">FL</option>
-                <option value="GA">GA</option>
-                <option value="HI">HI</option>
-                <option value="ID">ID</option>
-                <option value="IL">IL</option>
-                <option value="IN">IN</option>
-                <option value="IA">IA</option>
-                <option value="KS">KS</option>
-                <option value="KY">KY</option>
-                <option value="LA">LA</option>
-                <option value="ME">ME</option>
-                <option value="MD">MD</option>
-                <option value="MA">MA</option>
-                <option value="MI">MI</option>
-                <option value="MN">MN</option>
-                <option value="MS">MS</option>
-                <option value="MO">MO</option>
-                <option value="MT">MT</option>
-                <option value="NE">NE</option>
-                <option value="NV">NV</option>
-                <option value="NH">NH</option>
-                <option value="NJ">NJ</option>
-                <option value="NM">NM</option>
-                <option value="NY">NY</option>
-                <option value="NC">NC</option>
-                <option value="ND">ND</option>
-                <option value="OH">OH</option>
-                <option value="OK">OK</option>
-                <option value="OR">OR</option>
-                <option value="PA">PA</option>
-                <option value="RI">RI</option>
-                <option value="SC">SC</option>
-                <option value="SD">SD</option>
-                <option value="TN">TN</option>
-                <option value="TX" selected>TX</option>
-                <option value="UT">UT</option>
-                <option value="VT">VT</option>
-                <option value="VA">VA</option>
-                <option value="WA">WA</option>
-                <option value="WV">WV</option>
-                <option value="WI">WI</option>
-                <option value="WY">WY</option>
-              </select>
-            </label>
-            <label>ZIP code
-              <input name="address_postal_code" value="75035" inputmode="numeric" autocomplete="postal-code" />
-            </label>
-            <label>Coordinates
-              <input name="coordinates" placeholder="33.1414, -96.8012" />
-            </label>
-            <label>APN / parcel
-              <input name="apn" placeholder="optional" />
-            </label>
-            <label>AHJ
-              <input name="ahj" value="Frisco TX" />
-            </label>
-            <label>Utility
-              <input name="utility" value="Oncor Electric Delivery" />
-            </label>
-            <label>NEC edition
-              <select name="nec_edition">
-                <option value="2023" selected>2023</option>
-                <option value="2020">2020</option>
-                <option value="2017">2017</option>
-              </select>
-            </label>
-            <label>Permit profile
-              <select name="permit_profile">
-                <option value="wyssling_like" selected>Wyssling-like</option>
-                <option value="tx_residential_pv">TX residential PV</option>
-                <option value="internal">Internal</option>
-              </select>
-            </label>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Project address</h3>
+              <p>Use the standard U.S. mailing address. The system will build the project title and local assumptions from this.</p>
+            </div>
+            <div class="grid two">
+              <label>Street address
+                <input name="address_line1" value="7652 Glasshouse Walk" autocomplete="address-line1" />
+              </label>
+              <label>Unit / suite
+                <input name="address_line2" placeholder="optional" autocomplete="address-line2" />
+              </label>
+              <label>City
+                <input name="address_city" value="Frisco" autocomplete="address-level2" />
+              </label>
+              <label>State
+                <select name="address_state" autocomplete="address-level1">
+                  <option value="">Select state</option>
+                  <option value="AL">AL</option>
+                  <option value="AK">AK</option>
+                  <option value="AZ">AZ</option>
+                  <option value="AR">AR</option>
+                  <option value="CA">CA</option>
+                  <option value="CO">CO</option>
+                  <option value="CT">CT</option>
+                  <option value="DE">DE</option>
+                  <option value="FL">FL</option>
+                  <option value="GA">GA</option>
+                  <option value="HI">HI</option>
+                  <option value="ID">ID</option>
+                  <option value="IL">IL</option>
+                  <option value="IN">IN</option>
+                  <option value="IA">IA</option>
+                  <option value="KS">KS</option>
+                  <option value="KY">KY</option>
+                  <option value="LA">LA</option>
+                  <option value="ME">ME</option>
+                  <option value="MD">MD</option>
+                  <option value="MA">MA</option>
+                  <option value="MI">MI</option>
+                  <option value="MN">MN</option>
+                  <option value="MS">MS</option>
+                  <option value="MO">MO</option>
+                  <option value="MT">MT</option>
+                  <option value="NE">NE</option>
+                  <option value="NV">NV</option>
+                  <option value="NH">NH</option>
+                  <option value="NJ">NJ</option>
+                  <option value="NM">NM</option>
+                  <option value="NY">NY</option>
+                  <option value="NC">NC</option>
+                  <option value="ND">ND</option>
+                  <option value="OH">OH</option>
+                  <option value="OK">OK</option>
+                  <option value="OR">OR</option>
+                  <option value="PA">PA</option>
+                  <option value="RI">RI</option>
+                  <option value="SC">SC</option>
+                  <option value="SD">SD</option>
+                  <option value="TN">TN</option>
+                  <option value="TX" selected>TX</option>
+                  <option value="UT">UT</option>
+                  <option value="VT">VT</option>
+                  <option value="VA">VA</option>
+                  <option value="WA">WA</option>
+                  <option value="WV">WV</option>
+                  <option value="WI">WI</option>
+                  <option value="WY">WY</option>
+                </select>
+              </label>
+              <label>ZIP code
+                <input name="address_postal_code" value="75035" inputmode="numeric" autocomplete="postal-code" />
+              </label>
+            </div>
           </div>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Address check result</h3>
+              <p>Click Check address to fill local utility, AHJ, code basis, coordinates, and roof lookup data. You can continue if these need later review.</p>
+            </div>
+            <div class="grid three">
+              <label>Utility
+                <input name="utility" value="Oncor Electric Delivery" />
+              </label>
+              <label>AHJ
+                <input name="ahj" value="Frisco TX" />
+              </label>
+              <label>Code basis
+                <select name="nec_edition">
+                  <option value="2023" selected>NEC 2023</option>
+                  <option value="2020">NEC 2020</option>
+                  <option value="2017">NEC 2017</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <details class="advanced-settings">
+            <summary>
+              <span>Advanced project settings</span>
+              <small>Project title, parcel, coordinates, lookup mode, and demo samples</small>
+            </summary>
+            <div class="grid two">
+              <label>Project name override
+                <input name="project_name" placeholder="Auto-generated from address and system type" />
+              </label>
+              <label>APN / parcel
+                <input name="apn" placeholder="optional" />
+              </label>
+              <label>Coordinates
+                <input name="coordinates" placeholder="33.1414, -96.8012" />
+              </label>
+              <label>Permit profile
+                <select name="permit_profile">
+                  <option value="wyssling_like" selected>Wyssling-like</option>
+                  <option value="tx_residential_pv">TX residential PV</option>
+                  <option value="internal">Internal</option>
+                </select>
+              </label>
+              <label>Lookup mode
+                <select id="lookup-mode" aria-label="Address lookup mode">
+                  <option value="online" selected>Use online lookup when available</option>
+                  <option value="offline">Use offline reference data only</option>
+                </select>
+              </label>
+              <label>Load sample project
+                <select id="address-sample">
+                  <option value="" selected>Manual address entry</option>
+                  <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX 75035</option>
+                  <option value="crossvine">905 Crossvine Drive, Mansfield, TX 76063</option>
+                  <option value="green_circle">2806 Green Circle Drive, Mansfield, TX 76063</option>
+                </select>
+              </label>
+            </div>
+          </details>
           <input type="hidden" name="site_address" value="7652 Glasshouse Walk, Frisco, TX 75035" />
           <input type="hidden" name="location" value="Frisco, TX" />
           <div id="lookup-panel" class="lookup-panel hidden"></div>

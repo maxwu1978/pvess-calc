@@ -36,7 +36,7 @@ scoped to the jobs they create.
 1. Fill **Project basics**, **Site and field data**, **System equipment**,
    **Service, roof, and cost assumptions**, and
    **Source materials and evidence**.
-2. Optional: click **Auto-fill from address**. Online mode uses configured
+2. Optional: click **Check address**. Online mode uses configured
    Mapbox, NREL, and Google Solar providers when keys are available; offline
    mode uses only bundled utility/AHJ/NEC/rate datasets.
 3. Run **Check readiness**. This checks schema validity, interconnection status,
@@ -78,8 +78,8 @@ P10 changes the operator page from a single long intake form into a guided
 wizard. The same browser form fields and generation API remain underneath, but
 the operator now works through six reviewable steps:
 
-1. **Project & Address** — project type, client, address, AHJ, utility, NEC,
-   permit profile, and address lookup.
+1. **Project & Address** — system type, customer name, standard U.S. address,
+   and an address-check result for utility, AHJ, and code basis.
 2. **Usage & Goals** — monthly usage, simulated-vs-real source status, meter
    data, and ESS install constraints.
 3. **System Equipment** — module, string, inverter, and battery selections.
@@ -133,9 +133,9 @@ generation still uses.
 
 | Step | Field group | UX decision |
 |---|---|---|
-| Project | Project type, sample address, lookup mode, NEC edition, permit profile | Already good as selects. Keep. |
-| Project | Project name, client, site address | Keep as typed fields; these are project-specific. |
-| Project | Coordinates, APN, location, AHJ, utility | Keep, but P12 should make coordinates/APN advanced and use lookup/autocomplete for AHJ and utility. |
+| Project | System type, customer name, standard U.S. address | Keep in the primary path. These are the only fields a normal user must know. |
+| Project | Utility, AHJ, code basis | Keep visible as **Address check result**. These are derived from lookup and editable for correction, but should not block estimate-stage continuation. |
+| Project | Project name, coordinates, APN, lookup mode, permit profile, sample project | Move behind **Advanced project settings**. Project name is auto-generated from address and system type when blank. |
 | Usage | Meter number, ESID | Keep typed; project-specific utility identifiers. |
 | Usage | Meter location | Convert to select + Other in P12 (`Exterior garage wall`, `Exterior side wall`, `Basement`, `Meter bank`, `Other`). |
 | Usage | ESS install location, roof condition, attic access | Already good as selects. Keep. |
@@ -259,7 +259,7 @@ instead of accepting only the automatic best match.
 
 ## Address Input
 
-Project basics uses standard U.S. address fields:
+Project basics uses standard U.S. address fields in the primary path:
 
 - Street address
 - Unit / suite
@@ -268,10 +268,17 @@ Project basics uses standard U.S. address fields:
 - ZIP code
 
 The browser composes these into the existing `site_address` and `location`
-payload fields for lookup, preflight, and generation.
+payload fields for lookup, preflight, and generation. If the project name
+override is blank, it also generates a project name from the street address and
+system type.
 
-The **Load sample project** selector keeps a few realistic smoke-test inputs
-in the UI. W17a includes these Mansfield, TX samples:
+Utility, AHJ, and NEC code basis appear under **Address check result**. They
+are editable because lookup data can be incomplete, but they are not required
+knowledge for a customer starting an estimate.
+
+The **Load sample project** selector lives under **Advanced project settings**
+because it is a demo/smoke-test helper, not normal address entry. W17a includes
+these Mansfield, TX samples:
 
 - `905 Crossvine Drive, Mansfield, TX 76063`
 - `2806 Green Circle Drive, Mansfield, TX 76063`

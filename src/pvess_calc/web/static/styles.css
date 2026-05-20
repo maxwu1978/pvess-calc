@@ -91,7 +91,7 @@ h1 {
 
 .topbar-actions {
   display: grid;
-  grid-template-columns: auto minmax(280px, 320px);
+  grid-template-columns: auto;
   gap: 12px;
   align-items: center;
 }
@@ -310,6 +310,10 @@ h2 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .grid.four {
   grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
@@ -326,6 +330,79 @@ label {
   color: var(--muted);
   font-size: 12px;
   font-weight: 650;
+}
+
+.intake-block {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.section-head + .intake-block {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+
+.block-heading {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.block-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.block-heading p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.advanced-settings {
+  margin-top: 16px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 12px;
+}
+
+.advanced-settings summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.advanced-settings summary small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.advanced-settings summary::after {
+  content: "+";
+  color: var(--blue);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.advanced-settings[open] summary {
+  margin-bottom: 12px;
+}
+
+.advanced-settings[open] summary::after {
+  content: "-";
 }
 
 input,

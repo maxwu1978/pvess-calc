@@ -106,7 +106,7 @@ const wizardStepOrder = [
 const wizardSteps = {
   "project-basics": {
     title: "Project & Address",
-    summary: "Confirm the project identity, address, AHJ, utility, NEC edition, and lookup source before moving on.",
+    summary: "Select the project scope, enter the U.S. address, then confirm local utility, AHJ, and code basis when available.",
   },
   "site-field-data": {
     title: "Usage & Goals",
@@ -614,17 +614,16 @@ function validateStep(stepId, payload) {
   const acKw = inverterAmps * 240 * inverterQty / 1000;
 
   if (stepId === "project-basics") {
-    if (!payload.project_name) errors.push(issue("project_name", "Project name is required."));
     if (!payload.site_address) errors.push(issue("address_line1", "Street address is required before lookup or generation."));
     if (!payload.location) errors.push(issue("address_city", "City and state are required for climate, rate, and AHJ assumptions."));
     if (!form.elements.address_postal_code?.value.trim()) {
       errors.push(issue("address_postal_code", "ZIP code is required for a standard U.S. project address."));
     }
-    if (!payload.ahj) warnings.push(issue("ahj", "AHJ is blank; estimate can continue but permit routing will need review."));
-    if (!payload.utility) warnings.push(issue("utility", "Utility is blank; default economics and interconnection assumptions may be used."));
-    if (!payload.coordinates) warnings.push(issue("coordinates", "Coordinates are missing; satellite/roof lookup confidence may be lower."));
+    if (!payload.ahj) warnings.push(issue("ahj", "AHJ is not filled yet; check the address or confirm it later."));
+    if (!payload.utility) warnings.push(issue("utility", "Utility is not filled yet; check the address or confirm it later."));
     if (payload.site_address) passes.push(issue("address_line1", "U.S. address captured for project lookup and output title block."));
-    if (payload.nec_edition) passes.push(issue("nec_edition", `NEC ${payload.nec_edition} selected.`));
+    if (payload.project_name) passes.push(issue("project_name", `Project name: ${payload.project_name}.`));
+    if (payload.nec_edition) passes.push(issue("nec_edition", `Code basis set to NEC ${payload.nec_edition}.`));
   }
 
   if (stepId === "site-field-data") {
@@ -968,13 +967,27 @@ function syncUsAddressPayload(payload) {
   ].filter(Boolean).join(", ");
   payload.site_address = [street, cityStateZip].filter(Boolean).join(", ");
   payload.location = [city, state].filter(Boolean).join(", ");
+  if (!payload.project_name) {
+    payload.project_name = deriveProjectName(payload.site_address);
+  }
   setRawFieldValue("site_address", payload.site_address);
   setRawFieldValue("location", payload.location);
+  setRawFieldValue("project_name", payload.project_name);
   delete payload.address_line1;
   delete payload.address_line2;
   delete payload.address_city;
   delete payload.address_state;
   delete payload.address_postal_code;
+}
+
+function deriveProjectName(siteAddress) {
+  const street = String(siteAddress || "").split(",")[0]?.trim() || "Residential";
+  const typeLabel = {
+    pv_ess: "Solar + Battery",
+    pv_only: "Solar",
+    retrofit_existing_pv: "Battery Retrofit",
+  }[projectTemplate.value] || "Solar";
+  return `${street} ${typeLabel} Project`;
 }
 
 function validatePayload(payload) {
@@ -1051,8 +1064,8 @@ async function runAddressLookup() {
   }
 
   lookupButton.disabled = true;
-  lookupButton.textContent = "Auto-filling...";
-  statusEl.textContent = "Looking up address details.";
+  lookupButton.textContent = "Checking...";
+  statusEl.textContent = "Checking address details.";
   try {
     const mode = lookupMode.value || "online";
     const response = await apiFetch(
@@ -1064,14 +1077,16 @@ async function runAddressLookup() {
     }
     applyLookupToForm(data.suggested_payload || {});
     renderLookup(data);
-    statusEl.textContent = `Address auto-fill ${data.status}`;
+    renderCurrentStepValidation({ quiet: false });
+    localAutosave();
+    statusEl.textContent = `Address check ${data.status}`;
   } catch (error) {
     statusEl.textContent = error.message;
     statusEl.classList.add("error");
     renderError(error.message);
   } finally {
     lookupButton.disabled = false;
-    lookupButton.textContent = "Auto-fill from address";
+    lookupButton.textContent = "Check address";
   }
 }
 
