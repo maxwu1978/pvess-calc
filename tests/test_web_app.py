@@ -304,6 +304,9 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Megarova / Megarevo" in response.text
     assert "Hoymile / Hoymiles" in response.text
     assert "Growatt" in response.text
+    assert "PV modules" in response.text
+    assert "Inverter" in response.text
+    assert "Select a battery package" in response.text
     assert "Usage and site basics" in response.text
     assert "Usage source" in response.text
     assert "Average monthly kWh" in response.text

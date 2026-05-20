@@ -150,7 +150,7 @@ fields stay in hidden payload defaults or the Review checklist.
 | Usage | Roof material | Keep as a simple select. Detailed roof structure stays in Review/AHJ-ready checklist. |
 | Usage | Meter number, ESID, roof height, construction, framing, condition, attic access, decking, roof layers | Hide from the customer path. These are AHJ/structural review fields collected from utility bills, photos, site survey, or operator review. |
 | Usage | Engineer firm/contact/address, installer details, equipment coordinates | Hide from the customer path. Engineer/installer values are profile/default data; coordinates are internal routing inputs. |
-| Equipment | Module, inverter, battery | Already good as selects. Keep one inverter brand/model family selected at a time. |
+| Equipment | Module, inverter, battery | Split into three visible sections: PV modules, Inverter, and Battery. Keep one inverter brand/model family selected at a time. |
 | Equipment | Module watts/brand/model, inverter model, battery kWh/model | These are read-only derived fields. P12 should visually mark them as derived or collapse them under equipment details. |
 | Equipment | Modules, strings, inverter qty, battery qty | Keep numeric. P12 should offer steppers or suggested package sizes. |
 | Equipment | AC output amps | Usually derived from selected inverter. Keep editable only under advanced override. |

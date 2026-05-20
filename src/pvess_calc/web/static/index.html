@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TGE Solar Project Generator</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260520-step3-equipment" />
   </head>
   <body>
     <header class="topbar">
@@ -281,139 +281,165 @@
           <div class="section-head">
             <h2>System equipment</h2>
           </div>
-          <div class="grid four">
-            <label>Modules
-              <input name="modules" type="number" min="1" value="32" />
-            </label>
-            <label>Strings
-              <input name="strings" type="number" min="1" value="4" />
-            </label>
-            <label>Module
-              <select name="module_choice" id="module-choice">
-                <option
-                  value="talesun_tp7g54m_415"
-                  data-brand="Talesun"
-                  data-model="TP7G54M-415"
-                  data-watts="415"
-                  selected
-                >Talesun TP7G54M-415</option>
-                <option
-                  value="rec_alpha_pure_410"
-                  data-brand="REC"
-                  data-model="Alpha Pure REC410AA"
-                  data-watts="410"
-                >REC Alpha Pure 410</option>
-                <option
-                  value="canadian_solar_hiku7_595"
-                  data-brand="Canadian Solar"
-                  data-model="HiKu7 CS7N-595MS"
-                  data-watts="595"
-                >Canadian Solar HiKu7 595</option>
-                <option
-                  value="generic_420"
-                  data-brand="Generic"
-                  data-model="MONO-420-144"
-                  data-watts="420"
-                >Generic MONO-420</option>
-              </select>
-            </label>
-            <label>Module watts
-              <input id="module-watts-display" value="415" readonly />
-            </label>
-            <label>Module brand
-              <input id="module-brand-display" value="Talesun" readonly />
-            </label>
-            <label>Module model
-              <input id="module-model-display" value="TP7G54M-415" readonly />
-            </label>
-            <label>Inverter brand
-              <select name="inverter_choice" id="inverter-choice">
-                <option
-                  value="megarova"
-                  data-brand="Megarevo"
-                  data-model="R11KLNA"
-                  data-amps="45.8"
-                >Megarova / Megarevo</option>
-                <option
-                  value="hoymile"
-                  data-brand="Hoymiles"
-                  data-model="HYS-11.5LV-USG1"
-                  data-amps="48"
-                >Hoymile / Hoymiles</option>
-                <option
-                  value="growatt"
-                  data-brand="Growatt"
-                  data-model="MIN 11400TL-XH-US"
-                  data-amps="48"
-                  selected
-                >Growatt</option>
-              </select>
-            </label>
-            <label>Inverter model
-              <input id="inverter-model-display" value="MIN 11400TL-XH-US" readonly />
-            </label>
-            <label>Inverter qty
-              <input name="inverter_quantity" type="number" min="1" value="1" />
-            </label>
-            <label>AC output amps
-              <input name="inverter_ac_output_a" type="number" min="1" step="0.1" value="48" />
-            </label>
-            <label>Battery
-              <select name="battery_choice" id="battery-choice">
-                <option
-                  value="none"
-                  data-brand="None"
-                  data-model="PV-only"
-                  data-kwh="0"
-                >No battery</option>
-                <option
-                  value="inhouse_16kwh_hv"
-                  data-brand="InHouse"
-                  data-model="HV-16"
-                  data-kwh="16"
-                  selected
-                >InHouse HV-16</option>
-                <option
-                  value="growatt_apx_20kwh"
-                  data-brand="Growatt"
-                  data-model="APX HV 20K"
-                  data-kwh="20"
-                >Growatt APX HV 20K</option>
-                <option
-                  value="tesla_powerwall_3"
-                  data-brand="Tesla"
-                  data-model="Powerwall 3"
-                  data-kwh="13.5"
-                >Tesla Powerwall 3</option>
-                <option
-                  value="eg4_lifepower4_v2"
-                  data-brand="EG4"
-                  data-model="LifePower4 V2"
-                  data-kwh="5.12"
-                >EG4 LifePower4 V2</option>
-                <option
-                  value="franklinwh_apower"
-                  data-brand="FranklinWH"
-                  data-model="aPower"
-                  data-kwh="13.6"
-                >FranklinWH aPower</option>
-                <option
-                  value="enphase_iq_battery_5p"
-                  data-brand="Enphase"
-                  data-model="IQ Battery 5P"
-                  data-kwh="5"
-                >Enphase IQ Battery 5P</option>
-              </select>
-            </label>
-            <label>Battery qty
-              <input name="battery_quantity" type="number" min="0" value="1" />
-            </label>
-            <label>Battery kWh each
-              <input id="battery-kwh-display" value="16" readonly />
-            </label>
-            <label>Battery model
-              <input id="battery-model-display" value="HV-16" readonly />
-            </label>
+          <div class="equipment-sections">
+            <div class="intake-block">
+              <div class="block-heading">
+                <h3>PV modules</h3>
+                <p>Select the module family and target array count.</p>
+              </div>
+              <div class="grid four">
+                <label>Modules
+                  <input name="modules" type="number" min="1" value="32" />
+                </label>
+                <label>Strings
+                  <input name="strings" type="number" min="1" value="4" />
+                </label>
+                <label>Module
+                  <select name="module_choice" id="module-choice">
+                    <option
+                      value="talesun_tp7g54m_415"
+                      data-brand="Talesun"
+                      data-model="TP7G54M-415"
+                      data-watts="415"
+                      selected
+                    >Talesun TP7G54M-415</option>
+                    <option
+                      value="rec_alpha_pure_410"
+                      data-brand="REC"
+                      data-model="Alpha Pure REC410AA"
+                      data-watts="410"
+                    >REC Alpha Pure 410</option>
+                    <option
+                      value="canadian_solar_hiku7_595"
+                      data-brand="Canadian Solar"
+                      data-model="HiKu7 CS7N-595MS"
+                      data-watts="595"
+                    >Canadian Solar HiKu7 595</option>
+                    <option
+                      value="generic_420"
+                      data-brand="Generic"
+                      data-model="MONO-420-144"
+                      data-watts="420"
+                    >Generic MONO-420</option>
+                  </select>
+                </label>
+                <label>Module watts
+                  <input id="module-watts-display" value="415" readonly />
+                </label>
+                <label>Module brand
+                  <input id="module-brand-display" value="Talesun" readonly />
+                </label>
+                <label>Module model
+                  <input id="module-model-display" value="TP7G54M-415" readonly />
+                </label>
+              </div>
+            </div>
+
+            <div class="intake-block">
+              <div class="block-heading">
+                <h3>Inverter</h3>
+                <p>Pick one inverter family. Model and AC output update from the selection.</p>
+              </div>
+              <div class="grid four">
+                <label>Inverter brand
+                  <select name="inverter_choice" id="inverter-choice">
+                    <option
+                      value="megarova"
+                      data-brand="Megarevo"
+                      data-model="R11KLNA"
+                      data-amps="45.8"
+                    >Megarova / Megarevo</option>
+                    <option
+                      value="hoymile"
+                      data-brand="Hoymiles"
+                      data-model="HYS-11.5LV-USG1"
+                      data-amps="48"
+                    >Hoymile / Hoymiles</option>
+                    <option
+                      value="growatt"
+                      data-brand="Growatt"
+                      data-model="MIN 11400TL-XH-US"
+                      data-amps="48"
+                      selected
+                    >Growatt</option>
+                  </select>
+                </label>
+                <label>Inverter model
+                  <input id="inverter-model-display" value="MIN 11400TL-XH-US" readonly />
+                </label>
+                <label>Inverter qty
+                  <input name="inverter_quantity" type="number" min="1" value="1" />
+                </label>
+                <label>AC output amps
+                  <input name="inverter_ac_output_a" type="number" min="1" step="0.1" value="48" />
+                </label>
+              </div>
+            </div>
+
+            <div class="intake-block">
+              <div class="block-heading">
+                <h3>Battery</h3>
+                <p>Select a battery package, or choose no battery for a PV-only estimate.</p>
+              </div>
+              <div class="grid four">
+                <label>Battery
+                  <select name="battery_choice" id="battery-choice">
+                    <option
+                      value="none"
+                      data-brand="None"
+                      data-model="PV-only"
+                      data-kwh="0"
+                    >No battery</option>
+                    <option
+                      value="inhouse_16kwh_hv"
+                      data-brand="InHouse"
+                      data-model="HV-16"
+                      data-kwh="16"
+                      selected
+                    >InHouse HV-16</option>
+                    <option
+                      value="growatt_apx_20kwh"
+                      data-brand="Growatt"
+                      data-model="APX HV 20K"
+                      data-kwh="20"
+                    >Growatt APX HV 20K</option>
+                    <option
+                      value="tesla_powerwall_3"
+                      data-brand="Tesla"
+                      data-model="Powerwall 3"
+                      data-kwh="13.5"
+                    >Tesla Powerwall 3</option>
+                    <option
+                      value="eg4_lifepower4_v2"
+                      data-brand="EG4"
+                      data-model="LifePower4 V2"
+                      data-kwh="5.12"
+                    >EG4 LifePower4 V2</option>
+                    <option
+                      value="franklinwh_apower"
+                      data-brand="FranklinWH"
+                      data-model="aPower"
+                      data-kwh="13.6"
+                    >FranklinWH aPower</option>
+                    <option
+                      value="enphase_iq_battery_5p"
+                      data-brand="Enphase"
+                      data-model="IQ Battery 5P"
+                      data-kwh="5"
+                    >Enphase IQ Battery 5P</option>
+                  </select>
+                </label>
+                <label>Battery qty
+                  <input name="battery_quantity" type="number" min="0" value="1" />
+                </label>
+                <label>Battery kWh each
+                  <input id="battery-kwh-display" value="16" readonly />
+                </label>
+                <label>Battery model
+                  <input id="battery-model-display" value="HV-16" readonly />
+                </label>
+              </div>
+            </div>
           </div>
         </section>
 
