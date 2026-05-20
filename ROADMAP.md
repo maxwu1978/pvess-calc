@@ -18,6 +18,33 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P4 — public lead intake and estimate conversion ✅ DONE 2026-05-20
+
+Goal: let prospective customers submit project requests publicly while keeping
+the operator generator, generated files, and internal APIs behind Cloudflare
+Access and the Web admin/operator token.
+
+Completed:
+
+- Added a public `/lead` estimate-request page with contact, address, project
+  interest, usage, bill upload, and notes.
+- Added anonymous `POST /api/leads` intake with validation, optional utility
+  usage parsing, and persistent SQLite lead storage.
+- Added authenticated `GET /api/leads` plus an internal **Public leads** panel
+  for operators.
+- Added authenticated lead conversion to customer-summary-only estimate jobs.
+- Added Web tests for public auth bypass, protected lead listing, and lead
+  conversion payload constraints.
+- Extended Cloudflare Access automation with path-specific Bypass applications
+  for `/lead` and `/api/leads`, leaving the root generator protected.
+
+Closing standards met:
+
+- Anonymous users can only see the lead page and submit a lead.
+- Internal lead list and estimate conversion require admin/operator auth.
+- Converted leads create estimate-only packages with simulated source status.
+- Online smoke checks include the unauthenticated lead page.
+
 ### Web UI P3a — guided page language ✅ DONE 2026-05-20
 
 Goal: make the browser UI more self-guiding for operators and early customers

@@ -141,7 +141,8 @@ Local profile files live in `deploy/reelamate/local-tunnel/`:
 - `install-p1-launchagents.sh` installs scheduled backup and health-check
   LaunchAgents.
 - `configure-cloudflare-access.sh` creates the Zero Trust Access app, operator
-  email policy, health-check service token, and service-auth policy.
+  email policy, health-check service token, service-auth policy, and
+  path-scoped public lead intake bypasses.
 - `P0_RUNBOOK.md` contains the active operator runbook.
 
 Initial local setup:
@@ -229,7 +230,18 @@ chmod 600 ~/.pvess/secrets/cloudflare-token ~/.pvess/secrets/cloudflare-access-e
 The Cloudflare API token must be scoped to the account and include
 `Access: Apps and Policies Write/Edit` plus
 `Access: Service Tokens Write/Edit`. The script intentionally refuses to
-create an `Include Everyone` policy.
+create a broad `Include Everyone` Allow policy.
+
+P4 public lead intake uses two narrowly scoped Access applications:
+
+- `tge.reelamate.com/lead`
+- `tge.reelamate.com/api/leads`
+
+Each path app has a Bypass policy with `Include Everyone`, while the root
+`tge.reelamate.com` app keeps the operator email and service-token policies.
+This matches Cloudflare's application-path model: a more specific path rule
+takes precedence over a broader application rule, and Bypass should be scoped
+as tightly as possible.
 
 Cloudflare references: locally managed tunnel creation, DNS route creation, and
 ingress config are documented at
@@ -237,6 +249,10 @@ ingress config are documented at
 `https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/`,
 and
 `https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/`.
+Application paths and path-scoped Bypass policies are documented at
+`https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/`
+and
+`https://developers.cloudflare.com/cloudflare-one/access-controls/policies/common-policies/#bypass-a-public-endpoint`.
 
 ### Option B: Docker Host + Caddy
 

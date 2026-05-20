@@ -30,6 +30,8 @@ Avoid:
 | Source materials and evidence | Uploaded or simulated photos, bills, specs, and structural files | Upload panel |
 | BOM and quote estimate | Bill-of-materials and quote-level cost estimate | Cost panel |
 | Generated deliverables | Complete artifact list | File panel |
+| Estimate request | Public homeowner request submitted before operator review | Public lead page |
+| Public leads | Internal queue of public estimate requests | Operator panel |
 
 ## Button Language
 
@@ -38,6 +40,8 @@ Use direct verb phrases:
 - `Auto-fill from address`
 - `Check readiness`
 - `Generate estimate package`
+- `Request estimate`
+- `Generate estimate`
 - `Download complete ZIP`
 - `Load form`
 - `Rerun package`
@@ -58,6 +62,11 @@ Lead users through the workflow in this order:
 5. Generate the estimate package.
 6. Review handoff readiness, preview artifacts, BOM/quote estimate, and
    generated deliverables.
+
+For the public lead page, guide the homeowner toward the smallest useful input:
+contact, address, project interest, usage, and bill upload. Do not expose
+operator-only terms such as Package QA, AHJ-ready candidate, or artifact review
+on the public page.
 
 Use engineering terms when they are the user's decision point, such as AHJ,
 NEC edition, interconnection, source materials, Package QA, and BOM. Avoid

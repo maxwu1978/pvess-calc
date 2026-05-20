@@ -90,6 +90,7 @@ The script creates or reuses:
 - a self-hosted Access application for `tge.reelamate.com`
 - an email Allow policy for the listed operators
 - a Service Auth token and policy for the automated health check
+- path-scoped Bypass applications for `/lead` and `/api/leads`
 
 The Access service token is stored locally at:
 

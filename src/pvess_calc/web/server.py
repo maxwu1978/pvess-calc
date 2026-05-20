@@ -449,6 +449,34 @@ class WebArtifactReviewUpdate(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+class WebLeadRecord(BaseModel):
+    lead_id: str
+    status: Literal["new", "converted", "archived"] = "new"
+    contact_name: str
+    email: str
+    phone: str = ""
+    site_address: str
+    project_type: Literal["pv_ess", "pv_only", "not_sure"] = "pv_ess"
+    utility: str = ""
+    monthly_kwh: list[float] = Field(default_factory=list)
+    notes: str = ""
+    utility_bill_path: str = ""
+    source: str = "public_form"
+    converted_job_id: str = ""
+    created_at: str
+    updated_at: str
+
+
+class WebLeadCreateResponse(BaseModel):
+    lead: WebLeadRecord
+    message: str
+
+
+class WebLeadConvertResponse(BaseModel):
+    lead: WebLeadRecord
+    job: WebJobState
+
+
 def create_app(
     *,
     jobs_dir: Path | None = None,
@@ -484,6 +512,8 @@ def create_app(
 
     @app.middleware("http")
     async def optional_basic_auth(request: Request, call_next):
+        if _request_is_public(request.url.path, request.method):
+            return await call_next(request)
         if not _has_valid_basic_auth(app, request):
             return Response(
                 status_code=401,
@@ -495,7 +525,7 @@ def create_app(
     async def optional_access_token_auth(request: Request, call_next):
         auth_context = _auth_context(app, request)
         request.state.auth_context = auth_context
-        if _request_requires_token(request.url.path):
+        if _request_requires_token(request.url.path, request.method):
             if auth_context is None:
                 return JSONResponse(
                     status_code=401,
@@ -512,6 +542,10 @@ def create_app(
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get("/lead", include_in_schema=False)
+    def lead_page() -> FileResponse:
+        return FileResponse(STATIC_DIR / "lead.html")
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> Response:
@@ -574,6 +608,75 @@ def create_app(
                 operator_id=payload.operator_id,
                 display_name=payload.display_name,
             )
+        )
+
+    @app.post("/api/leads", response_model=WebLeadCreateResponse)
+    async def create_public_lead(
+        contact_name: str = Form(...),
+        email: str = Form(...),
+        phone: str = Form(""),
+        site_address: str = Form(...),
+        project_type: Literal["pv_ess", "pv_only", "not_sure"] = Form("pv_ess"),
+        utility: str = Form(""),
+        monthly_kwh_text: str = Form(""),
+        notes: str = Form(""),
+        utility_bill: UploadFile | None = File(None),
+    ) -> WebLeadCreateResponse:
+        try:
+            lead = create_lead_record(
+                app,
+                contact_name=contact_name,
+                email=email,
+                phone=phone,
+                site_address=site_address,
+                project_type=project_type,
+                utility=utility,
+                monthly_kwh_text=monthly_kwh_text,
+                notes=notes,
+                utility_bill=await _read_upload(utility_bill),
+            )
+            return WebLeadCreateResponse(
+                lead=lead,
+                message="Lead received. TGE Solar will review the address and follow up.",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/leads")
+    def list_leads(
+        request: Request,
+        status: Literal["new", "converted", "archived"] | None = Query(None),
+        q: str = Query("", max_length=120),
+        limit: int = Query(50, ge=1, le=100),
+    ) -> dict[str, Any]:
+        _require_auth_context(request)
+        return {
+            "leads": app.state.job_store.list_leads(
+                status=status,
+                query=q,
+                limit=limit,
+            ),
+            "filters": {"status": status, "q": q, "limit": limit},
+        }
+
+    @app.post("/api/leads/{lead_id}/convert", response_model=WebLeadConvertResponse)
+    def convert_lead_to_project(
+        request: Request,
+        lead_id: str,
+    ) -> WebLeadConvertResponse:
+        context = _require_auth_context(request)
+        lead = app.state.job_store.get_lead(lead_id)
+        if lead is None:
+            raise HTTPException(status_code=404, detail="lead not found")
+        payload = web_request_from_lead(lead)
+        state = enqueue_project(payload, app, owner_id=context.operator_id)
+        updated = app.state.job_store.mark_lead_converted(
+            lead_id,
+            converted_job_id=state.job_id,
+        )
+        return WebLeadConvertResponse(
+            lead=WebLeadRecord.model_validate(updated),
+            job=state,
         )
 
     @app.get("/api/lookup/address", response_model=WebAddressLookupResponse)
@@ -908,7 +1011,18 @@ def _storage_status(app: FastAPI) -> dict[str, Any]:
     }
 
 
-def _request_requires_token(path: str) -> bool:
+def _request_is_public(path: str, method: str) -> bool:
+    normalized_method = method.upper()
+    return (
+        (normalized_method == "GET" and path == "/lead")
+        or (normalized_method == "GET" and path == "/favicon.ico")
+        or (normalized_method == "POST" and path == "/api/leads")
+    )
+
+
+def _request_requires_token(path: str, method: str) -> bool:
+    if _request_is_public(path, method):
+        return False
     if path in {"/api/health", "/api/runtime-config"}:
         return False
     return path.startswith("/api/") or path.startswith("/files/")
@@ -3063,6 +3177,188 @@ def run_package_qa_for_job(
         "package_qa": package_qa,
         "files": result_data["files"],
     }
+
+
+def create_lead_record(
+    app: FastAPI,
+    *,
+    contact_name: str,
+    email: str,
+    phone: str,
+    site_address: str,
+    project_type: str,
+    utility: str,
+    monthly_kwh_text: str,
+    notes: str,
+    utility_bill: UploadedMaterial | None,
+) -> WebLeadRecord:
+    clean_name = contact_name.strip()
+    clean_email = _clean_email(email)
+    clean_address = site_address.strip()
+    if not clean_name:
+        raise ValueError("contact name is required")
+    if not clean_email:
+        raise ValueError("valid email is required")
+    if len(clean_address) < 5:
+        raise ValueError("site address is required")
+
+    monthly = _parse_lead_monthly_kwh(monthly_kwh_text)
+    lead_id = _make_lead_id(clean_address)
+    bill_rel = ""
+    if utility_bill is not None:
+        lead_dir = app.state.jobs_dir / "leads" / lead_id
+        lead_dir.mkdir(parents=True, exist_ok=True)
+        bill_path = _unique_path(
+            lead_dir / _safe_filename(
+                utility_bill.filename,
+                default="utility-bill.pdf",
+            )
+        )
+        bill_path.write_bytes(utility_bill.content)
+        bill_rel = bill_path.relative_to(app.state.jobs_dir).as_posix()
+        parsed = parse_utility_usage(
+            filename=utility_bill.filename,
+            content_type=utility_bill.content_type,
+            content=utility_bill.content,
+        )
+        if not monthly and parsed.monthly_kwh:
+            monthly = list(parsed.monthly_kwh)
+
+    now = datetime.now(timezone.utc).isoformat()
+    record = app.state.job_store.create_lead({
+        "lead_id": lead_id,
+        "status": "new",
+        "contact_name": clean_name,
+        "email": clean_email,
+        "phone": phone.strip(),
+        "site_address": clean_address,
+        "project_type": project_type,
+        "utility": utility.strip(),
+        "monthly_kwh": monthly,
+        "notes": notes.strip()[:1000],
+        "utility_bill_path": bill_rel,
+        "source": "public_form",
+        "created_at": now,
+        "updated_at": now,
+    })
+    return WebLeadRecord.model_validate(record)
+
+
+def web_request_from_lead(lead: dict[str, Any]) -> WebProjectRequest:
+    monthly = [
+        float(value)
+        for value in (lead.get("monthly_kwh") or [])
+        if _is_finite_number(value)
+    ]
+    project_type = str(lead.get("project_type") or "pv_ess")
+    wants_battery = project_type != "pv_only"
+    site_address = str(lead.get("site_address") or "").strip()
+    utility_bill_path = str(lead.get("utility_bill_path") or "")
+    return WebProjectRequest(
+        project_name=f"{_lead_project_label(site_address)} Estimate Package",
+        client_name=str(lead.get("contact_name") or "Homeowner"),
+        site_address=site_address,
+        location=_location_from_address(site_address),
+        ahj="Authority Having Jurisdiction",
+        utility=str(lead.get("utility") or _default_utility_for_address(site_address)),
+        modules=32,
+        strings=4,
+        battery_choice="inhouse_16kwh_hv" if wants_battery else "none",
+        battery_quantity=1 if wants_battery else 0,
+        battery_capacity_kwh_each=16.0 if wants_battery else 0.0,
+        monthly_kwh=monthly if len(monthly) == 12 else [],
+        monthly_kwh_source=(
+            "utility_file"
+            if utility_bill_path and len(monthly) == 12
+            else "form"
+            if len(monthly) == 12
+            else "none"
+        ),
+        utility_bill_path=utility_bill_path,
+        site_data_source="simulated",
+        outputs=OutputOptions(
+            customer=True,
+            permit=False,
+            dxf=False,
+            labels=False,
+            qet=False,
+        ),
+    )
+
+
+def _parse_lead_monthly_kwh(raw: str) -> list[float]:
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    single_value = text.replace(",", "")
+    if text.count(",") <= 1 and re.fullmatch(
+        r"\d{1,3}(,\d{3})?(\.\d+)?|\d+(\.\d+)?",
+        text,
+    ):
+        average = float(single_value)
+        if not 50 <= average <= 5000:
+            raise ValueError("average monthly kWh should be between 50 and 5000")
+        return [average] * 12
+    values = [
+        float(item)
+        for item in re.split(r"[\s,;]+", text)
+        if item.strip()
+    ]
+    if len(values) == 1:
+        average = values[0]
+        if not 50 <= average <= 5000:
+            raise ValueError("average monthly kWh should be between 50 and 5000")
+        return [average] * 12
+    if len(values) != 12:
+        raise ValueError(
+            "usage must be either one average monthly kWh value or 12 monthly kWh values"
+        )
+    if any(value < 50 or value > 5000 for value in values):
+        raise ValueError("monthly kWh values should be between 50 and 5000")
+    return values
+
+
+def _clean_email(raw: str) -> str:
+    email = str(raw or "").strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return ""
+    return email
+
+
+def _is_finite_number(value: Any) -> bool:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return number == number and number not in {float("inf"), float("-inf")}
+
+
+def _make_lead_id(site_address: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", site_address).strip("-").lower()
+    slug = slug[:32] or "lead"
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return f"lead-{slug}-{stamp}-{uuid4().hex[:6]}"
+
+
+def _lead_project_label(site_address: str) -> str:
+    first = site_address.split(",", 1)[0].strip()
+    return first or "Solar Lead"
+
+
+def _location_from_address(site_address: str) -> str:
+    parts = [part.strip() for part in site_address.split(",") if part.strip()]
+    if len(parts) >= 3:
+        return f"{parts[-2]}, {parts[-1].split()[0]}"
+    if len(parts) >= 2:
+        return parts[-1]
+    return "Dallas, TX"
+
+
+def _default_utility_for_address(site_address: str) -> str:
+    upper = site_address.upper()
+    if " TX" in upper or upper.endswith(",TX") or "TEXAS" in upper:
+        return "Oncor Electric Delivery"
+    return "Utility TBD"
 
 
 def _upsert_generated_file(

@@ -16,6 +16,9 @@ const deliveryEmpty = document.querySelector("#delivery-empty");
 const deliveryPackage = document.querySelector("#delivery-package");
 const sourceEmpty = document.querySelector("#source-empty");
 const sourceMaterials = document.querySelector("#source-materials");
+const leadEmpty = document.querySelector("#lead-empty");
+const leadList = document.querySelector("#lead-list");
+const leadRefresh = document.querySelector("#lead-refresh");
 const readinessEmpty = document.querySelector("#readiness-empty");
 const readinessPanel = document.querySelector("#readiness-panel");
 const packageQaEmpty = document.querySelector("#package-qa-empty");
@@ -218,6 +221,7 @@ lookupPanel.addEventListener("click", handleLookupCandidateClick);
 previewPanel.addEventListener("click", handlePreviewClick);
 fileList.addEventListener("change", handleArtifactReviewChange);
 runPackageQaButton.addEventListener("click", runPackageQa);
+leadRefresh.addEventListener("click", loadLeads);
 projectTemplate.addEventListener("change", () => applyTemplate(projectTemplate.value));
 addressSample.addEventListener("change", () => applyAddressSample(addressSample.value));
 moduleChoice.addEventListener("change", syncModuleOption);
@@ -228,7 +232,10 @@ loadAccessToken();
 syncModuleOption();
 syncInverterOption();
 syncBatteryOption({ preserveQuantity: true });
-loadRuntimeConfig().then(loadHistory);
+loadRuntimeConfig().then(() => {
+  loadHistory();
+  loadLeads();
+});
 
 async function loadRuntimeConfig() {
   try {
@@ -260,6 +267,7 @@ function saveAccessToken() {
     tokenStatus.textContent = "No token required on local server";
   }
   loadHistory();
+  loadLeads();
 }
 
 function currentAccessToken() {
@@ -1004,6 +1012,112 @@ function renderSourceMaterials(source) {
     <dt>Photo classification</dt><dd>${classifications.length ? classifications.map((item) => `${item.filename}: ${item.classified_kind}`).join("; ") : "none"}</dd>
   `;
 }
+
+async function loadLeads() {
+  if (runtimeConfig.auth_required && !currentAccessToken()) {
+    leadList.innerHTML = "";
+    leadEmpty.textContent = "Enter an operator token to view public estimate requests.";
+    leadEmpty.classList.remove("hidden");
+    return;
+  }
+  leadEmpty.textContent = "Public estimate requests appear here.";
+  try {
+    const response = await apiFetch("/api/leads");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    renderLeads(data.leads || []);
+  } catch {
+    leadList.innerHTML = "";
+    leadEmpty.textContent = "Lead list is unavailable.";
+    leadEmpty.classList.remove("hidden");
+  }
+}
+
+function renderLeads(leads) {
+  leadList.innerHTML = "";
+  leadEmpty.classList.toggle("hidden", leads.length > 0);
+  for (const lead of leads) {
+    const item = document.createElement("li");
+    const usage = Array.isArray(lead.monthly_kwh) && lead.monthly_kwh.length === 12
+      ? "usage ready"
+      : "usage missing";
+    const converted = lead.status === "converted" && lead.converted_job_id;
+    item.innerHTML = `
+      <span>
+        <strong>${escapeHtml(lead.contact_name || "New lead")}</strong>
+        <em>${escapeHtml(lead.site_address || "")}</em>
+        <em>${escapeHtml(lead.email || "")}${lead.phone ? ` · ${escapeHtml(lead.phone)}` : ""}</em>
+        <em>${escapeHtml(labelForLeadType(lead.project_type))} · ${usage} · ${escapeHtml(lead.status || "new")}</em>
+      </span>
+      <span class="history-actions">
+        ${converted ? `<button type="button" data-lead-job-id="${escapeHtml(lead.converted_job_id)}">View package</button>` : ""}
+        <button type="button" data-lead-action="convert" data-lead-id="${escapeHtml(lead.lead_id)}" ${converted ? "disabled" : ""}>Generate estimate</button>
+      </span>
+    `;
+    leadList.appendChild(item);
+  }
+}
+
+function labelForLeadType(value) {
+  if (value === "pv_only") {
+    return "Solar only";
+  }
+  if (value === "not_sure") {
+    return "Not sure yet";
+  }
+  return "Solar + battery";
+}
+
+leadList.addEventListener("click", async (event) => {
+  const jobButton = event.target.closest("[data-lead-job-id]");
+  if (jobButton) {
+    try {
+      const response = await apiFetch(`/api/jobs/${encodeURIComponent(jobButton.dataset.leadJobId)}`);
+      const state = await response.json();
+      if (!response.ok) {
+        throw new Error(formatApiError(state));
+      }
+      renderJobState(state);
+      if (state.result) {
+        renderResult(state.result);
+        statusEl.textContent = `Viewed project ${state.job_id}`;
+      }
+    } catch (error) {
+      statusEl.textContent = error.message;
+      statusEl.classList.add("error");
+      renderError(error.message);
+    }
+    return;
+  }
+  const button = event.target.closest("[data-lead-action='convert']");
+  if (!button) {
+    return;
+  }
+  const leadId = button.dataset.leadId;
+  button.disabled = true;
+  button.textContent = "Generating...";
+  clearError();
+  try {
+    const response = await apiFetch(`/api/leads/${encodeURIComponent(leadId)}/convert`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    await loadLeads();
+    setBusy(true, `Generating estimate package from lead ${leadId}.`);
+    pollJob(data.job.job_id);
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Generate estimate";
+    statusEl.textContent = error.message;
+    statusEl.classList.add("error");
+    renderError(error.message);
+  }
+});
 
 function renderReadiness(readiness) {
   const counts = readiness.counts || {};

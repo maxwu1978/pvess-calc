@@ -155,6 +155,10 @@ Run:
 deploy/reelamate/local-tunnel/configure-cloudflare-access.sh
 ```
 
+The script also creates path-scoped Bypass applications for `/lead` and
+`/api/leads`, so customers can submit estimate requests without login while
+the generator UI and generated files remain protected.
+
 ## Security
 
 - Keep `PVESS_WEB_ACCESS_TOKEN` private. Do not commit `.env`.

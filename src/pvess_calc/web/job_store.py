@@ -82,6 +82,23 @@ class JobStore:
                         created_at TEXT NOT NULL,
                         last_seen_at TEXT
                     );
+                    CREATE TABLE IF NOT EXISTS web_leads (
+                        lead_id TEXT PRIMARY KEY,
+                        status TEXT NOT NULL DEFAULT 'new',
+                        contact_name TEXT NOT NULL DEFAULT '',
+                        email TEXT NOT NULL DEFAULT '',
+                        phone TEXT NOT NULL DEFAULT '',
+                        site_address TEXT NOT NULL DEFAULT '',
+                        project_type TEXT NOT NULL DEFAULT 'pv_ess',
+                        utility TEXT NOT NULL DEFAULT '',
+                        monthly_kwh_json TEXT NOT NULL DEFAULT '[]',
+                        notes TEXT NOT NULL DEFAULT '',
+                        utility_bill_path TEXT NOT NULL DEFAULT '',
+                        source TEXT NOT NULL DEFAULT 'public_form',
+                        converted_job_id TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_owner
                         ON web_jobs(owner_id);
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_status
@@ -92,6 +109,14 @@ class JobStore:
                         ON web_jobs(project_name);
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_site_address
                         ON web_jobs(site_address);
+                    CREATE INDEX IF NOT EXISTS idx_web_leads_status
+                        ON web_leads(status);
+                    CREATE INDEX IF NOT EXISTS idx_web_leads_created_at
+                        ON web_leads(created_at DESC);
+                    CREATE INDEX IF NOT EXISTS idx_web_leads_email
+                        ON web_leads(email);
+                    CREATE INDEX IF NOT EXISTS idx_web_leads_site_address
+                        ON web_leads(site_address);
                     """
                 )
                 _ensure_column(
@@ -369,6 +394,114 @@ class JobStore:
         with self._connect() as conn:
             conn.execute("DELETE FROM web_jobs WHERE job_id = ?", (job_id,))
 
+    def create_lead(self, lead: dict[str, Any]) -> dict[str, Any]:
+        self.ensure_ready()
+        lead_id = str(lead.get("lead_id") or "")
+        if not VALID_JOB_ID.fullmatch(lead_id):
+            raise ValueError("invalid lead_id")
+        now = str(lead.get("created_at") or datetime.now(timezone.utc).isoformat())
+        row = {
+            "lead_id": lead_id,
+            "status": str(lead.get("status") or "new"),
+            "contact_name": str(lead.get("contact_name") or ""),
+            "email": str(lead.get("email") or ""),
+            "phone": str(lead.get("phone") or ""),
+            "site_address": str(lead.get("site_address") or ""),
+            "project_type": str(lead.get("project_type") or "pv_ess"),
+            "utility": str(lead.get("utility") or ""),
+            "monthly_kwh_json": json.dumps(
+                lead.get("monthly_kwh") or [],
+                ensure_ascii=False,
+            ),
+            "notes": str(lead.get("notes") or ""),
+            "utility_bill_path": str(lead.get("utility_bill_path") or ""),
+            "source": str(lead.get("source") or "public_form"),
+            "converted_job_id": str(lead.get("converted_job_id") or ""),
+            "created_at": now,
+            "updated_at": str(lead.get("updated_at") or now),
+        }
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_leads (
+                    lead_id, status, contact_name, email, phone,
+                    site_address, project_type, utility, monthly_kwh_json,
+                    notes, utility_bill_path, source, converted_job_id,
+                    created_at, updated_at
+                ) VALUES (
+                    :lead_id, :status, :contact_name, :email, :phone,
+                    :site_address, :project_type, :utility, :monthly_kwh_json,
+                    :notes, :utility_bill_path, :source, :converted_job_id,
+                    :created_at, :updated_at
+                )
+                """,
+                row,
+            )
+        return _lead_from_row(row)
+
+    def list_leads(
+        self,
+        *,
+        status: str | None = None,
+        query: str = "",
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        self.ensure_ready()
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if query.strip():
+            like = f"%{query.strip().lower()}%"
+            clauses.append(
+                "(lower(contact_name) LIKE ? OR lower(email) LIKE ? "
+                "OR lower(site_address) LIKE ? OR lower(lead_id) LIKE ?)"
+            )
+            params.extend([like, like, like, like])
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        sql = (
+            f"SELECT * FROM web_leads {where} "
+            "ORDER BY created_at DESC, lead_id DESC LIMIT ?"
+        )
+        params.append(max(1, min(int(limit), 100)))
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [_lead_from_row(row) for row in rows]
+
+    def get_lead(self, lead_id: str) -> dict[str, Any] | None:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(lead_id):
+            return None
+        row = self._lead_row(lead_id)
+        return _lead_from_row(row) if row is not None else None
+
+    def mark_lead_converted(
+        self,
+        lead_id: str,
+        *,
+        converted_job_id: str,
+    ) -> dict[str, Any]:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(lead_id):
+            raise ValueError("invalid lead_id")
+        updated_at = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE web_leads
+                SET status = 'converted',
+                    converted_job_id = ?,
+                    updated_at = ?
+                WHERE lead_id = ?
+                """,
+                (converted_job_id, updated_at, lead_id),
+            )
+        row = self._lead_row(lead_id)
+        if row is None:
+            raise ValueError("lead not found")
+        return _lead_from_row(row)
+
     def create_operator(
         self,
         *,
@@ -437,6 +570,13 @@ class JobStore:
                 (job_id,),
             ).fetchone()
 
+    def _lead_row(self, lead_id: str) -> sqlite3.Row | None:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT * FROM web_leads WHERE lead_id = ?",
+                (lead_id,),
+            ).fetchone()
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
@@ -454,6 +594,32 @@ def summarize_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
         "modules": payload.get("modules"),
         "battery_quantity": payload.get("battery_quantity"),
         "inverter_choice": payload.get("inverter_choice"),
+    }
+
+
+def _lead_from_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    keys = set(row.keys())
+    monthly_raw = row["monthly_kwh_json"] if "monthly_kwh_json" in keys else "[]"
+    try:
+        monthly = json.loads(monthly_raw or "[]")
+    except json.JSONDecodeError:
+        monthly = []
+    return {
+        "lead_id": str(row["lead_id"]),
+        "status": str(row["status"] or "new"),
+        "contact_name": str(row["contact_name"] or ""),
+        "email": str(row["email"] or ""),
+        "phone": str(row["phone"] or ""),
+        "site_address": str(row["site_address"] or ""),
+        "project_type": str(row["project_type"] or "pv_ess"),
+        "utility": str(row["utility"] or ""),
+        "monthly_kwh": monthly if isinstance(monthly, list) else [],
+        "notes": str(row["notes"] or ""),
+        "utility_bill_path": str(row["utility_bill_path"] or ""),
+        "source": str(row["source"] or "public_form"),
+        "converted_job_id": str(row["converted_job_id"] or ""),
+        "created_at": str(row["created_at"] or ""),
+        "updated_at": str(row["updated_at"] or ""),
     }
 
 

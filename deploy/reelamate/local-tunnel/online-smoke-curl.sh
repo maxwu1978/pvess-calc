@@ -56,3 +56,8 @@ curl -fsS --max-time 20 \
   "$BASE_URL/assets/app.js" > "$tmp"
 grep -q "apiFetch" "$tmp"
 echo "PASS public app.js"
+
+curl -fsS --max-time 20 \
+  "$BASE_URL/lead" > "$tmp"
+grep -q "Request a solar + battery estimate" "$tmp"
+echo "PASS unauthenticated lead page"

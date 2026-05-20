@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P4: public lead intake
+
+- Added a public `/lead` estimate-request page for homeowner contact,
+  address, usage, project interest, notes, and utility-bill upload
+- Added anonymous `POST /api/leads` plus authenticated lead listing and lead
+  conversion endpoints
+- Added the internal **Public leads** panel with estimate-package conversion
+- Added persistent SQLite lead storage under the Web job store
+- Added Cloudflare Access automation for path-scoped public bypasses at
+  `/lead` and `/api/leads` while keeping the root generator protected
+- Updated smoke, docs, and Web regression tests for the public-lead workflow
+
 ### 2026-05-20 — Web UI P3a: guided page language
 
 - Reworked browser UI copy from internal feature labels toward a guided

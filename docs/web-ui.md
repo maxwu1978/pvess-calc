@@ -48,6 +48,29 @@ scoped to the jobs they create.
 User-facing copy follows **[Web UI language](web-ui-language.md)**.
 Production deployment details live in **[Web deployment](web-deployment.md)**.
 
+## Public Lead Intake
+
+`/lead` serves a lightweight public estimate-request form for homeowners. It
+collects contact details, project interest, address, optional utility, average
+or 12-month usage, notes, and an optional utility bill or Smart Meter Texas
+export.
+
+`POST /api/leads` stores the request in the Web SQLite index and copies any
+uploaded bill under `<workdir>/leads/<lead_id>/`. If the utility upload contains
+12 valid monthly kWh values, those values are attached to the lead.
+
+The internal **Public leads** panel is visible in the main operator UI after
+login. Operators can refresh the list, see which leads have usage data, and
+click **Generate estimate**. Lead conversion creates an estimate-only package:
+
+- customer summary enabled
+- permit, DXF, labels, and QET disabled
+- source material mode set to `simulated`
+- battery omitted for PV-only leads
+
+Converted leads keep the generated job ID so operators can reopen the package
+from the lead row.
+
 ## Address Lookup
 
 `/api/lookup/address` returns provider provenance and a `suggested_payload`

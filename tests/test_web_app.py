@@ -191,6 +191,27 @@ def _submit_and_wait(
     raise AssertionError(f"job did not finish: {state}")
 
 
+def _wait_for_job(
+    client: TestClient,
+    job_id: str,
+    *,
+    headers: dict[str, str] | None = None,
+    timeout_s: float = 20.0,
+):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        status = client.get(f"/api/jobs/{job_id}", headers=headers or {})
+        assert status.status_code == 200, status.text
+        state = status.json()
+        if state["status"] == "done":
+            assert state["result"] is not None
+            return state
+        if state["status"] == "failed":
+            raise AssertionError(state.get("error"))
+        time.sleep(0.1)
+    raise AssertionError(f"job did not finish: {state}")
+
+
 def _submit_form_and_wait(
     client: TestClient,
     payload: dict,
@@ -256,6 +277,7 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Try a sample address" in response.text
     assert "905 Crossvine Drive, Mansfield, TX" in response.text
     assert "2806 Green Circle Drive, Mansfield, TX" in response.text
+    assert "Public leads" in response.text
     assert "What needs attention" in response.text
     assert "Filter" in response.text
     assert "Generate estimate package" in response.text
@@ -430,6 +452,110 @@ def test_web_basic_auth_protects_static_and_health_pages(tmp_path: Path):
 
     api_headers = {**headers, "X-PVESS-Token": "secret"}
     assert client.get("/api/jobs", headers=api_headers).status_code == 200
+
+
+def test_web_public_lead_page_and_submission_bypass_auth(tmp_path: Path):
+    client = TestClient(
+        create_app(
+            jobs_dir=tmp_path,
+            access_token="secret",
+            basic_auth=("site-user", "site-pass"),
+        )
+    )
+
+    assert client.get("/").status_code == 401
+    lead_page = client.get("/lead")
+    assert lead_page.status_code == 200
+    assert "Request a solar + battery estimate" in lead_page.text
+    assert client.get("/favicon.ico").status_code == 204
+
+    response = client.post(
+        "/api/leads",
+        data={
+            "contact_name": "Li Liu",
+            "email": "li.liutexas@yahoo.com",
+            "phone": "817-555-0100",
+            "site_address": "905 Crossvine Drive, Mansfield, TX",
+            "project_type": "pv_ess",
+            "utility": "Oncor Electric Delivery",
+            "monthly_kwh_text": "1,200",
+            "notes": "Public lead smoke test",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    lead = response.json()["lead"]
+    assert lead["email"] == "li.liutexas@yahoo.com"
+    assert lead["status"] == "new"
+    assert lead["site_address"] == "905 Crossvine Drive, Mansfield, TX"
+    assert lead["utility"] == "Oncor Electric Delivery"
+    assert lead["monthly_kwh"] == [1200.0] * 12
+
+    assert client.get("/api/leads").status_code == 401
+    headers = {
+        **_basic_headers("site-user", "site-pass"),
+        **_token_headers("secret"),
+    }
+    listed = client.get("/api/leads", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["leads"][0]["lead_id"] == lead["lead_id"]
+
+
+def test_web_lead_conversion_creates_customer_estimate_job(tmp_path: Path):
+    client = TestClient(create_app(jobs_dir=tmp_path, access_token="secret"))
+    headers = _token_headers("secret")
+    lead_response = client.post(
+        "/api/leads",
+        data={
+            "contact_name": "Solar Homeowner",
+            "email": "homeowner@example.com",
+            "site_address": "2806 Green Circle Drive, Mansfield, TX",
+            "project_type": "pv_only",
+            "monthly_kwh_text": ",".join(str(value) for value in DFW_SIMULATED_MONTHLY_KWH),
+        },
+    )
+    assert lead_response.status_code == 200, lead_response.text
+    lead = lead_response.json()["lead"]
+
+    response = client.post(
+        f"/api/leads/{lead['lead_id']}/convert",
+        headers=headers,
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["lead"]["status"] == "converted"
+    assert data["lead"]["converted_job_id"] == data["job"]["job_id"]
+
+    payload = client.get(
+        f"/api/jobs/{data['job']['job_id']}/payload",
+        headers=headers,
+    )
+    assert payload.status_code == 200, payload.text
+    stored = payload.json()
+    assert stored["client_name"] == "Solar Homeowner"
+    assert stored["project_name"] == "2806 Green Circle Drive Estimate Package"
+    assert stored["site_address"] == "2806 Green Circle Drive, Mansfield, TX"
+    assert stored["location"] == "Mansfield, TX"
+    assert stored["battery_choice"] == "none"
+    assert stored["battery_quantity"] == 0
+    assert stored["monthly_kwh_source"] == "form"
+    assert stored["site_data_source"] == "simulated"
+    assert stored["outputs"] == {
+        "customer": True,
+        "permit": False,
+        "dxf": False,
+        "labels": False,
+        "qet": False,
+    }
+
+    state = _wait_for_job(
+        client,
+        data["job"]["job_id"],
+        headers=headers,
+        timeout_s=30.0,
+    )
+    assert state["result"]["files"]
 
 
 def test_web_admin_can_create_operator_tokens(tmp_path: Path):

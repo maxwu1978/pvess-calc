@@ -118,6 +118,87 @@ for app in apps:
 ' "$HOSTNAME" <<< "$apps_json"
 }
 
+find_app_id_for_domain() {
+  local domain="$1"
+  local apps_json
+  apps_json="$(api GET "$APP_BASE")"
+  python3 -c '
+import json, sys
+domain = sys.argv[1]
+apps = json.load(sys.stdin)
+for app in apps:
+    if app.get("domain") == domain:
+        print(app.get("id", ""))
+        break
+' "$domain" <<< "$apps_json"
+}
+
+ensure_access_app() {
+  local name="$1"
+  local domain="$2"
+  local app_id
+  app_id="$(find_app_id_for_domain "$domain" || true)"
+  if [[ -z "$app_id" ]]; then
+    local body
+    body="$(python3 - <<'PY' "$name" "$domain"
+import json, sys
+print(json.dumps({
+    "name": sys.argv[1],
+    "domain": sys.argv[2],
+    "type": "self_hosted",
+    "session_duration": "24h",
+    "app_launcher_visible": False,
+    "auto_redirect_to_identity": False,
+}))
+PY
+)"
+    app_id="$(api POST "$APP_BASE" "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+    echo "Created Access app for $domain" >&2
+  else
+    echo "Access app already exists for $domain" >&2
+  fi
+  printf '%s' "$app_id"
+}
+
+policy_id_by_name_from_json() {
+  python3 - <<'PY' "$1" "$2"
+import json, sys
+policies = json.loads(sys.argv[1])
+name = sys.argv[2]
+for policy in policies:
+    if policy.get("name") == name:
+        print(policy.get("id", ""))
+        break
+PY
+}
+
+ensure_bypass_policy() {
+  local app_id="$1"
+  local policy_name="$2"
+  local policy_base="$APP_BASE/$app_id/policies"
+  local policies_json
+  local policy_id
+  policies_json="$(api GET "$policy_base")"
+  policy_id="$(policy_id_by_name_from_json "$policies_json" "$policy_name")"
+  local body
+  body="$(python3 - <<'PY' "$policy_name"
+import json, sys
+print(json.dumps({
+    "name": sys.argv[1],
+    "decision": "bypass",
+    "include": [{"everyone": {}}],
+}))
+PY
+)"
+  if [[ -z "$policy_id" ]]; then
+    api POST "$policy_base" "$body" >/dev/null
+    echo "Created path-scoped bypass policy: $policy_name"
+  else
+    api PUT "$policy_base/$policy_id" "$body" >/dev/null
+    echo "Updated path-scoped bypass policy: $policy_name"
+  fi
+}
+
 case "$APP_SCOPE" in
   account)
     APP_BASE="/accounts/$ACCOUNT_ID/access/apps"
@@ -249,5 +330,13 @@ else
   api PUT "$POLICY_BASE/$service_policy_id" "$body" >/dev/null
   echo "Updated service auth policy"
 fi
+
+lead_page_app_id="$(ensure_access_app "TGE public lead intake page" "$HOSTNAME/lead")"
+echo "LEAD_PAGE_ACCESS_APP_ID=$lead_page_app_id"
+ensure_bypass_policy "$lead_page_app_id" "TGE public lead page bypass"
+
+lead_api_app_id="$(ensure_access_app "TGE public lead intake API" "$HOSTNAME/api/leads")"
+echo "LEAD_API_ACCESS_APP_ID=$lead_api_app_id"
+ensure_bypass_policy "$lead_api_app_id" "TGE public lead API bypass"
 
 echo "Cloudflare Access configuration complete for $HOSTNAME"
