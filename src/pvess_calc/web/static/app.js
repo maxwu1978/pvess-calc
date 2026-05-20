@@ -90,7 +90,7 @@ const monthlyDetailField = document.querySelector("#monthly-detail-field");
 const usageBillHint = document.querySelector("#usage-bill-hint");
 const batteryLocationBlock = document.querySelector("#battery-location-block");
 const batteryInstallLocation = document.querySelector('select[name="battery_install_location"]');
-const essSetbackFields = document.querySelector("#ess-setback-fields");
+const batteryClearanceNote = document.querySelector("#battery-clearance-note");
 
 let activePoll = null;
 let currentFiles = [];
@@ -821,6 +821,16 @@ function reviewOnlyIntakeIssues(payload) {
   if (payload.battery_choice !== "none" && Number(payload.battery_quantity || 0) > 0 && payload.battery_install_location === "unknown") {
     warnings.push(issue("battery_install_location", "Battery install location is not confirmed yet."));
   }
+  if (
+    payload.battery_choice !== "none"
+    && Number(payload.battery_quantity || 0) > 0
+    && ["garage", "indoor"].includes(payload.battery_install_location)
+    && Number(payload.distance_to_doorway_ft || 0) <= 0
+    && Number(payload.distance_to_window_ft || 0) <= 0
+    && Number(payload.distance_to_egress_ft || 0) <= 0
+  ) {
+    warnings.push(issue("battery_install_location", "Battery door/window/egress clearance evidence is missing; verify from photos or site survey."));
+  }
   if (!payload.engineer_firm || !payload.engineer_firm_number || !payload.engineer_email || !payload.engineer_phone) {
     warnings.push(issue("engineer_firm", "Engineer-of-record details are missing for AHJ-ready package."));
   }
@@ -1449,8 +1459,8 @@ function syncUsageMode() {
 function syncBatterySiteFields() {
   const hasBattery = batteryChoice.value !== "none" && Number(batteryQtyInput.value || 0) > 0;
   batteryLocationBlock.classList.toggle("hidden", !hasBattery);
-  const needsSetbacks = hasBattery && ["garage", "indoor"].includes(batteryInstallLocation.value);
-  essSetbackFields.classList.toggle("hidden", !needsSetbacks);
+  const needsClearanceReview = hasBattery && ["garage", "indoor"].includes(batteryInstallLocation.value);
+  batteryClearanceNote.classList.toggle("hidden", !needsClearanceReview);
 }
 
 function renderBom(bom) {

@@ -146,7 +146,7 @@ fields stay in hidden payload defaults or the Review checklist.
 | Usage | Usage source, average monthly kWh, 12 monthly kWh | Keep in the primary path. Local default is the default, average monthly kWh is the simplest manual input, and 12-month detail is available when the user has bills. |
 | Usage | Meter location | Keep optional as a select. It improves plan callouts but does not block an estimate. |
 | Usage | ESS install location | Keep when battery is selected. Hide the entire block for PV-only scope. |
-| Usage | Door/window/egress setbacks | Show only when ESS location is indoor/garage. They are not useful for PV-only, outdoor, or unknown-location estimates. |
+| Usage | Door/window/egress clearances | Hide from the customer path. Keep the internal fields for AHJ/IRC checks, but verify them from photos, site survey, or operator review instead of asking the homeowner to type measurements. |
 | Usage | Roof material | Keep as a simple select. Detailed roof structure stays in Review/AHJ-ready checklist. |
 | Usage | Meter number, ESID, roof height, construction, framing, condition, attic access, decking, roof layers | Hide from the customer path. These are AHJ/structural review fields collected from utility bills, photos, site survey, or operator review. |
 | Usage | Engineer firm/contact/address, installer details, equipment coordinates | Hide from the customer path. Engineer/installer values are profile/default data; coordinates are internal routing inputs. |

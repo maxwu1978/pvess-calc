@@ -308,6 +308,10 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Usage source" in response.text
     assert "Average monthly kWh" in response.text
     assert "Roof material" in response.text
+    assert "We will verify battery clearances" in response.text
+    assert "Doorway setback ft" not in response.text
+    assert "Window setback ft" not in response.text
+    assert "Egress setback ft" not in response.text
     assert "Source materials and evidence" in response.text
     assert "Drop any site photos" in response.text
     assert "Drop any spec sheets" in response.text

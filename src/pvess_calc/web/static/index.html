@@ -199,7 +199,7 @@
           <div id="battery-location-block" class="intake-block">
             <div class="block-heading">
               <h3>Battery location</h3>
-              <p>Select the planned install area if known. Indoor and garage installs need extra clearance checks.</p>
+              <p>Select the planned install area if known. Detailed clearances are verified from photos or site survey.</p>
             </div>
             <div class="grid two">
               <label>Battery install location
@@ -212,17 +212,7 @@
                 </select>
               </label>
             </div>
-            <div id="ess-setback-fields" class="grid three hidden">
-              <label>Doorway setback ft
-                <input name="distance_to_doorway_ft" type="number" min="0" step="0.1" value="0" />
-              </label>
-              <label>Window setback ft
-                <input name="distance_to_window_ft" type="number" min="0" step="0.1" value="0" />
-              </label>
-              <label>Egress setback ft
-                <input name="distance_to_egress_ft" type="number" min="0" step="0.1" value="0" />
-              </label>
-            </div>
+            <p id="battery-clearance-note" class="field-note hidden">We will verify battery clearances from photos or a site survey before AHJ-ready drawings.</p>
           </div>
 
           <div class="intake-block">
@@ -256,6 +246,9 @@
           <div hidden>
             <input name="meter_number" value="" />
             <input name="meter_esid" value="" />
+            <input name="distance_to_doorway_ft" type="number" value="0" />
+            <input name="distance_to_window_ft" type="number" value="0" />
+            <input name="distance_to_egress_ft" type="number" value="0" />
             <input name="roof_info_height_ft" type="number" value="0" />
             <input name="roof_construction" value="" />
             <input name="roof_condition" value="unknown" />
