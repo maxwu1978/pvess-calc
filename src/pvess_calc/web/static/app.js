@@ -11,6 +11,7 @@ const checklistStatus = document.querySelector("#checklist-status");
 const resultsAside = document.querySelector(".results");
 const sideConsoleTitle = document.querySelector("#side-console-title");
 const sideConsoleLink = document.querySelector("#side-console-link");
+const operatorTools = document.querySelector("#operator-tools");
 const bomEmpty = document.querySelector("#bom-empty");
 const bomTable = document.querySelector("#bom-table");
 const bomBody = document.querySelector("#bom-table tbody");
@@ -501,6 +502,12 @@ function updateWizardNavStates() {
 function updateSideConsoleMode(isReviewStep) {
   resultsAside.classList.toggle("review-mode", isReviewStep);
   resultsAside.classList.toggle("checklist-mode", !isReviewStep);
+  if (operatorTools) {
+    operatorTools.hidden = !isReviewStep;
+    if (!isReviewStep) {
+      operatorTools.open = false;
+    }
+  }
   sideConsoleTitle.textContent = isReviewStep
     ? sideConsoleTitle.dataset.reviewTitle
     : sideConsoleTitle.dataset.checklistTitle;

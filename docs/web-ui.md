@@ -119,7 +119,8 @@ P11 reduces attention cost in the right-side panel:
   progress, delivery ZIP, handoff readiness, preview, BOM, generated files,
   and source-material status.
 - Leads, recent projects, and Package QA are grouped under collapsed
-  **Operator tools** so they are available without competing with intake.
+  **Operator tools** on Step 6 only, so internal utilities stay out of the
+  customer-intake path.
 
 The panel should read as guidance while the operator is entering facts, and as
 a run console only when the operator intentionally reaches Review.

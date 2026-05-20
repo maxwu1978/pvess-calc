@@ -1027,6 +1027,10 @@ button:disabled {
   margin-top: 14px;
 }
 
+.operator-tools[hidden] {
+  display: none;
+}
+
 .operator-tools summary {
   display: flex;
   align-items: center;
