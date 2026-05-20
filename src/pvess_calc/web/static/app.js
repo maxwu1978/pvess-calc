@@ -84,6 +84,13 @@ const batteryChoice = document.querySelector("#battery-choice");
 const batteryKwhDisplay = document.querySelector("#battery-kwh-display");
 const batteryModelDisplay = document.querySelector("#battery-model-display");
 const batteryQtyInput = document.querySelector('input[name="battery_quantity"]');
+const monthlyUsageMode = document.querySelector("#monthly-usage-mode");
+const monthlyAverageField = document.querySelector("#monthly-average-field");
+const monthlyDetailField = document.querySelector("#monthly-detail-field");
+const usageBillHint = document.querySelector("#usage-bill-hint");
+const batteryLocationBlock = document.querySelector("#battery-location-block");
+const batteryInstallLocation = document.querySelector('select[name="battery_install_location"]');
+const essSetbackFields = document.querySelector("#ess-setback-fields");
 
 let activePoll = null;
 let currentFiles = [];
@@ -225,6 +232,7 @@ const addressSamples = {
     location: "Frisco, TX",
     ahj: "Frisco TX",
     utility: "Oncor Electric Delivery",
+    monthly_usage_mode: "monthly_detail",
     monthly_kwh_text: dfwResidentialMonthlyKwh.join(", "),
   },
   crossvine: {
@@ -238,6 +246,7 @@ const addressSamples = {
     location: "Mansfield, TX",
     ahj: "City of Mansfield Building Safety",
     utility: "Oncor Electric Delivery",
+    monthly_usage_mode: "monthly_detail",
     monthly_kwh_text: dfwResidentialMonthlyKwh.join(", "),
   },
   green_circle: {
@@ -252,6 +261,7 @@ const addressSamples = {
     ahj: "City of Mansfield Building Safety",
     utility: "Oncor Electric Delivery",
     installer_address: "2806 Green Cir Dr, Mansfield, TX",
+    monthly_usage_mode: "monthly_detail",
     monthly_kwh_text: dfwResidentialMonthlyKwh.join(", "),
   },
 };
@@ -323,9 +333,13 @@ addressSample.addEventListener("change", () => applyAddressSample(addressSample.
 moduleChoice.addEventListener("change", syncModuleOption);
 inverterChoice.addEventListener("change", syncInverterOption);
 batteryChoice.addEventListener("change", syncBatteryOption);
+batteryQtyInput.addEventListener("input", syncBatterySiteFields);
+monthlyUsageMode.addEventListener("change", syncUsageMode);
+batteryInstallLocation.addEventListener("change", syncBatterySiteFields);
 
 syncModuleOption();
 syncInverterOption();
+syncUsageMode();
 syncBatteryOption({ preserveQuantity: true });
 restoreDraftFromLocal();
 initWizard();
@@ -408,6 +422,7 @@ function handleWizardNavClick(event) {
   if (targetIndex > currentStepIndex && !recordCurrentStepValidation({ focus: true })) {
     return;
   }
+  clearStepActionStatus();
   setWizardStep(targetIndex);
 }
 
@@ -423,7 +438,7 @@ function continueWizard() {
     statusEl.classList.add("error");
     return;
   }
-  clearError();
+  clearStepActionStatus();
   if (currentStepIndex < wizardStepOrder.length - 1) {
     setWizardStep(currentStepIndex + 1);
   } else {
@@ -670,16 +685,15 @@ function validateStep(stepId, payload) {
   }
 
   if (stepId === "site-field-data") {
-    if (payload.monthly_kwh && payload.monthly_kwh.length !== 12) {
-      errors.push(issue("monthly_kwh_text", "Monthly kWh must contain exactly 12 numeric values."));
+    const usageMode = payload.monthly_usage_mode || "local_default";
+    if (usageMode === "average" && (!payload.monthly_kwh || payload.monthly_kwh.length !== 12)) {
+      errors.push(issue("monthly_kwh_average", "Enter a positive average monthly kWh value."));
     }
-    if (!payload.monthly_kwh || payload.monthly_kwh.length === 0) {
-      warnings.push(issue("monthly_kwh_text", "Usage is missing; DFW defaults or estimate-stage assumptions may be used."));
+    if (usageMode === "monthly_detail" && (!payload.monthly_kwh || payload.monthly_kwh.length !== 12)) {
+      errors.push(issue("monthly_kwh_text", "Enter exactly 12 monthly kWh values."));
     }
-    if (!payload.meter_number) warnings.push(issue("meter_number", "Meter number missing; AHJ-ready package will need it."));
-    if (!payload.meter_location) warnings.push(issue("meter_location", "Meter location missing; site plan callouts will need review."));
-    if (payload.battery_choice !== "none" && payload.battery_install_location === "unknown") {
-      warnings.push(issue("battery_install_location", "ESS location is unknown; setback checks remain estimate-stage only."));
+    if (usageMode === "upload_bill") {
+      passes.push(issue("monthly_usage_mode", "Utility bill upload will be handled in Evidence."));
     }
     if (payload.battery_install_location === "garage" || payload.battery_install_location === "indoor") {
       if (Number(payload.distance_to_doorway_ft || 0) > 0 && Number(payload.distance_to_doorway_ft || 0) < 3) {
@@ -692,11 +706,15 @@ function validateStep(stepId, payload) {
         errors.push(issue("distance_to_egress_ft", "Indoor/garage ESS egress setback should be at least 3 ft."));
       }
     }
-    if (!payload.engineer_firm || !payload.engineer_email || !payload.engineer_phone) {
-      warnings.push(issue("engineer_firm", "Engineer contact is incomplete; okay for estimate, not AHJ-ready."));
+    if (payload.monthly_kwh?.length === 12) passes.push(issue("monthly_usage_mode", "Usage estimate is ready."));
+    if (payload.battery_choice === "none" || Number(payload.battery_quantity || 0) === 0) {
+      passes.push(issue("battery_install_location", "Battery location is not needed for PV-only scope."));
+    } else if (payload.battery_install_location && payload.battery_install_location !== "unknown") {
+      passes.push(issue("battery_install_location", "Battery install area is captured."));
+    } else {
+      passes.push(issue("battery_install_location", "Battery install area can be confirmed later."));
     }
-    if (payload.monthly_kwh?.length === 12) passes.push(issue("monthly_kwh_text", "Twelve monthly usage values are ready."));
-    if (payload.installer_company) passes.push(issue("installer_company", "Installer company is captured."));
+    if (payload.roof_info_type) passes.push(issue("roof_info_type", "Roof material is captured."));
   }
 
   if (stepId === "system-equipment") {
@@ -776,6 +794,7 @@ function validateStep(stepId, payload) {
     const full = validateAllSteps(payload, { includeReview: false });
     errors.push(...full.errors);
     warnings.push(...full.warnings.slice(0, 8));
+    warnings.push(...reviewOnlyIntakeIssues(payload).slice(0, 10));
     if (selectedOutputs) passes.push(issue("", `${selectedOutputs} output type(s) selected.`));
     passes.push(issue("", "Readiness can be checked before generation."));
     passes.push(issue("", "Missing evidence and estimate-stage warnings are summarized here before handoff."));
@@ -783,6 +802,43 @@ function validateStep(stepId, payload) {
   }
 
   return { errors, warnings, passes };
+}
+
+function reviewOnlyIntakeIssues(payload) {
+  const warnings = [];
+  if (!payload.monthly_kwh || payload.monthly_kwh.length !== 12) {
+    warnings.push(issue("monthly_usage_mode", "Usage source is not complete; savings and payback may use fallback assumptions."));
+  }
+  if (!payload.meter_number) {
+    warnings.push(issue("meter_number", "Meter number will be needed for AHJ-ready package."));
+  }
+  if (!payload.meter_location) {
+    warnings.push(issue("meter_location", "Meter location will need site review for plan callouts."));
+  }
+  if (String(payload.site_address || payload.location).toUpperCase().includes("TX") && !payload.meter_esid) {
+    warnings.push(issue("meter_esid", "Texas ESID will be needed from the utility bill."));
+  }
+  if (payload.battery_choice !== "none" && Number(payload.battery_quantity || 0) > 0 && payload.battery_install_location === "unknown") {
+    warnings.push(issue("battery_install_location", "Battery install location is not confirmed yet."));
+  }
+  if (!payload.engineer_firm || !payload.engineer_firm_number || !payload.engineer_email || !payload.engineer_phone) {
+    warnings.push(issue("engineer_firm", "Engineer-of-record details are missing for AHJ-ready package."));
+  }
+  if (
+    Number(payload.roof_info_height_ft || 0) <= 0
+    || !payload.roof_construction
+    || !payload.roof_framing
+    || payload.roof_condition === "unknown"
+    || payload.roof_attic_access === "unknown"
+    || Number(payload.decking_thickness_in || 0) <= 0
+    || Number(payload.roof_layers || 0) <= 0
+  ) {
+    warnings.push(issue("roof_info_type", "Roof survey details are incomplete for structural review."));
+  }
+  if (payload.msp_x_ft == null || payload.msp_y_ft == null || payload.inverter_x_ft == null || payload.inverter_y_ft == null) {
+    warnings.push(issue("msp_x_ft", "Equipment coordinates are missing; EE-4 routing will use defaults until site survey is complete."));
+  }
+  return warnings;
 }
 
 function validateAllSteps(payload, options = {}) {
@@ -940,6 +996,7 @@ function applyTemplate(name) {
   syncModuleOption();
   syncInverterOption();
   syncBatteryOption({ preserveQuantity: true });
+  syncUsageMode();
   renderValidation([], [`Project type set to ${labelForTemplate(name)}.`]);
   renderCurrentStepValidation({ quiet: false });
   localAutosave();
@@ -953,6 +1010,7 @@ function applyAddressSample(name) {
   for (const [key, value] of Object.entries(sample)) {
     setFieldValue(key, value);
   }
+  syncUsageMode();
   renderValidation([], [`Loaded sample project: ${sample.site_address}. Monthly usage is simulated until a bill or Smart Meter export is uploaded.`]);
   renderCurrentStepValidation({ quiet: false });
   localAutosave();
@@ -965,6 +1023,12 @@ function buildPayload(data) {
       continue;
     }
     if (key === "monthly_kwh_text") {
+      continue;
+    }
+    if (key === "monthly_kwh_average") {
+      continue;
+    }
+    if (key === "monthly_usage_mode") {
       continue;
     }
     if (rawValue instanceof File) {
@@ -981,9 +1045,20 @@ function buildPayload(data) {
     }
   }
 
-  const monthly = parseMonthlyKwh(data.get("monthly_kwh_text") || "");
-  if (monthly.length > 0) {
-    payload.monthly_kwh = monthly;
+  const monthlyMode = String(data.get("monthly_usage_mode") || "local_default");
+  payload.monthly_usage_mode = monthlyMode;
+  if (monthlyMode === "local_default") {
+    payload.monthly_kwh = [...dfwResidentialMonthlyKwh];
+  } else if (monthlyMode === "average") {
+    const average = Number(data.get("monthly_kwh_average") || 0);
+    if (Number.isFinite(average) && average > 0) {
+      payload.monthly_kwh = Array.from({ length: 12 }, () => average);
+    }
+  } else if (monthlyMode === "monthly_detail") {
+    const monthly = parseMonthlyKwh(data.get("monthly_kwh_text") || "");
+    if (monthly.length > 0) {
+      payload.monthly_kwh = monthly;
+    }
   }
 
   syncUsAddressPayload(payload);
@@ -1361,6 +1436,21 @@ function syncBatteryOption(options = {}) {
   } else if (!options.preserveQuantity && Number(batteryQtyInput.value || 0) === 0) {
     batteryQtyInput.value = "1";
   }
+  syncBatterySiteFields();
+}
+
+function syncUsageMode() {
+  const mode = monthlyUsageMode.value;
+  monthlyAverageField.classList.toggle("hidden", mode !== "average");
+  monthlyDetailField.classList.toggle("hidden", mode !== "monthly_detail");
+  usageBillHint.classList.toggle("hidden", mode !== "upload_bill");
+}
+
+function syncBatterySiteFields() {
+  const hasBattery = batteryChoice.value !== "none" && Number(batteryQtyInput.value || 0) > 0;
+  batteryLocationBlock.classList.toggle("hidden", !hasBattery);
+  const needsSetbacks = hasBattery && ["garage", "indoor"].includes(batteryInstallLocation.value);
+  essSetbackFields.classList.toggle("hidden", !needsSetbacks);
 }
 
 function renderBom(bom) {
@@ -2331,6 +2421,7 @@ function applyPayloadToForm(payload, options = {}) {
     }
     if (key === "monthly_kwh") {
       const monthly = Array.isArray(value) ? value.join(", ") : "";
+      setFieldValue("monthly_usage_mode", monthly ? "monthly_detail" : "local_default");
       setFieldValue("monthly_kwh_text", monthly);
       continue;
     }
@@ -2348,6 +2439,7 @@ function applyPayloadToForm(payload, options = {}) {
   syncModuleOption();
   syncInverterOption();
   syncBatteryOption({ preserveQuantity: true });
+  syncUsageMode();
   const message = options.message || "Loaded a prior project form. Reattach file uploads before rerunning with new source materials.";
   renderValidation([], [message]);
   if (!options.preserveStep) {
@@ -2467,6 +2559,11 @@ function setBusy(isBusy, message) {
 function clearError() {
   statusEl.classList.remove("error");
   renderError("");
+}
+
+function clearStepActionStatus() {
+  clearError();
+  statusEl.textContent = "";
 }
 
 function formatApiError(data) {

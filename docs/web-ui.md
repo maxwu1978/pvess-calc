@@ -33,7 +33,7 @@ scoped to the jobs they create.
 
 ## Workflow
 
-1. Fill **Project basics**, **Site and field data**, **System equipment**,
+1. Fill **Project basics**, **Usage and site basics**, **System equipment**,
    **Service, roof, and cost assumptions**, and
    **Source materials and evidence**.
 2. Optional: click **Check address**. Online mode uses configured
@@ -133,26 +133,23 @@ a run console only when the operator intentionally reaches Review.
 
 ### Field UX Audit
 
-P11 also audited every visible intake field from the user's point of view. The
-main conclusion is that P12 should reduce typing by adding presets and hiding
-estimate-only defaults, rather than deleting payload fields that downstream
-generation still uses.
+P11/P12 also audited every visible intake field from the user's point of view.
+The main conclusion is that customer-facing steps should collect only data a
+homeowner can answer confidently, while AHJ-ready, structural, and routing
+fields stay in hidden payload defaults or the Review checklist.
 
 | Step | Field group | UX decision |
 |---|---|---|
 | Project | System type, customer name, standard U.S. address | Keep in the primary path. These are the only fields a normal user must know. |
 | Project | Utility, AHJ, code basis | Keep visible as **Address check result**. These are derived from lookup and editable for correction, but should not block estimate-stage continuation. |
 | Project | Project name, coordinates, APN, lookup mode, permit profile, sample project | Hide from the user path. Keep them as system metadata: project name is auto-generated, coordinates come from address lookup, permit profile and lookup mode use defaults, and APN is filled only when a parcel provider returns it. |
-| Usage | Meter number, ESID | Keep typed; project-specific utility identifiers. |
-| Usage | Meter location | Convert to select + Other in P12 (`Exterior garage wall`, `Exterior side wall`, `Basement`, `Meter bank`, `Other`). |
-| Usage | ESS install location, roof condition, attic access | Already good as selects. Keep. |
-| Usage | Door/window/egress setbacks | Hide until ESS location is indoor/garage. They are not useful for PV-only or unknown-location estimates. |
-| Usage | Roof type, roof construction, roof framing | Convert to selects in P12 with common North American values and an Other option. |
-| Usage | Roof height, decking thickness, roof layers | Keep numeric but move behind `Advanced roof details` unless AHJ-ready mode is selected. |
-| Usage | Engineer firm/contact/address | Make a saved profile selector in P12. Default profile should fill these fields; manual editing should be advanced. |
-| Usage | Installer company/address | Make a saved installer profile selector. For TGE-only operation these should be defaulted, not repeatedly typed. |
-| Usage | Equipment coordinates | Hide behind `Advanced routing coordinates`; most users cannot enter these confidently without a site-plan drawing. |
-| Usage | Monthly kWh | Keep textarea for pasted bills, but P12 should add monthly total presets and CSV/Smart Meter import affordance. |
+| Usage | Usage source, average monthly kWh, 12 monthly kWh | Keep in the primary path. Local default is the default, average monthly kWh is the simplest manual input, and 12-month detail is available when the user has bills. |
+| Usage | Meter location | Keep optional as a select. It improves plan callouts but does not block an estimate. |
+| Usage | ESS install location | Keep when battery is selected. Hide the entire block for PV-only scope. |
+| Usage | Door/window/egress setbacks | Show only when ESS location is indoor/garage. They are not useful for PV-only, outdoor, or unknown-location estimates. |
+| Usage | Roof material | Keep as a simple select. Detailed roof structure stays in Review/AHJ-ready checklist. |
+| Usage | Meter number, ESID, roof height, construction, framing, condition, attic access, decking, roof layers | Hide from the customer path. These are AHJ/structural review fields collected from utility bills, photos, site survey, or operator review. |
+| Usage | Engineer firm/contact/address, installer details, equipment coordinates | Hide from the customer path. Engineer/installer values are profile/default data; coordinates are internal routing inputs. |
 | Equipment | Module, inverter, battery | Already good as selects. Keep one inverter brand/model family selected at a time. |
 | Equipment | Module watts/brand/model, inverter model, battery kWh/model | These are read-only derived fields. P12 should visually mark them as derived or collapse them under equipment details. |
 | Equipment | Modules, strings, inverter qty, battery qty | Keep numeric. P12 should offer steppers or suggested package sizes. |

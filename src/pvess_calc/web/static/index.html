@@ -170,126 +170,117 @@
 
         <section id="site-field-data" class="panel flow-section" data-step="02" data-wizard-title="Usage & Goals">
           <div class="section-head">
-            <h2>Site and field data</h2>
+            <h2>Usage and site basics</h2>
           </div>
-          <div class="grid four">
-            <label>Meter number
-              <input name="meter_number" placeholder="153468971" />
-            </label>
-            <label>Meter location
-              <input name="meter_location" placeholder="Exterior garage wall" />
-            </label>
-            <label>ESID
-              <input name="meter_esid" placeholder="TX utility ESID" />
-            </label>
-            <label>ESS install location
-              <select name="battery_install_location">
-                <option value="unknown" selected>Unknown</option>
-                <option value="garage">Garage</option>
-                <option value="indoor">Indoor</option>
-                <option value="outdoor">Outdoor</option>
-                <option value="outdoor_protected">Outdoor protected</option>
-              </select>
-            </label>
-            <label>Doorway setback ft
-              <input name="distance_to_doorway_ft" type="number" min="0" step="0.1" value="0" />
-            </label>
-            <label>Window setback ft
-              <input name="distance_to_window_ft" type="number" min="0" step="0.1" value="0" />
-            </label>
-            <label>Egress setback ft
-              <input name="distance_to_egress_ft" type="number" min="0" step="0.1" value="0" />
-            </label>
-            <label>Roof type
-              <input name="roof_info_type" value="Comp Shingle" />
-            </label>
-            <label>Roof height ft
-              <input name="roof_info_height_ft" type="number" min="0" step="0.1" value="0" />
-            </label>
-            <label>Roof construction
-              <input name="roof_construction" placeholder="Prefabricated trusses" />
-            </label>
-            <label>Roof condition
-              <select name="roof_condition">
-                <option value="unknown" selected>Unknown</option>
-                <option value="good">Good</option>
-                <option value="fair">Fair</option>
-                <option value="poor">Poor</option>
-              </select>
-            </label>
-            <label>Roof framing
-              <input name="roof_framing" placeholder='2x4 @ 24" O.C.' />
-            </label>
-            <label>Attic access
-              <select name="roof_attic_access">
-                <option value="unknown" selected>Unknown</option>
-                <option value="accessible">Accessible</option>
-                <option value="inaccessible">Inaccessible</option>
-              </select>
-            </label>
-            <label>Decking thickness in
-              <input name="decking_thickness_in" type="number" min="0" step="0.125" value="0" />
-            </label>
-            <label>Roof layers
-              <input name="roof_layers" type="number" min="0" step="1" value="0" />
-            </label>
-            <label>Engineer firm
-              <input name="engineer_firm" placeholder="Wyssling Consulting" />
-            </label>
-            <label>Engineer firm #
-              <input name="engineer_firm_number" placeholder="20109" />
-            </label>
-            <label>Engineer email
-              <input name="engineer_email" placeholder="engineer@example.com" />
-            </label>
-            <label>Engineer phone
-              <input name="engineer_phone" placeholder="(201) 874-3483" />
-            </label>
-            <label>Engineer address
-              <input name="engineer_address" placeholder="Firm address" />
-            </label>
-            <label>Installer company
-              <input name="installer_company" value="Texas Green Eco Power" />
-            </label>
-            <label>Installer address
-              <input name="installer_address" placeholder="Installer address" />
-            </label>
-            <label>MSP X / Y ft
-              <span class="coord-pair">
-                <input name="msp_x_ft" type="number" step="0.1" placeholder="x" />
-                <input name="msp_y_ft" type="number" step="0.1" placeholder="y" />
-              </span>
-            </label>
-            <label>Inverter X / Y ft
-              <span class="coord-pair">
-                <input name="inverter_x_ft" type="number" step="0.1" placeholder="x" />
-                <input name="inverter_y_ft" type="number" step="0.1" placeholder="y" />
-              </span>
-            </label>
-            <label>AC disconnect X / Y ft
-              <span class="coord-pair">
-                <input name="ac_disconnect_x_ft" type="number" step="0.1" placeholder="x" />
-                <input name="ac_disconnect_y_ft" type="number" step="0.1" placeholder="y" />
-              </span>
-            </label>
-            <label>ESS X / Y ft
-              <span class="coord-pair">
-                <input name="ess_x_ft" type="number" step="0.1" placeholder="x" />
-                <input name="ess_y_ft" type="number" step="0.1" placeholder="y" />
-              </span>
-            </label>
-            <label>Attic drop X / Y ft
-              <span class="coord-pair">
-                <input name="attic_drop_x_ft" type="number" step="0.1" placeholder="x" />
-                <input name="attic_drop_y_ft" type="number" step="0.1" placeholder="y" />
-              </span>
-            </label>
-            <label>Attic drop height ft
-              <input name="attic_to_eq_height_ft" type="number" min="0" step="0.1" value="10" />
-            </label>
-            <label class="wide">Monthly kWh, oldest first
-              <textarea name="monthly_kwh_text" rows="3" placeholder="820, 740, 690, 780, 1020, 1350, 1480, 1520, 1380, 1010, 760, 790"></textarea>
-            </label>
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Energy use</h3>
+              <p>Choose the easiest way to estimate yearly electricity use. A utility bill can still be uploaded in Evidence.</p>
+            </div>
+            <div class="grid two">
+              <label>Usage source
+                <select id="monthly-usage-mode" name="monthly_usage_mode">
+                  <option value="local_default" selected>Use local default</option>
+                  <option value="average">Enter average monthly kWh</option>
+                  <option value="monthly_detail">Enter 12 monthly values</option>
+                  <option value="upload_bill">I will upload a utility bill</option>
+                </select>
+              </label>
+              <label id="monthly-average-field">Average monthly kWh
+                <input id="monthly-kwh-average" name="monthly_kwh_average" type="number" min="1" step="1" value="1200" inputmode="numeric" />
+              </label>
+              <label id="monthly-detail-field" class="wide">12 monthly kWh values
+                <textarea name="monthly_kwh_text" rows="3" placeholder="880, 780, 720, 820, 1050, 1450, 1700, 1750, 1450, 1050, 820, 860"></textarea>
+              </label>
+            </div>
+            <p id="usage-bill-hint" class="field-note hidden">Upload the utility bill or Smart Meter export in Step 5. The estimate can continue with local defaults until then.</p>
+          </div>
+
+          <div id="battery-location-block" class="intake-block">
+            <div class="block-heading">
+              <h3>Battery location</h3>
+              <p>Select the planned install area if known. Indoor and garage installs need extra clearance checks.</p>
+            </div>
+            <div class="grid two">
+              <label>Battery install location
+                <select name="battery_install_location">
+                  <option value="unknown" selected>Not sure</option>
+                  <option value="garage">Garage</option>
+                  <option value="indoor">Indoor</option>
+                  <option value="outdoor">Outdoor</option>
+                  <option value="outdoor_protected">Outdoor protected</option>
+                </select>
+              </label>
+            </div>
+            <div id="ess-setback-fields" class="grid three hidden">
+              <label>Doorway setback ft
+                <input name="distance_to_doorway_ft" type="number" min="0" step="0.1" value="0" />
+              </label>
+              <label>Window setback ft
+                <input name="distance_to_window_ft" type="number" min="0" step="0.1" value="0" />
+              </label>
+              <label>Egress setback ft
+                <input name="distance_to_egress_ft" type="number" min="0" step="0.1" value="0" />
+              </label>
+            </div>
+          </div>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Known site details</h3>
+              <p>Optional details improve the drawing package, but missing values will be reviewed later.</p>
+            </div>
+            <div class="grid two">
+              <label>Meter location
+                <select name="meter_location">
+                  <option value="" selected>Not sure</option>
+                  <option value="Exterior garage wall">Exterior garage wall</option>
+                  <option value="Exterior side wall">Exterior side wall</option>
+                  <option value="Interior garage wall">Interior garage wall</option>
+                  <option value="Utility room">Utility room</option>
+                  <option value="Basement">Basement</option>
+                </select>
+              </label>
+              <label>Roof material
+                <select name="roof_info_type">
+                  <option value="Comp Shingle" selected>Composition shingle</option>
+                  <option value="Metal">Metal</option>
+                  <option value="Tile">Tile</option>
+                  <option value="TPO / flat roof">TPO / flat roof</option>
+                  <option value="Other">Other / not sure</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div hidden>
+            <input name="meter_number" value="" />
+            <input name="meter_esid" value="" />
+            <input name="roof_info_height_ft" type="number" value="0" />
+            <input name="roof_construction" value="" />
+            <input name="roof_condition" value="unknown" />
+            <input name="roof_framing" value="" />
+            <input name="roof_attic_access" value="unknown" />
+            <input name="decking_thickness_in" type="number" value="0" />
+            <input name="roof_layers" type="number" value="0" />
+            <input name="engineer_firm" value="" />
+            <input name="engineer_firm_number" value="" />
+            <input name="engineer_email" value="" />
+            <input name="engineer_phone" value="" />
+            <input name="engineer_address" value="" />
+            <input name="installer_company" value="Texas Green Eco Power" />
+            <input name="installer_address" value="2806 Green Cir Dr, Mansfield, TX" />
+            <input name="msp_x_ft" type="number" value="" />
+            <input name="msp_y_ft" type="number" value="" />
+            <input name="inverter_x_ft" type="number" value="" />
+            <input name="inverter_y_ft" type="number" value="" />
+            <input name="ac_disconnect_x_ft" type="number" value="" />
+            <input name="ac_disconnect_y_ft" type="number" value="" />
+            <input name="ess_x_ft" type="number" value="" />
+            <input name="ess_y_ft" type="number" value="" />
+            <input name="attic_drop_x_ft" type="number" value="" />
+            <input name="attic_drop_y_ft" type="number" value="" />
+            <input name="attic_to_eq_height_ft" type="number" value="10" />
           </div>
         </section>
 

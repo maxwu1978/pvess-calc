@@ -365,6 +365,13 @@ label {
   line-height: 1.4;
 }
 
+.field-note {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 input,
 select,
 textarea {
