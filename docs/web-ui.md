@@ -48,6 +48,26 @@ scoped to the jobs they create.
 User-facing copy follows **[Web UI language](web-ui-language.md)**.
 Production deployment details live in **[Web deployment](web-deployment.md)**.
 
+## Operator Layout
+
+The main page is organized as a dense operator workspace rather than a
+marketing page:
+
+- a compact top bar with product identity, public-request entry point, and
+  optional operator token
+- a sticky workflow rail for quick jumps through basics, site data, equipment,
+  costs, evidence, and generation
+- a left-side intake form and a right-side **Run and review** console for
+  readiness, progress, QA, previews, BOM, leads, and recent projects
+- a sticky generate action bar so long intake forms keep the primary run
+  actions visible
+
+Design tooling stays code-first for now: layout tokens, spacing, borders, and
+copy rules live in the static HTML/CSS and this documentation. Figma can be
+introduced later when the page needs collaborative mocks or a reusable
+component library, but it is not required for the current local-hosted
+operator workflow.
+
 ## Public Lead Intake
 
 `/lead` serves a lightweight public estimate-request form for homeowners. It

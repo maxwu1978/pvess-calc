@@ -309,9 +309,13 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Structural letter" in response.text
     assert "Check readiness" in response.text
     assert "Readiness check" in response.text
+    assert "Run and review" in response.text
     assert "Package QA" in response.text
+    assert "Package outputs" in response.text
     assert "Review preview" in response.text
     assert "Operator access token" in response.text
+    assert "Open public request page" in response.text
+    assert response.text.count('name="engineer_phone"') == 1
     assert "Auto-fill from address" in response.text
     assert "Use online lookup when available" in response.text
     assert "Try a sample address" in response.text

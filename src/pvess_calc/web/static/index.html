@@ -8,32 +8,38 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
+      <div class="brand-block">
+        <span class="eyebrow">Operator workspace</span>
         <h1>TGE Solar Project Generator</h1>
-        <p>Start with an address, choose the system, then generate an estimate package with drawings, BOM, and handoff checks.</p>
+        <p>Build an address-based PV + ESS estimate package, review readiness, and hand off drawings, BOM, and source-material checks.</p>
       </div>
-      <div class="access-token-card" aria-label="Optional server access token">
-        <label>Operator access token
+      <div class="topbar-actions">
+        <a class="lead-link" href="/lead" target="_blank" rel="noreferrer">Open public request page</a>
+        <div class="access-token-card" aria-label="Optional server access token">
+          <label for="access-token">Operator access token
+            <small>Optional API token for protected operator actions.</small>
+          </label>
           <span class="token-row">
             <input id="access-token" type="password" autocomplete="off" placeholder="Optional" />
             <button id="save-token" type="button" class="secondary-button">Save</button>
           </span>
-        </label>
-        <span id="token-status">No token required on local server</span>
-      </div>
-      <div class="mini-plan" aria-hidden="true">
-        <div class="roof-line"></div>
-        <div class="panel-grid">
-          <span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span>
+          <span id="token-status">No token required on local server</span>
         </div>
       </div>
     </header>
 
+    <nav class="workflow-rail" aria-label="Project workflow">
+      <a href="#project-basics"><strong>01</strong><span>Basics</span></a>
+      <a href="#site-field-data"><strong>02</strong><span>Site data</span></a>
+      <a href="#system-equipment"><strong>03</strong><span>Equipment</span></a>
+      <a href="#service-costs"><strong>04</strong><span>Costs</span></a>
+      <a href="#source-materials"><strong>05</strong><span>Evidence</span></a>
+      <a href="#package-outputs"><strong>06</strong><span>Generate</span></a>
+    </nav>
+
     <main class="workspace">
       <form id="project-form" class="editor">
-        <section class="panel">
+        <section id="project-basics" class="panel flow-section" data-step="01">
           <div class="section-head">
             <h2>Project basics</h2>
             <div class="lookup-controls">
@@ -102,7 +108,7 @@
           <div id="lookup-panel" class="lookup-panel hidden"></div>
         </section>
 
-        <section class="panel">
+        <section id="site-field-data" class="panel flow-section" data-step="02">
           <div class="section-head">
             <h2>Site and field data</h2>
           </div>
@@ -227,7 +233,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section id="system-equipment" class="panel flow-section" data-step="03">
           <div class="section-head">
             <h2>System equipment</h2>
           </div>
@@ -367,7 +373,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section id="service-costs" class="panel flow-section" data-step="04">
           <div class="section-head">
             <h2>Service, roof, and cost assumptions</h2>
           </div>
@@ -425,7 +431,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section id="source-materials" class="panel flow-section" data-step="05">
           <div class="section-head">
             <h2>Source materials and evidence</h2>
           </div>
@@ -489,9 +495,12 @@
           </div>
         </section>
 
-        <section class="panel output-options">
+        <section id="package-outputs" class="panel output-options run-panel" data-step="06">
           <div class="section-head">
-            <h2>Package outputs</h2>
+            <div>
+              <h2>Package outputs</h2>
+              <p>Select the files this run should produce before generating the estimate package.</p>
+            </div>
           </div>
           <label><input type="checkbox" name="out_customer" checked /> Customer PDF</label>
           <label><input type="checkbox" name="out_permit" checked /> Permit package</label>
@@ -509,6 +518,10 @@
       </form>
 
       <aside class="results" aria-live="polite">
+        <div class="results-header">
+          <strong>Run and review</strong>
+          <a href="#package-outputs">Go to outputs</a>
+        </div>
         <section class="summary-strip" id="summary-strip">
           <div><strong>-</strong><span>DC kW</span></div>
           <div><strong>-</strong><span>Modules</span></div>

@@ -37,6 +37,8 @@ Avoid:
 | Lead notification | Internal alert event created when a public lead arrives | Notification panel |
 | Marketing attribution | UTM/referrer source attached to a public lead | Lead metrics panel |
 | Load intake | Pre-fill the project form from a lead without generating output | Lead action |
+| Run and review | Right-side operator console for readiness, progress, QA, previews, BOM, leads, and history | Operator panel |
+| Package outputs | Output selection before generation | Generate panel |
 
 ## Button Language
 
@@ -80,6 +82,20 @@ on the public page.
 Use engineering terms when they are the user's decision point, such as AHJ,
 NEC edition, interconnection, source materials, Package QA, and BOM. Avoid
 internal-only terms as primary labels when a workflow label is clearer.
+
+## Layout Pattern
+
+Use a work-focused, scan-first layout:
+
+- Keep product identity and security controls compact in the top bar.
+- Use the workflow rail as navigation, not as explanatory marketing copy.
+- Keep the intake form on the left and review/output state on the right on
+  desktop screens.
+- Keep the generate actions visible near the bottom of the viewport while the
+  operator scrolls long forms.
+- Prefer code-native layout tokens for day-to-day iteration. Bring in Figma
+  only when collaborative mockups or reusable component specifications are
+  needed.
 
 ## Status Language
 

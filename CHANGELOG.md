@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P9: operator layout polish
+
+- Reworked the main Web UI into a denser operator workspace with a compact
+  top bar, public-request entry point, sticky workflow rail, and right-side
+  **Run and review** console
+- Made package output selection and generation actions easier to reach during
+  long intake-form review
+- Documented the code-first layout-token approach and when Figma should be
+  introduced for collaborative design work
+- Added a static-page regression check that the engineer phone input is not
+  duplicated
+
 ### 2026-05-20 — Web UI P8: marketing attribution metrics
 
 - Added optional UTM/referrer fields to public lead records and CSV export

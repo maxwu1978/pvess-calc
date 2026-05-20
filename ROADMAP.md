@@ -18,6 +18,31 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P9 — operator layout polish ✅ DONE 2026-05-20
+
+Goal: make the internal generator page easier to operate for long intake,
+generation, lead review, and package QA sessions before introducing a heavier
+design toolchain.
+
+Completed:
+
+- Replaced the tall decorative header with a compact operator top bar.
+- Added a workflow rail for fast jumps through basics, site data, equipment,
+  costs, evidence, and generation.
+- Reframed the right column as **Run and review** so readiness, progress, QA,
+  previews, BOM, leads, and recent jobs read as one operator console.
+- Kept the generation action bar visible while scrolling long form sections.
+- Documented a code-first design-token path and deferred Figma until
+  collaborative mocks or component-library specs are needed.
+- Added a regression check that the engineer phone field appears once.
+
+Closing standards met:
+
+- The page still serves the same project-generation workflow and labels.
+- Desktop layout keeps intake and review state visible side by side.
+- Mobile/tablet layouts collapse without relying on the right sidebar.
+- No new runtime dependency is required for design iteration.
+
 ### Web UI P8 — marketing attribution metrics ✅ DONE 2026-05-20
 
 Goal: connect public lead intake to marketing decisions by preserving source
