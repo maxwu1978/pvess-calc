@@ -21,7 +21,8 @@ Avoid:
 | Project | One address + one selected system configuration | Project name, project history |
 | Project basics | Address, client, AHJ, utility, and project type | First form section |
 | Project type | Starting configuration such as PV + ESS or PV-only | Form selector |
-| Try a sample address | Built-in example address used for smoke tests or demos | Optional form helper |
+| Load sample project | Built-in example project used for smoke tests or demos | Optional form helper |
+| Street address / Unit / City / State / ZIP code | Standard U.S. project address fields | Project basics |
 | Auto-fill from address | Utility/AHJ/NEC/roof-data prefill from lookup providers | Button/API label |
 | Readiness check | Generation-before-check for schema, cost, intake, and code warnings | Button and panel |
 | Estimate package | Generated output bundle for review/handoff | Generate button and delivery copy |
@@ -77,7 +78,7 @@ the action is a final external submission.
 
 Lead users through the workflow in this order:
 
-1. Enter project basics or choose a sample address.
+1. Enter project basics with a standard U.S. address or load a sample project.
 2. Auto-fill address data when available.
 3. Confirm site, system, service, roof, cost, and source evidence.
 4. Check readiness before generation.

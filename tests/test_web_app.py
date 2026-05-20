@@ -320,12 +320,15 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Save draft" in response.text
     assert "Continue" in response.text
     assert "Back" in response.text
-    assert "Operator access token" in response.text
+    assert "Operator access token" not in response.text
     assert "Open public request page" in response.text
     assert response.text.count('name="engineer_phone"') == 1
     assert "Auto-fill from address" in response.text
     assert "Use online lookup when available" in response.text
-    assert "Try a sample address" in response.text
+    assert "Load sample project" in response.text
+    assert "Street address" in response.text
+    assert "Unit / suite" in response.text
+    assert "ZIP code" in response.text
     assert "905 Crossvine Drive, Mansfield, TX" in response.text
     assert "2806 Green Circle Drive, Mansfield, TX" in response.text
     assert "Public leads" in response.text

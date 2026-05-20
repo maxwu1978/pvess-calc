@@ -112,48 +112,6 @@ h1 {
   white-space: nowrap;
 }
 
-.access-token-card {
-  width: 100%;
-  border: 1px solid #d7dee8;
-  border-radius: var(--radius);
-  padding: 10px;
-  background: var(--panel-soft);
-}
-
-.access-token-card label {
-  color: var(--ink);
-  gap: 2px;
-}
-
-.access-token-card small {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.access-token-card span {
-  display: block;
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.access-token-card .token-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px;
-  gap: 8px;
-}
-
-.token-row input {
-  min-width: 0;
-}
-
-.token-row button {
-  min-height: 38px;
-  padding: 0 12px;
-}
-
 .workflow-rail {
   position: sticky;
   top: 0;
@@ -1864,7 +1822,6 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .access-token-card,
   .lookup-controls {
     width: 100%;
   }

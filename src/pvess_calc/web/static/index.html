@@ -16,16 +16,6 @@
       </div>
       <div class="topbar-actions">
         <a class="lead-link" href="/lead" target="_blank" rel="noreferrer">Open public request page</a>
-        <div class="access-token-card" aria-label="Optional server access token">
-          <label for="access-token">Operator access token
-            <small>Optional API token for protected operator actions.</small>
-          </label>
-          <span class="token-row">
-            <input id="access-token" type="password" autocomplete="off" placeholder="Optional" />
-            <button id="save-token" type="button" class="secondary-button">Save</button>
-          </span>
-          <span id="token-status">No token required on local server</span>
-        </div>
       </div>
     </header>
 
@@ -59,12 +49,12 @@
                 <option value="retrofit_existing_pv">Retrofit with existing PV</option>
               </select>
             </label>
-            <label>Try a sample address
+            <label>Load sample project
               <select id="address-sample">
-                <option value="" selected>Manual entry</option>
-                <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX</option>
-                <option value="crossvine">905 Crossvine Drive, Mansfield, TX</option>
-                <option value="green_circle">2806 Green Circle Drive, Mansfield, TX</option>
+                <option value="" selected>Manual address entry</option>
+                <option value="glasshouse">7652 Glasshouse Walk, Frisco, TX 75035</option>
+                <option value="crossvine">905 Crossvine Drive, Mansfield, TX 76063</option>
+                <option value="green_circle">2806 Green Circle Drive, Mansfield, TX 76063</option>
               </select>
             </label>
             <label>Project name
@@ -73,17 +63,78 @@
             <label>Client
               <input name="client_name" value="Homeowner" />
             </label>
-            <label>Site address
-              <input name="site_address" value="7652 Glasshouse Walk, Frisco, TX" />
+            <label>Street address
+              <input name="address_line1" value="7652 Glasshouse Walk" autocomplete="address-line1" />
+            </label>
+            <label>Unit / suite
+              <input name="address_line2" placeholder="optional" autocomplete="address-line2" />
+            </label>
+            <label>City
+              <input name="address_city" value="Frisco" autocomplete="address-level2" />
+            </label>
+            <label>State
+              <select name="address_state" autocomplete="address-level1">
+                <option value="">Select state</option>
+                <option value="AL">AL</option>
+                <option value="AK">AK</option>
+                <option value="AZ">AZ</option>
+                <option value="AR">AR</option>
+                <option value="CA">CA</option>
+                <option value="CO">CO</option>
+                <option value="CT">CT</option>
+                <option value="DE">DE</option>
+                <option value="FL">FL</option>
+                <option value="GA">GA</option>
+                <option value="HI">HI</option>
+                <option value="ID">ID</option>
+                <option value="IL">IL</option>
+                <option value="IN">IN</option>
+                <option value="IA">IA</option>
+                <option value="KS">KS</option>
+                <option value="KY">KY</option>
+                <option value="LA">LA</option>
+                <option value="ME">ME</option>
+                <option value="MD">MD</option>
+                <option value="MA">MA</option>
+                <option value="MI">MI</option>
+                <option value="MN">MN</option>
+                <option value="MS">MS</option>
+                <option value="MO">MO</option>
+                <option value="MT">MT</option>
+                <option value="NE">NE</option>
+                <option value="NV">NV</option>
+                <option value="NH">NH</option>
+                <option value="NJ">NJ</option>
+                <option value="NM">NM</option>
+                <option value="NY">NY</option>
+                <option value="NC">NC</option>
+                <option value="ND">ND</option>
+                <option value="OH">OH</option>
+                <option value="OK">OK</option>
+                <option value="OR">OR</option>
+                <option value="PA">PA</option>
+                <option value="RI">RI</option>
+                <option value="SC">SC</option>
+                <option value="SD">SD</option>
+                <option value="TN">TN</option>
+                <option value="TX" selected>TX</option>
+                <option value="UT">UT</option>
+                <option value="VT">VT</option>
+                <option value="VA">VA</option>
+                <option value="WA">WA</option>
+                <option value="WV">WV</option>
+                <option value="WI">WI</option>
+                <option value="WY">WY</option>
+              </select>
+            </label>
+            <label>ZIP code
+              <input name="address_postal_code" value="75035" inputmode="numeric" autocomplete="postal-code" />
             </label>
             <label>Coordinates
               <input name="coordinates" placeholder="33.1414, -96.8012" />
             </label>
             <label>APN / parcel
               <input name="apn" placeholder="optional" />
-            </label>
-            <label>Location
-              <input name="location" value="Frisco, TX" />
             </label>
             <label>AHJ
               <input name="ahj" value="Frisco TX" />
@@ -106,6 +157,8 @@
               </select>
             </label>
           </div>
+          <input type="hidden" name="site_address" value="7652 Glasshouse Walk, Frisco, TX 75035" />
+          <input type="hidden" name="location" value="Frisco, TX" />
           <div id="lookup-panel" class="lookup-panel hidden"></div>
         </section>
 

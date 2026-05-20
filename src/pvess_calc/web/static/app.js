@@ -61,9 +61,6 @@ const historyFrom = document.querySelector("#history-from");
 const historyTo = document.querySelector("#history-to");
 const historyAll = document.querySelector("#history-all");
 const historyRefresh = document.querySelector("#history-refresh");
-const accessTokenInput = document.querySelector("#access-token");
-const saveTokenButton = document.querySelector("#save-token");
-const tokenStatus = document.querySelector("#token-status");
 const lookupButton = document.querySelector("#lookup-address");
 const lookupMode = document.querySelector("#lookup-mode");
 const lookupPanel = document.querySelector("#lookup-panel");
@@ -209,7 +206,12 @@ const dfwResidentialMonthlyKwh = [
 const addressSamples = {
   glasshouse: {
     project_name: "Frisco PV + ESS Package",
-    site_address: "7652 Glasshouse Walk, Frisco, TX",
+    address_line1: "7652 Glasshouse Walk",
+    address_line2: "",
+    address_city: "Frisco",
+    address_state: "TX",
+    address_postal_code: "75035",
+    site_address: "7652 Glasshouse Walk, Frisco, TX 75035",
     location: "Frisco, TX",
     ahj: "Frisco TX",
     utility: "Oncor Electric Delivery",
@@ -217,7 +219,12 @@ const addressSamples = {
   },
   crossvine: {
     project_name: "Mansfield Crossvine PV + ESS Package",
-    site_address: "905 Crossvine Drive, Mansfield, TX",
+    address_line1: "905 Crossvine Drive",
+    address_line2: "",
+    address_city: "Mansfield",
+    address_state: "TX",
+    address_postal_code: "76063",
+    site_address: "905 Crossvine Drive, Mansfield, TX 76063",
     location: "Mansfield, TX",
     ahj: "City of Mansfield Building Safety",
     utility: "Oncor Electric Delivery",
@@ -225,7 +232,12 @@ const addressSamples = {
   },
   green_circle: {
     project_name: "Mansfield Green Circle PV + ESS Package",
-    site_address: "2806 Green Circle Drive, Mansfield, TX",
+    address_line1: "2806 Green Circle Drive",
+    address_line2: "",
+    address_city: "Mansfield",
+    address_state: "TX",
+    address_postal_code: "76063",
+    site_address: "2806 Green Circle Drive, Mansfield, TX 76063",
     location: "Mansfield, TX",
     ahj: "City of Mansfield Building Safety",
     utility: "Oncor Electric Delivery",
@@ -281,7 +293,6 @@ form.addEventListener("submit", async (event) => {
 
 preflightButton.addEventListener("click", runPreflight);
 fileFilter.addEventListener("change", () => renderFiles(currentFiles));
-saveTokenButton.addEventListener("click", saveAccessToken);
 lookupButton.addEventListener("click", runAddressLookup);
 lookupPanel.addEventListener("click", handleLookupCandidateClick);
 previewPanel.addEventListener("click", handlePreviewClick);
@@ -303,7 +314,6 @@ moduleChoice.addEventListener("change", syncModuleOption);
 inverterChoice.addEventListener("change", syncInverterOption);
 batteryChoice.addEventListener("change", syncBatteryOption);
 
-loadAccessToken();
 syncModuleOption();
 syncInverterOption();
 syncBatteryOption({ preserveQuantity: true });
@@ -323,40 +333,14 @@ async function loadRuntimeConfig() {
   } catch {
     runtimeConfig = { auth_required: false };
   }
-  if (runtimeConfig.auth_required && !currentAccessToken()) {
-    tokenStatus.textContent = "Enter an operator token to use API and files";
-  }
-}
-
-function loadAccessToken() {
-  const token = storageGet("pvess_access_token") || "";
-  accessTokenInput.value = token;
-  tokenStatus.textContent = token ? "Operator token saved for API and files" : "No token required on local server";
-}
-
-function saveAccessToken() {
-  const token = accessTokenInput.value.trim();
-  if (token) {
-    storageSet("pvess_access_token", token);
-    tokenStatus.textContent = "Operator token saved for API and files";
-  } else {
-    storageRemove("pvess_access_token");
-    tokenStatus.textContent = "No token required on local server";
-  }
-  loadHistory();
-  loadLeads();
 }
 
 function currentAccessToken() {
-  return (accessTokenInput.value || storageGet("pvess_access_token") || "").trim();
+  return "";
 }
 
 function apiFetch(url, options = {}) {
   const headers = new Headers(options.headers || {});
-  const token = currentAccessToken();
-  if (token) {
-    headers.set("X-PVESS-Token", token);
-  }
   return fetch(url, {
     ...options,
     headers,
@@ -389,12 +373,7 @@ function storageRemove(key) {
 }
 
 function withAuthUrl(url) {
-  const token = currentAccessToken();
-  if (!token || !url) {
-    return url;
-  }
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}token=${encodeURIComponent(token)}`;
+  return url;
 }
 
 function initWizard() {
@@ -636,12 +615,15 @@ function validateStep(stepId, payload) {
 
   if (stepId === "project-basics") {
     if (!payload.project_name) errors.push(issue("project_name", "Project name is required."));
-    if (!payload.site_address) errors.push(issue("site_address", "Site address is required before lookup or generation."));
-    if (!payload.location) errors.push(issue("location", "Location is required for climate, rate, and AHJ assumptions."));
+    if (!payload.site_address) errors.push(issue("address_line1", "Street address is required before lookup or generation."));
+    if (!payload.location) errors.push(issue("address_city", "City and state are required for climate, rate, and AHJ assumptions."));
+    if (!form.elements.address_postal_code?.value.trim()) {
+      errors.push(issue("address_postal_code", "ZIP code is required for a standard U.S. project address."));
+    }
     if (!payload.ahj) warnings.push(issue("ahj", "AHJ is blank; estimate can continue but permit routing will need review."));
     if (!payload.utility) warnings.push(issue("utility", "Utility is blank; default economics and interconnection assumptions may be used."));
     if (!payload.coordinates) warnings.push(issue("coordinates", "Coordinates are missing; satellite/roof lookup confidence may be lower."));
-    if (payload.site_address) passes.push(issue("site_address", "Address captured for project lookup and output title block."));
+    if (payload.site_address) passes.push(issue("address_line1", "U.S. address captured for project lookup and output title block."));
     if (payload.nec_edition) passes.push(issue("nec_edition", `NEC ${payload.nec_edition} selected.`));
   }
 
@@ -927,7 +909,7 @@ function applyAddressSample(name) {
   for (const [key, value] of Object.entries(sample)) {
     setFieldValue(key, value);
   }
-  renderValidation([], [`Loaded sample address: ${sample.site_address}. Monthly usage is simulated until a bill or Smart Meter export is uploaded.`]);
+  renderValidation([], [`Loaded sample project: ${sample.site_address}. Monthly usage is simulated until a bill or Smart Meter export is uploaded.`]);
   renderCurrentStepValidation({ quiet: false });
   localAutosave();
 }
@@ -960,6 +942,8 @@ function buildPayload(data) {
     payload.monthly_kwh = monthly;
   }
 
+  syncUsAddressPayload(payload);
+
   payload.outputs = {
     customer: data.has("out_customer"),
     permit: data.has("out_permit"),
@@ -969,6 +953,28 @@ function buildPayload(data) {
   };
 
   return payload;
+}
+
+function syncUsAddressPayload(payload) {
+  const line1 = String(payload.address_line1 || "").trim();
+  const line2 = String(payload.address_line2 || "").trim();
+  const city = String(payload.address_city || "").trim();
+  const state = String(payload.address_state || "").trim().toUpperCase();
+  const postal = String(payload.address_postal_code || "").trim();
+  const street = [line1, line2].filter(Boolean).join(", ");
+  const cityStateZip = [
+    city,
+    [state, postal].filter(Boolean).join(" "),
+  ].filter(Boolean).join(", ");
+  payload.site_address = [street, cityStateZip].filter(Boolean).join(", ");
+  payload.location = [city, state].filter(Boolean).join(", ");
+  setRawFieldValue("site_address", payload.site_address);
+  setRawFieldValue("location", payload.location);
+  delete payload.address_line1;
+  delete payload.address_line2;
+  delete payload.address_city;
+  delete payload.address_state;
+  delete payload.address_postal_code;
 }
 
 function validatePayload(payload) {
@@ -1037,13 +1043,10 @@ async function runPreflight() {
 
 async function runAddressLookup() {
   clearError();
-  const address = (
-    form.elements.site_address?.value ||
-    form.elements.location?.value ||
-    ""
-  ).trim();
+  const payload = buildPayload(new FormData(form));
+  const address = (payload.site_address || payload.location || "").trim();
   if (!address) {
-    renderLookupMessage("Enter a site address before using auto-fill.", "warning");
+    renderLookupMessage("Enter street, city, state, and ZIP before using auto-fill.", "warning");
     return;
   }
 
@@ -1607,15 +1610,6 @@ function renderSourceMaterials(source) {
 }
 
 async function loadLeads() {
-  if (runtimeConfig.auth_required && !currentAccessToken()) {
-    leadList.innerHTML = "";
-    leadEmpty.textContent = "Enter an operator token to view public estimate requests.";
-    leadEmpty.classList.remove("hidden");
-    leadDigest.classList.add("hidden");
-    leadMetricsPanel.classList.add("hidden");
-    leadNotificationPanel.classList.add("hidden");
-    return;
-  }
   leadEmpty.textContent = "Public estimate requests appear here.";
   try {
     const response = await apiFetch(`/api/leads${leadQueryString()}`);
@@ -1637,10 +1631,6 @@ async function loadLeads() {
 }
 
 async function loadLeadDigest() {
-  if (runtimeConfig.auth_required && !currentAccessToken()) {
-    leadDigest.classList.add("hidden");
-    return;
-  }
   try {
     const response = await apiFetch("/api/leads/digest");
     const data = await response.json();
@@ -1654,10 +1644,6 @@ async function loadLeadDigest() {
 }
 
 async function loadLeadMetrics() {
-  if (runtimeConfig.auth_required && !currentAccessToken()) {
-    leadMetricsPanel.classList.add("hidden");
-    return;
-  }
   try {
     const response = await apiFetch("/api/leads/metrics");
     const data = await response.json();
@@ -1696,10 +1682,6 @@ function renderLeadMetrics(data) {
 }
 
 async function loadLeadNotifications() {
-  if (runtimeConfig.auth_required && !currentAccessToken()) {
-    leadNotificationPanel.classList.add("hidden");
-    return;
-  }
   try {
     const response = await apiFetch("/api/leads/notifications?limit=5");
     const data = await response.json();
@@ -1776,11 +1758,6 @@ function leadQueryString() {
 }
 
 function exportLeadsCsv() {
-  if (runtimeConfig.auth_required && !currentAccessToken()) {
-    leadEmpty.textContent = "Enter an operator token before exporting leads.";
-    leadEmpty.classList.remove("hidden");
-    return;
-  }
   window.location.href = withAuthUrl(`/api/leads/export.csv${leadQueryString()}`);
 }
 
@@ -2167,12 +2144,6 @@ function renderError(message) {
 }
 
 async function loadHistory() {
-  if (runtimeConfig.auth_required && !currentAccessToken()) {
-    historyList.innerHTML = "";
-    historyEmpty.textContent = "Enter an operator token to view recent projects.";
-    historyEmpty.classList.remove("hidden");
-    return;
-  }
   historyEmpty.textContent = "No generated projects yet.";
   try {
     const response = await apiFetch(`/api/jobs${historyQueryString()}`);
@@ -2328,6 +2299,20 @@ function applyPayloadToForm(payload, options = {}) {
 }
 
 function setFieldValue(name, value) {
+  if (name === "site_address") {
+    setRawFieldValue("site_address", value);
+    applyUsAddressString(value);
+    return;
+  }
+  if (name === "location") {
+    setRawFieldValue("location", value);
+    applyLocationString(value);
+    return;
+  }
+  setRawFieldValue(name, value);
+}
+
+function setRawFieldValue(name, value) {
   const field = form.elements[name] || document.querySelector(`[name="${name}"]`);
   if (!field || field.type === "file") {
     return;
@@ -2337,6 +2322,55 @@ function setFieldValue(name, value) {
     return;
   }
   field.value = value ?? "";
+}
+
+function applyUsAddressString(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return;
+  }
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  if (/^(united states|usa|us)$/i.test(parts[parts.length - 1] || "")) {
+    parts.pop();
+  }
+  if (parts[0]) {
+    setRawFieldValue("address_line1", parts[0]);
+  }
+  let unit = "";
+  let city = parts.length >= 3 ? parts[parts.length - 2] : "";
+  let stateZip = parts.length >= 2 ? parts[parts.length - 1] : "";
+  const hasSeparateZip = parts.length >= 4
+    && /^\d{5}(?:-\d{4})?$/.test(parts[parts.length - 1])
+    && /^[A-Z]{2}$/i.test(parts[parts.length - 2]);
+  if (hasSeparateZip) {
+    city = parts[parts.length - 3] || "";
+    stateZip = `${parts[parts.length - 2]} ${parts[parts.length - 1]}`.trim();
+    unit = parts.slice(1, -3).join(", ");
+  } else if (parts.length >= 4) {
+    unit = parts.slice(1, -2).join(", ");
+  }
+  setRawFieldValue("address_line2", unit);
+  const match = stateZip.match(/\b([A-Z]{2})\b\s*(\d{5}(?:-\d{4})?)?/i);
+  if (city) {
+    setRawFieldValue("address_city", city);
+  }
+  if (match?.[1]) {
+    setRawFieldValue("address_state", match[1].toUpperCase());
+  }
+  if (match?.[2]) {
+    setRawFieldValue("address_postal_code", match[2]);
+  }
+}
+
+function applyLocationString(value) {
+  const text = String(value || "").trim();
+  const [city, state] = text.split(",").map((part) => part.trim());
+  if (city) {
+    setRawFieldValue("address_city", city);
+  }
+  if (state) {
+    setRawFieldValue("address_state", state.toUpperCase());
+  }
 }
 
 function setCheckbox(name, value) {

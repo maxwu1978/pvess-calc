@@ -9,17 +9,20 @@ pvess serve --host 127.0.0.1 --port 8765
 
 Open `http://127.0.0.1:8765`.
 
-For a shared preview machine, protect API and generated-file routes with a
-token:
+For a shared browser preview, protect the page and same-origin APIs with
+Cloudflare Access or browser Basic Auth. For script/API automation, enable a
+server-side access token:
 
 ```bash
 pvess serve --host 0.0.0.0 --port 8765 --access-token "$PVESS_WEB_ACCESS_TOKEN"
 ```
 
-The static page still loads, then the browser sends the saved access token
-with API requests and generated-file preview/download URLs.
+The current operator page does not expose a token entry field. In the hosted
+workflow, browser/session auth protects the page and same-origin API calls.
+The token mode remains available for scripts and automation that can send the
+`X-PVESS-Token` header.
 
-The same token field accepts either:
+API clients can authenticate with either:
 
 - the admin/bootstrap token from `PVESS_WEB_ACCESS_TOKEN` or
   `pvess serve --access-token`
@@ -254,13 +257,24 @@ project form. When lookup returns multiple roof faces, the UI lists candidate
 sections with pitch, azimuth, and area so the operator can choose a roof face
 instead of accepting only the automatic best match.
 
-## Address Samples
+## Address Input
 
-The **Try a sample address** selector keeps a few realistic smoke-test inputs
+Project basics uses standard U.S. address fields:
+
+- Street address
+- Unit / suite
+- City
+- State
+- ZIP code
+
+The browser composes these into the existing `site_address` and `location`
+payload fields for lookup, preflight, and generation.
+
+The **Load sample project** selector keeps a few realistic smoke-test inputs
 in the UI. W17a includes these Mansfield, TX samples:
 
-- `905 Crossvine Drive, Mansfield, TX`
-- `2806 Green Circle Drive, Mansfield, TX`
+- `905 Crossvine Drive, Mansfield, TX 76063`
+- `2806 Green Circle Drive, Mansfield, TX 76063`
 
 Both use the DFW simulated residential monthly usage curve documented in
 **[Web UI language](web-ui-language.md)** until a real utility bill or Smart
@@ -391,5 +405,6 @@ curl -X POST http://127.0.0.1:8765/api/operators \
   -d '{"operator_id":"designer-1","display_name":"Designer 1"}'
 ```
 
-The response includes the operator token once. Store it in the browser token
-field for that operator. The server stores only a hash of the token.
+The response includes the operator token once. Store it in the script or
+automation secret that sends the `X-PVESS-Token` header. The server stores only
+a hash of the token.
