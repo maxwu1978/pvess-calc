@@ -23,6 +23,7 @@ const leadQuery = document.querySelector("#lead-query");
 const leadRefresh = document.querySelector("#lead-refresh");
 const leadExport = document.querySelector("#lead-export");
 const leadDigest = document.querySelector("#lead-digest");
+const leadMetricsPanel = document.querySelector("#lead-metrics-panel");
 const leadDraftPanel = document.querySelector("#lead-draft-panel");
 const leadDraftSubject = document.querySelector("#lead-draft-subject");
 const leadDraftBody = document.querySelector("#lead-draft-body");
@@ -1029,6 +1030,7 @@ async function loadLeads() {
     leadEmpty.textContent = "Enter an operator token to view public estimate requests.";
     leadEmpty.classList.remove("hidden");
     leadDigest.classList.add("hidden");
+    leadMetricsPanel.classList.add("hidden");
     leadNotificationPanel.classList.add("hidden");
     return;
   }
@@ -1041,11 +1043,13 @@ async function loadLeads() {
     }
     renderLeads(data.leads || []);
     loadLeadDigest();
+    loadLeadMetrics();
     loadLeadNotifications();
   } catch {
     leadList.innerHTML = "";
     leadEmpty.textContent = "Lead list is unavailable.";
     leadEmpty.classList.remove("hidden");
+    leadMetricsPanel.classList.add("hidden");
     leadNotificationPanel.classList.add("hidden");
   }
 }
@@ -1065,6 +1069,48 @@ async function loadLeadDigest() {
   } catch {
     leadDigest.classList.add("hidden");
   }
+}
+
+async function loadLeadMetrics() {
+  if (runtimeConfig.auth_required && !currentAccessToken()) {
+    leadMetricsPanel.classList.add("hidden");
+    return;
+  }
+  try {
+    const response = await apiFetch("/api/leads/metrics");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    renderLeadMetrics(data);
+  } catch {
+    leadMetricsPanel.classList.add("hidden");
+  }
+}
+
+function renderLeadMetrics(data) {
+  const bySource = data.by_source || [];
+  const byCampaign = data.by_campaign || [];
+  leadMetricsPanel.classList.toggle("hidden", !data.total);
+  if (!data.total) {
+    leadMetricsPanel.innerHTML = "";
+    return;
+  }
+  leadMetricsPanel.innerHTML = `
+    <div class="lead-metrics-head">
+      <strong>Marketing attribution</strong>
+      <span>${Number(data.total || 0)} leads · ${Math.round(Number(data.conversion_rate || 0) * 100)}% converted</span>
+    </div>
+    <dl>
+      ${bySource.slice(0, 4).map((item) => `
+        <dt>${escapeHtml(item.key || "direct")}</dt>
+        <dd>${Number(item.count || 0)}</dd>
+      `).join("") || "<dt>direct</dt><dd>0</dd>"}
+    </dl>
+    ${byCampaign.length ? `
+      <small>Campaigns: ${byCampaign.slice(0, 3).map((item) => `${escapeHtml(item.key)} (${Number(item.count || 0)})`).join(", ")}</small>
+    ` : ""}
+  `;
 }
 
 async function loadLeadNotifications() {
@@ -1174,6 +1220,7 @@ function renderLeads(leads) {
           ${lead.phone ? ` · <a href="tel:${escapeHtml(lead.phone)}">${escapeHtml(lead.phone)}</a>` : ""}
         </em>
         <em>${escapeHtml(labelForLeadType(lead.project_type))} · ${usage} · last contact ${escapeHtml(formatLeadDate(lead.last_contacted_at) || "not recorded")}</em>
+        <em>${escapeHtml(leadAttributionLabel(lead))}</em>
         <label class="lead-note-label">
           Follow-up notes
           <textarea class="lead-note" data-lead-note="${escapeHtml(lead.lead_id)}">${escapeHtml(lead.notes || "")}</textarea>
@@ -1211,6 +1258,13 @@ function labelForLeadType(value) {
     return "Not sure yet";
   }
   return "Solar + battery";
+}
+
+function leadAttributionLabel(lead) {
+  const source = lead.campaign_source || "direct";
+  const medium = lead.campaign_medium ? ` / ${lead.campaign_medium}` : "";
+  const campaign = lead.campaign_name ? ` · ${lead.campaign_name}` : "";
+  return `source ${source}${medium}${campaign}`;
 }
 
 function formatLeadDate(value) {

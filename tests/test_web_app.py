@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import sqlite3
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ from pvess_calc.web.server import (
     create_app,
     default_qet_template,
 )
+from pvess_calc.web.job_store import JOB_DB_FILENAME, JobStore
 from pvess_calc.web.notifications import LeadNotificationConfig, WebhookResult
 
 
@@ -33,6 +35,43 @@ MANSFIELD_SAMPLE_ADDRESSES = [
 
 def _client(tmp_path: Path) -> TestClient:
     return TestClient(create_app(jobs_dir=tmp_path))
+
+
+def test_job_store_migrates_campaign_columns_before_indexes(tmp_path: Path):
+    db_path = tmp_path / JOB_DB_FILENAME
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE web_leads (
+                lead_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'new',
+                contact_name TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                phone TEXT NOT NULL DEFAULT '',
+                site_address TEXT NOT NULL DEFAULT '',
+                project_type TEXT NOT NULL DEFAULT 'pv_ess',
+                utility TEXT NOT NULL DEFAULT '',
+                monthly_kwh_json TEXT NOT NULL DEFAULT '[]',
+                notes TEXT NOT NULL DEFAULT '',
+                utility_bill_path TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'public_form',
+                converted_job_id TEXT NOT NULL DEFAULT '',
+                last_contacted_at TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+    JobStore(tmp_path).ensure_ready()
+
+    with sqlite3.connect(db_path) as conn:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(web_leads)")}
+        indexes = {row[1] for row in conn.execute("PRAGMA index_list(web_leads)")}
+    assert "campaign_source" in columns
+    assert "campaign_name" in columns
+    assert "idx_web_leads_campaign_source" in indexes
+    assert "idx_web_leads_campaign_name" in indexes
 
 
 def _light_payload(**overrides):
@@ -484,6 +523,12 @@ def test_web_public_lead_page_and_submission_bypass_auth(tmp_path: Path):
             "utility": "Oncor Electric Delivery",
             "monthly_kwh_text": "1,200",
             "notes": "Public lead smoke test",
+            "campaign_source": "google",
+            "campaign_medium": "cpc",
+            "campaign_name": "dfw-solar",
+            "campaign_content": "battery-copy",
+            "referrer": "https://google.com/search?q=tge+solar",
+            "landing_url": "https://tge.reelamate.com/lead?utm_source=google",
         },
     )
 
@@ -494,8 +539,15 @@ def test_web_public_lead_page_and_submission_bypass_auth(tmp_path: Path):
     assert lead["site_address"] == "905 Crossvine Drive, Mansfield, TX"
     assert lead["utility"] == "Oncor Electric Delivery"
     assert lead["monthly_kwh"] == [1200.0] * 12
+    assert lead["campaign_source"] == "google"
+    assert lead["campaign_medium"] == "cpc"
+    assert lead["campaign_name"] == "dfw-solar"
+    assert lead["campaign_content"] == "battery-copy"
+    assert lead["referrer"] == "https://google.com/search?q=tge+solar"
+    assert lead["landing_url"].endswith("utm_source=google")
 
     assert client.get("/api/leads").status_code == 401
+    assert client.get("/api/leads/metrics").status_code == 401
     headers = {
         **_basic_headers("site-user", "site-pass"),
         **_token_headers("secret"),
@@ -503,6 +555,14 @@ def test_web_public_lead_page_and_submission_bypass_auth(tmp_path: Path):
     listed = client.get("/api/leads", headers=headers)
     assert listed.status_code == 200
     assert listed.json()["leads"][0]["lead_id"] == lead["lead_id"]
+
+    metrics = client.get("/api/leads/metrics", headers=headers)
+    assert metrics.status_code == 200, metrics.text
+    metrics_data = metrics.json()
+    assert metrics_data["total"] == 1
+    assert metrics_data["converted"] == 0
+    assert metrics_data["by_source"] == [{"key": "google", "count": 1}]
+    assert metrics_data["by_campaign"] == [{"key": "dfw-solar", "count": 1}]
 
 
 def test_web_lead_lifecycle_update_archive_and_export(tmp_path: Path):
@@ -561,6 +621,7 @@ def test_web_lead_lifecycle_update_archive_and_export(tmp_path: Path):
     assert "lifecycle@example.com" in export.text
     assert "Called homeowner; bill requested." in export.text
     assert "monthly_kwh_avg" in export.text
+    assert "campaign_source" in export.text
 
     archive = client.post(
         f"/api/leads/{lead['lead_id']}/archive",
@@ -749,6 +810,10 @@ def test_web_lead_conversion_creates_customer_estimate_job(tmp_path: Path):
     data = response.json()
     assert data["lead"]["status"] == "converted"
     assert data["lead"]["converted_job_id"] == data["job"]["job_id"]
+
+    metrics = client.get("/api/leads/metrics", headers=headers)
+    assert metrics.status_code == 200, metrics.text
+    assert metrics.json()["converted"] == 1
 
     payload = client.get(
         f"/api/jobs/{data['job']['job_id']}/payload",

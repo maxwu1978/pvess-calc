@@ -473,6 +473,12 @@ class WebLeadRecord(BaseModel):
     notes: str = ""
     utility_bill_path: str = ""
     source: str = "public_form"
+    campaign_source: str = ""
+    campaign_medium: str = ""
+    campaign_name: str = ""
+    campaign_content: str = ""
+    referrer: str = ""
+    landing_url: str = ""
     converted_job_id: str = ""
     last_contacted_at: str = ""
     created_at: str
@@ -509,6 +515,20 @@ class WebLeadDigestResponse(BaseModel):
     stale_leads: list[WebLeadRecord]
     qualified_leads: list[WebLeadRecord]
     summary: str
+
+
+class WebLeadMetricItem(BaseModel):
+    key: str
+    count: int
+
+
+class WebLeadMetricsResponse(BaseModel):
+    total: int
+    converted: int
+    conversion_rate: float
+    by_status: list[WebLeadMetricItem]
+    by_source: list[WebLeadMetricItem]
+    by_campaign: list[WebLeadMetricItem]
 
 
 LeadNotificationStatus = Literal["pending", "sent", "failed", "skipped"]
@@ -687,6 +707,12 @@ def create_app(
         utility: str = Form(""),
         monthly_kwh_text: str = Form(""),
         notes: str = Form(""),
+        campaign_source: str = Form(""),
+        campaign_medium: str = Form(""),
+        campaign_name: str = Form(""),
+        campaign_content: str = Form(""),
+        referrer: str = Form(""),
+        landing_url: str = Form(""),
         utility_bill: UploadFile | None = File(None),
     ) -> WebLeadCreateResponse:
         try:
@@ -700,6 +726,12 @@ def create_app(
                 utility=utility,
                 monthly_kwh_text=monthly_kwh_text,
                 notes=notes,
+                campaign_source=campaign_source,
+                campaign_medium=campaign_medium,
+                campaign_name=campaign_name,
+                campaign_content=campaign_content,
+                referrer=referrer,
+                landing_url=landing_url,
                 utility_bill=await _read_upload(utility_bill),
             )
             record_and_dispatch_lead_notification(app, lead.model_dump())
@@ -755,6 +787,13 @@ def create_app(
         _require_auth_context(request)
         active = app.state.job_store.list_leads(status="active", limit=10000)
         return build_lead_digest_response(active)
+
+    @app.get("/api/leads/metrics", response_model=WebLeadMetricsResponse)
+    def lead_metrics(request: Request) -> WebLeadMetricsResponse:
+        _require_auth_context(request)
+        return WebLeadMetricsResponse.model_validate(
+            app.state.job_store.lead_metrics()
+        )
 
     @app.get(
         "/api/leads/notifications",
@@ -3382,6 +3421,12 @@ def create_lead_record(
     utility: str,
     monthly_kwh_text: str,
     notes: str,
+    campaign_source: str = "",
+    campaign_medium: str = "",
+    campaign_name: str = "",
+    campaign_content: str = "",
+    referrer: str = "",
+    landing_url: str = "",
     utility_bill: UploadedMaterial | None,
 ) -> WebLeadRecord:
     clean_name = contact_name.strip()
@@ -3430,6 +3475,12 @@ def create_lead_record(
         "notes": notes.strip()[:1000],
         "utility_bill_path": bill_rel,
         "source": "public_form",
+        "campaign_source": _clean_lead_text(campaign_source, max_length=80),
+        "campaign_medium": _clean_lead_text(campaign_medium, max_length=80),
+        "campaign_name": _clean_lead_text(campaign_name, max_length=120),
+        "campaign_content": _clean_lead_text(campaign_content, max_length=120),
+        "referrer": _clean_lead_text(referrer, max_length=300),
+        "landing_url": _clean_lead_text(landing_url, max_length=300),
         "created_at": now,
         "updated_at": now,
     })
@@ -3533,6 +3584,12 @@ def build_leads_csv(leads: list[dict[str, Any]]) -> str:
         "monthly_kwh_avg",
         "monthly_kwh_values",
         "notes",
+        "campaign_source",
+        "campaign_medium",
+        "campaign_name",
+        "campaign_content",
+        "referrer",
+        "landing_url",
         "converted_job_id",
         "last_contacted_at",
         "created_at",
@@ -3560,6 +3617,12 @@ def build_leads_csv(leads: list[dict[str, Any]]) -> str:
             ),
             "monthly_kwh_values": ";".join(f"{value:g}" for value in monthly),
             "notes": lead.get("notes", ""),
+            "campaign_source": lead.get("campaign_source", ""),
+            "campaign_medium": lead.get("campaign_medium", ""),
+            "campaign_name": lead.get("campaign_name", ""),
+            "campaign_content": lead.get("campaign_content", ""),
+            "referrer": lead.get("referrer", ""),
+            "landing_url": lead.get("landing_url", ""),
             "converted_job_id": lead.get("converted_job_id", ""),
             "last_contacted_at": lead.get("last_contacted_at", ""),
             "created_at": lead.get("created_at", ""),
@@ -3729,6 +3792,11 @@ def _clean_email(raw: str) -> str:
     if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         return ""
     return email
+
+
+def _clean_lead_text(raw: str, *, max_length: int) -> str:
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", str(raw or "")).strip()
+    return text[:max(1, max_length)]
 
 
 def _is_finite_number(value: Any) -> bool:

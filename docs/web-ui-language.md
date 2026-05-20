@@ -35,6 +35,7 @@ Avoid:
 | Follow-up notes | Internal sales/design notes for a public lead | Lead row notes |
 | Email follow-up draft | Operator-reviewed email text generated from a lead | Lead follow-up panel |
 | Lead notification | Internal alert event created when a public lead arrives | Notification panel |
+| Marketing attribution | UTM/referrer source attached to a public lead | Lead metrics panel |
 | Load intake | Pre-fill the project form from a lead without generating output | Lead action |
 
 ## Button Language
@@ -99,6 +100,7 @@ Use these status labels consistently:
 - `Lead notification` — internal alert event created when a public lead arrives
 - `Dry-run notification` — notification recorded locally without external send
 - `Webhook failed` — external notification delivery failed; lead data is still saved
+- `Marketing attribution` — source/campaign summary from public lead UTM data
 
 ## Mansfield Test Addresses
 

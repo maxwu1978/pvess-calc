@@ -18,6 +18,32 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P8 — marketing attribution metrics ✅ DONE 2026-05-20
+
+Goal: connect public lead intake to marketing decisions by preserving source
+and campaign data without exposing operator analytics publicly.
+
+Completed:
+
+- Added UTM/referrer fields to persisted public lead records:
+  source, medium, campaign, content, referrer, and landing URL.
+- Updated the public `/lead` page to capture URL attribution fields into
+  hidden form inputs.
+- Added protected `GET /api/leads/metrics` with total leads, converted leads,
+  conversion rate, source mix, and campaign mix.
+- Extended the internal **Public leads** panel with a marketing attribution
+  summary and per-lead source label.
+- Added campaign/referrer fields to lead CSV export and search coverage.
+- Added regression coverage for attribution capture, protected metrics, and
+  CSV schema.
+
+Closing standards met:
+
+- Public users can submit the same lead form without seeing analytics.
+- Attribution fields are optional and backward-compatible for existing leads.
+- Metrics require admin/operator auth.
+- CSV exports include attribution fields for external sales/marketing review.
+
 ### Web UI P7 — lead notification channel ✅ DONE 2026-05-20
 
 Goal: notify operators when a public estimate request arrives without making

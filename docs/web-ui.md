@@ -59,6 +59,11 @@ export.
 uploaded bill under `<workdir>/leads/<lead_id>/`. If the utility upload contains
 12 valid monthly kWh values, those values are attached to the lead.
 
+The public page also captures campaign attribution from the landing URL:
+`utm_source`, `utm_medium`, `utm_campaign`, and `utm_content`, plus browser
+referrer and landing URL. Operators can search these fields, export them in
+CSV, and review aggregate source/campaign metrics from the protected Web UI.
+
 The internal **Public leads** panel is visible in the main operator UI after
 login. Operators can filter by status, search by name/email/address, save
 follow-up notes, update lifecycle status, archive inactive leads, export the
@@ -97,6 +102,10 @@ marks it sent without contacting an external service. Setting
 `PVESS_LEAD_NOTIFICATION_WEBHOOK_URL` sends the same event payload to a
 configured webhook; failures are recorded in the operator panel and can be
 retried without blocking the homeowner submission.
+
+P8 marketing attribution is operator-only. `GET /api/leads/metrics` summarizes
+lead totals, conversion count, conversion rate, source mix, and campaign mix.
+The endpoint requires the same admin/operator token as the internal lead list.
 
 ## Address Lookup
 

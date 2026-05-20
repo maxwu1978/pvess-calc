@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P8: marketing attribution metrics
+
+- Added optional UTM/referrer fields to public lead records and CSV export
+- Updated `/lead` to capture campaign source, medium, campaign, content,
+  referrer, and landing URL automatically
+- Added authenticated lead metrics for total leads, converted leads,
+  conversion rate, source mix, and campaign mix
+- Extended **Public leads** with a marketing attribution summary and per-lead
+  source label
+- Added regression tests for attribution capture, protected metrics, and CSV
+  export schema
+
 ### 2026-05-20 — Web UI P7: lead notification channel
 
 - Added persistent lead-notification events for every new public estimate

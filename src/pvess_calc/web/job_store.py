@@ -95,6 +95,12 @@ class JobStore:
                         notes TEXT NOT NULL DEFAULT '',
                         utility_bill_path TEXT NOT NULL DEFAULT '',
                         source TEXT NOT NULL DEFAULT 'public_form',
+                        campaign_source TEXT NOT NULL DEFAULT '',
+                        campaign_medium TEXT NOT NULL DEFAULT '',
+                        campaign_name TEXT NOT NULL DEFAULT '',
+                        campaign_content TEXT NOT NULL DEFAULT '',
+                        referrer TEXT NOT NULL DEFAULT '',
+                        landing_url TEXT NOT NULL DEFAULT '',
                         converted_job_id TEXT NOT NULL DEFAULT '',
                         last_contacted_at TEXT NOT NULL DEFAULT '',
                         created_at TEXT NOT NULL,
@@ -160,6 +166,28 @@ class JobStore:
                     "web_leads",
                     "last_contacted_at",
                     "TEXT NOT NULL DEFAULT ''",
+                )
+                for column in [
+                    "campaign_source",
+                    "campaign_medium",
+                    "campaign_name",
+                    "campaign_content",
+                    "referrer",
+                    "landing_url",
+                ]:
+                    _ensure_column(
+                        conn,
+                        "web_leads",
+                        column,
+                        "TEXT NOT NULL DEFAULT ''",
+                    )
+                conn.executescript(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_web_leads_campaign_source
+                        ON web_leads(campaign_source);
+                    CREATE INDEX IF NOT EXISTS idx_web_leads_campaign_name
+                        ON web_leads(campaign_name);
+                    """
                 )
                 _ensure_column(
                     conn,
@@ -452,6 +480,12 @@ class JobStore:
             "notes": str(lead.get("notes") or ""),
             "utility_bill_path": str(lead.get("utility_bill_path") or ""),
             "source": str(lead.get("source") or "public_form"),
+            "campaign_source": str(lead.get("campaign_source") or ""),
+            "campaign_medium": str(lead.get("campaign_medium") or ""),
+            "campaign_name": str(lead.get("campaign_name") or ""),
+            "campaign_content": str(lead.get("campaign_content") or ""),
+            "referrer": str(lead.get("referrer") or ""),
+            "landing_url": str(lead.get("landing_url") or ""),
             "converted_job_id": str(lead.get("converted_job_id") or ""),
             "last_contacted_at": str(lead.get("last_contacted_at") or ""),
             "created_at": now,
@@ -463,13 +497,19 @@ class JobStore:
                 INSERT INTO web_leads (
                     lead_id, status, contact_name, email, phone,
                     site_address, project_type, utility, monthly_kwh_json,
-                    notes, utility_bill_path, source, converted_job_id,
+                    notes, utility_bill_path, source,
+                    campaign_source, campaign_medium, campaign_name,
+                    campaign_content, referrer, landing_url,
+                    converted_job_id,
                     last_contacted_at,
                     created_at, updated_at
                 ) VALUES (
                     :lead_id, :status, :contact_name, :email, :phone,
                     :site_address, :project_type, :utility, :monthly_kwh_json,
-                    :notes, :utility_bill_path, :source, :converted_job_id,
+                    :notes, :utility_bill_path, :source,
+                    :campaign_source, :campaign_medium, :campaign_name,
+                    :campaign_content, :referrer, :landing_url,
+                    :converted_job_id,
                     :last_contacted_at,
                     :created_at, :updated_at
                 )
@@ -499,9 +539,12 @@ class JobStore:
             like = f"%{query.strip().lower()}%"
             clauses.append(
                 "(lower(contact_name) LIKE ? OR lower(email) LIKE ? "
-                "OR lower(site_address) LIKE ? OR lower(lead_id) LIKE ?)"
+                "OR lower(site_address) LIKE ? OR lower(lead_id) LIKE ? "
+                "OR lower(campaign_source) LIKE ? "
+                "OR lower(campaign_medium) LIKE ? "
+                "OR lower(campaign_name) LIKE ?)"
             )
-            params.extend([like, like, like, like])
+            params.extend([like, like, like, like, like, like, like])
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = (
             f"SELECT * FROM web_leads {where} "
@@ -511,6 +554,68 @@ class JobStore:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [_lead_from_row(row) for row in rows]
+
+    def lead_metrics(self) -> dict[str, Any]:
+        self.ensure_ready()
+        with self._connect() as conn:
+            status_rows = conn.execute(
+                """
+                SELECT status, count(*) AS count
+                FROM web_leads
+                GROUP BY status
+                ORDER BY count DESC, status
+                """
+            ).fetchall()
+            source_rows = conn.execute(
+                """
+                SELECT campaign_source, count(*) AS count
+                FROM web_leads
+                GROUP BY campaign_source
+                ORDER BY count DESC, campaign_source
+                LIMIT 8
+                """
+            ).fetchall()
+            campaign_rows = conn.execute(
+                """
+                SELECT campaign_name, count(*) AS count
+                FROM web_leads
+                WHERE campaign_name != ''
+                GROUP BY campaign_name
+                ORDER BY count DESC, campaign_name
+                LIMIT 8
+                """
+            ).fetchall()
+            totals = conn.execute(
+                """
+                SELECT
+                    count(*) AS total,
+                    sum(CASE WHEN status = 'converted' THEN 1 ELSE 0 END)
+                        AS converted
+                FROM web_leads
+                """
+            ).fetchone()
+        total = int(totals["total"] or 0) if totals is not None else 0
+        converted = int(totals["converted"] or 0) if totals is not None else 0
+        return {
+            "total": total,
+            "converted": converted,
+            "conversion_rate": (converted / total) if total else 0.0,
+            "by_status": [
+                {"key": str(row["status"] or "unknown"), "count": int(row["count"])}
+                for row in status_rows
+            ],
+            "by_source": [
+                {
+                    "key": str(row["campaign_source"] or "direct"),
+                    "count": int(row["count"]),
+                }
+                for row in source_rows
+            ],
+            "by_campaign": [
+                {"key": str(row["campaign_name"]), "count": int(row["count"])}
+                for row in campaign_rows
+            ],
+        }
 
     def get_lead(self, lead_id: str) -> dict[str, Any] | None:
         self.ensure_ready()
@@ -850,6 +955,12 @@ def _lead_from_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         "notes": str(row["notes"] or ""),
         "utility_bill_path": str(row["utility_bill_path"] or ""),
         "source": str(row["source"] or "public_form"),
+        "campaign_source": str(row["campaign_source"] or ""),
+        "campaign_medium": str(row["campaign_medium"] or ""),
+        "campaign_name": str(row["campaign_name"] or ""),
+        "campaign_content": str(row["campaign_content"] or ""),
+        "referrer": str(row["referrer"] or ""),
+        "landing_url": str(row["landing_url"] or ""),
         "converted_job_id": str(row["converted_job_id"] or ""),
         "last_contacted_at": str(row["last_contacted_at"] or ""),
         "created_at": str(row["created_at"] or ""),

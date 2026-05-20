@@ -285,6 +285,12 @@
           <label>Notes
             <textarea name="notes" placeholder="Roof age, battery goals, EV plans, or timing"></textarea>
           </label>
+          <input name="campaign_source" type="hidden" />
+          <input name="campaign_medium" type="hidden" />
+          <input name="campaign_name" type="hidden" />
+          <input name="campaign_content" type="hidden" />
+          <input name="referrer" type="hidden" />
+          <input name="landing_url" type="hidden" />
           <button id="submit-lead" type="submit">Request estimate</button>
           <div id="lead-status" class="status" role="status"></div>
         </form>
@@ -298,6 +304,14 @@
       const form = document.querySelector("#lead-form");
       const button = document.querySelector("#submit-lead");
       const statusEl = document.querySelector("#lead-status");
+      const params = new URLSearchParams(window.location.search);
+
+      setHidden("campaign_source", params.get("utm_source") || params.get("source") || "");
+      setHidden("campaign_medium", params.get("utm_medium") || "");
+      setHidden("campaign_name", params.get("utm_campaign") || "");
+      setHidden("campaign_content", params.get("utm_content") || "");
+      setHidden("referrer", document.referrer || "");
+      setHidden("landing_url", window.location.href);
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -334,6 +348,13 @@
           return data.detail.map((item) => item.msg || JSON.stringify(item)).join("; ");
         }
         return String(data.detail);
+      }
+
+      function setHidden(name, value) {
+        const input = form.elements[name];
+        if (input) {
+          input.value = value || "";
+        }
       }
     </script>
   </body>

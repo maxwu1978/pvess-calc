@@ -192,6 +192,12 @@ def _lead_payload(lead: dict[str, Any]) -> dict[str, Any]:
         "project_type": str(lead.get("project_type") or ""),
         "utility": str(lead.get("utility") or ""),
         "monthly_kwh": lead.get("monthly_kwh") or [],
+        "campaign_source": str(lead.get("campaign_source") or ""),
+        "campaign_medium": str(lead.get("campaign_medium") or ""),
+        "campaign_name": str(lead.get("campaign_name") or ""),
+        "campaign_content": str(lead.get("campaign_content") or ""),
+        "referrer": str(lead.get("referrer") or ""),
+        "landing_url": str(lead.get("landing_url") or ""),
         "created_at": str(lead.get("created_at") or ""),
     }
 
