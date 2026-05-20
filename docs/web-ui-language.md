@@ -33,6 +33,8 @@ Avoid:
 | Estimate request | Public homeowner request submitted before operator review | Public lead page |
 | Public leads | Internal queue of public estimate requests | Operator panel |
 | Follow-up notes | Internal sales/design notes for a public lead | Lead row notes |
+| Email follow-up draft | Operator-reviewed email text generated from a lead | Lead follow-up panel |
+| Load intake | Pre-fill the project form from a lead without generating output | Lead action |
 
 ## Button Language
 
@@ -44,6 +46,8 @@ Use direct verb phrases:
 - `Request estimate`
 - `Generate estimate`
 - `Export CSV`
+- `Email draft`
+- `Load intake`
 - `Archive`
 - `Download complete ZIP`
 - `Load form`

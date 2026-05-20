@@ -647,6 +647,15 @@
             <button id="lead-refresh" type="button" class="secondary-button">Refresh</button>
             <button id="lead-export" type="button" class="secondary-button">Export CSV</button>
           </div>
+          <div id="lead-digest" class="lead-digest hidden"></div>
+          <div id="lead-draft-panel" class="lead-draft-panel hidden">
+            <div class="section-head">
+              <h3>Email follow-up draft</h3>
+              <a id="lead-draft-mailto" href="#">Open email</a>
+            </div>
+            <strong id="lead-draft-subject"></strong>
+            <textarea id="lead-draft-body" readonly></textarea>
+          </div>
           <div id="lead-empty" class="empty">Public estimate requests appear here.</div>
           <ul id="lead-list" class="file-list lead-list"></ul>
         </section>

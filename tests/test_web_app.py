@@ -280,6 +280,7 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Public leads" in response.text
     assert "Lead status filter" in response.text
     assert "Export CSV" in response.text
+    assert "Email follow-up draft" in response.text
     assert "What needs attention" in response.text
     assert "Filter" in response.text
     assert "Generate estimate package" in response.text
@@ -574,6 +575,57 @@ def test_web_lead_lifecycle_update_archive_and_export(tmp_path: Path):
     archived = client.get("/api/leads", params={"status": "archived"}, headers=headers)
     assert archived.status_code == 200
     assert [item["lead_id"] for item in archived.json()["leads"]] == [lead["lead_id"]]
+
+
+def test_web_lead_digest_draft_and_payload_are_protected(tmp_path: Path):
+    client = TestClient(create_app(jobs_dir=tmp_path, access_token="secret"))
+    headers = _token_headers("secret")
+    lead_response = client.post(
+        "/api/leads",
+        data={
+            "contact_name": "Digest Homeowner",
+            "email": "digest@example.com",
+            "phone": "817-555-0144",
+            "site_address": "905 Crossvine Drive, Mansfield, TX",
+            "project_type": "pv_ess",
+            "monthly_kwh_text": "1200",
+        },
+    )
+    assert lead_response.status_code == 200, lead_response.text
+    lead = lead_response.json()["lead"]
+
+    assert client.get("/api/leads/digest").status_code == 401
+    digest = client.get("/api/leads/digest", headers=headers)
+    assert digest.status_code == 200, digest.text
+    digest_data = digest.json()
+    assert digest_data["total"] == 1
+    assert digest_data["counts"]["new"] == 1
+    assert digest_data["new_leads"][0]["lead_id"] == lead["lead_id"]
+    assert "1 new" in digest_data["summary"]
+
+    draft = client.get(
+        f"/api/leads/{lead['lead_id']}/followup-draft",
+        headers=headers,
+    )
+    assert draft.status_code == 200, draft.text
+    draft_data = draft.json()
+    assert draft_data["lead_id"] == lead["lead_id"]
+    assert "905 Crossvine Drive" in draft_data["subject"]
+    assert "Hi Digest" in draft_data["body"]
+    assert "average 1200 kWh/month" in draft_data["body"]
+    assert draft_data["mailto_url"].startswith("mailto:digest%40example.com")
+
+    payload = client.get(
+        f"/api/leads/{lead['lead_id']}/payload",
+        headers=headers,
+    )
+    assert payload.status_code == 200, payload.text
+    payload_data = payload.json()
+    assert payload_data["client_name"] == "Digest Homeowner"
+    assert payload_data["site_address"] == "905 Crossvine Drive, Mansfield, TX"
+    assert payload_data["battery_choice"] == "inhouse_16kwh_hv"
+    assert payload_data["outputs"]["customer"] is True
+    assert payload_data["outputs"]["permit"] is False
 
 
 def test_web_lead_conversion_creates_customer_estimate_job(tmp_path: Path):

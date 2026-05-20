@@ -18,6 +18,29 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P6 — lead follow-up loop ✅ DONE 2026-05-20
+
+Goal: close the loop between a public lead and the next operator action without
+introducing external email-sending credentials.
+
+Completed:
+
+- Added authenticated lead digest endpoint with active lead counts, new leads,
+  stale follow-up leads, and qualified leads.
+- Added follow-up email draft generation with subject, body, and mailto URL.
+- Added lead-to-project payload endpoint so operators can load a qualified lead
+  back into the main intake form without generating output.
+- Extended the **Public leads** panel with digest summary, **Email draft**, and
+  **Load intake** actions.
+- Added regression coverage for protected digest, draft, and payload endpoints.
+
+Closing standards met:
+
+- Public lead submission remains anonymous; digest/draft/payload are protected.
+- Email is operator-reviewed mailto draft only; the system does not send mail.
+- Load intake pre-fills the same payload shape used by estimate generation.
+- P4/P5 conversion, CSV export, archive, and lifecycle behavior remain intact.
+
 ### Web UI P5 — lead lifecycle workbench ✅ DONE 2026-05-20
 
 Goal: turn public estimate requests into a manageable internal queue before

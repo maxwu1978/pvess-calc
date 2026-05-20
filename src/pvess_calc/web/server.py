@@ -21,6 +21,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote
 from uuid import uuid4
 
 import click
@@ -487,6 +488,22 @@ class WebLeadConvertResponse(BaseModel):
     job: WebJobState
 
 
+class WebLeadDraftResponse(BaseModel):
+    lead_id: str
+    subject: str
+    body: str
+    mailto_url: str
+
+
+class WebLeadDigestResponse(BaseModel):
+    total: int
+    counts: dict[str, int]
+    new_leads: list[WebLeadRecord]
+    stale_leads: list[WebLeadRecord]
+    qualified_leads: list[WebLeadRecord]
+    summary: str
+
+
 def create_app(
     *,
     jobs_dir: Path | None = None,
@@ -689,6 +706,36 @@ def create_app(
                 "Content-Disposition": 'attachment; filename="tge-leads.csv"',
             },
         )
+
+    @app.get("/api/leads/digest", response_model=WebLeadDigestResponse)
+    def lead_digest(
+        request: Request,
+    ) -> WebLeadDigestResponse:
+        _require_auth_context(request)
+        active = app.state.job_store.list_leads(status="active", limit=10000)
+        return build_lead_digest_response(active)
+
+    @app.get("/api/leads/{lead_id}/payload", response_model=WebProjectRequest)
+    def lead_payload(
+        request: Request,
+        lead_id: str,
+    ) -> WebProjectRequest:
+        _require_auth_context(request)
+        lead = app.state.job_store.get_lead(lead_id)
+        if lead is None:
+            raise HTTPException(status_code=404, detail="lead not found")
+        return web_request_from_lead(lead)
+
+    @app.get("/api/leads/{lead_id}/followup-draft", response_model=WebLeadDraftResponse)
+    def lead_followup_draft(
+        request: Request,
+        lead_id: str,
+    ) -> WebLeadDraftResponse:
+        _require_auth_context(request)
+        lead = app.state.job_store.get_lead(lead_id)
+        if lead is None:
+            raise HTTPException(status_code=404, detail="lead not found")
+        return build_followup_draft_response(lead)
 
     @app.patch("/api/leads/{lead_id}", response_model=WebLeadRecord)
     def update_lead(
@@ -3397,6 +3444,130 @@ def build_leads_csv(leads: list[dict[str, Any]]) -> str:
             "updated_at": lead.get("updated_at", ""),
         })
     return buffer.getvalue()
+
+
+def build_lead_digest_response(leads: list[dict[str, Any]]) -> WebLeadDigestResponse:
+    counts = {status: 0 for status in ["new", "contacted", "qualified", "converted"]}
+    for lead in leads:
+        status = str(lead.get("status") or "new")
+        if status in counts:
+            counts[status] += 1
+    new_leads = [
+        WebLeadRecord.model_validate(lead)
+        for lead in leads
+        if lead.get("status") == "new"
+    ][:5]
+    stale = [
+        WebLeadRecord.model_validate(lead)
+        for lead in leads
+        if _lead_is_stale_for_followup(lead)
+    ][:5]
+    qualified = [
+        WebLeadRecord.model_validate(lead)
+        for lead in leads
+        if lead.get("status") == "qualified"
+    ][:5]
+    parts = [
+        f"{counts['new']} new",
+        f"{counts['contacted']} contacted",
+        f"{counts['qualified']} qualified",
+        f"{counts['converted']} converted",
+    ]
+    if stale:
+        parts.append(f"{len(stale)} need follow-up")
+    return WebLeadDigestResponse(
+        total=len(leads),
+        counts=counts,
+        new_leads=new_leads,
+        stale_leads=stale,
+        qualified_leads=qualified,
+        summary="; ".join(parts),
+    )
+
+
+def build_followup_draft_response(lead: dict[str, Any]) -> WebLeadDraftResponse:
+    name = _first_name(str(lead.get("contact_name") or ""))
+    address = str(lead.get("site_address") or "").strip()
+    usage = _lead_usage_summary(lead)
+    project_type = _lead_project_type_label(str(lead.get("project_type") or ""))
+    subject = f"TGE Solar estimate for {address or 'your home'}"
+    body = "\n".join([
+        f"Hi {name or 'there'},",
+        "",
+        "Thanks for requesting a solar estimate from TGE Solar.",
+        "",
+        f"I have your project listed as {project_type}.",
+        f"Site address: {address or 'not provided'}",
+        f"Usage data: {usage}",
+        "",
+        "The next useful step is confirming the utility bill or Smart Meter usage export, plus any photos of the meter/main panel area if available.",
+        "",
+        "After that, we can prepare an internal estimate package with system size, expected production, and budget-level BOM.",
+        "",
+        "Best,",
+        "TGE Solar",
+    ])
+    email = str(lead.get("email") or "").strip()
+    mailto = (
+        f"mailto:{quote(email)}?subject={quote(subject)}&body={quote(body)}"
+        if email
+        else f"mailto:?subject={quote(subject)}&body={quote(body)}"
+    )
+    return WebLeadDraftResponse(
+        lead_id=str(lead.get("lead_id") or ""),
+        subject=subject,
+        body=body,
+        mailto_url=mailto,
+    )
+
+
+def _lead_is_stale_for_followup(lead: dict[str, Any]) -> bool:
+    status = str(lead.get("status") or "new")
+    if status not in {"new", "contacted", "qualified"}:
+        return False
+    stamp = str(lead.get("last_contacted_at") or lead.get("created_at") or "")
+    age = _age_days(stamp)
+    if age is None:
+        return status == "new"
+    return age >= (1 if status == "new" else 3)
+
+
+def _age_days(value: str) -> int | None:
+    if not value:
+        return None
+    try:
+        stamp = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    now = datetime.now(timezone.utc)
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return max(0, int((now - stamp).total_seconds() // 86400))
+
+
+def _first_name(value: str) -> str:
+    return value.strip().split(" ", 1)[0]
+
+
+def _lead_project_type_label(value: str) -> str:
+    return {
+        "pv_only": "solar only",
+        "not_sure": "solar or solar plus battery, to be confirmed",
+        "pv_ess": "solar plus battery",
+    }.get(value, "solar")
+
+
+def _lead_usage_summary(lead: dict[str, Any]) -> str:
+    monthly = [
+        float(value)
+        for value in (lead.get("monthly_kwh") or [])
+        if _is_finite_number(value)
+    ]
+    if len(monthly) == 12:
+        return f"12 months received, average {sum(monthly) / len(monthly):.0f} kWh/month"
+    if monthly:
+        return f"{len(monthly)} monthly values received"
+    return "not provided yet"
 
 
 def _parse_lead_monthly_kwh(raw: str) -> list[float]:

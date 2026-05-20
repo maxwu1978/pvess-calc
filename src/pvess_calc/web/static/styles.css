@@ -360,6 +360,65 @@ button:disabled {
   font-size: 12px;
 }
 
+.lead-digest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 9px;
+  border: 1px solid #d8e2ef;
+  border-radius: 6px;
+  background: #f7fbff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.lead-digest strong {
+  flex-basis: 100%;
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.lead-draft-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #d8e2ef;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.lead-draft-panel h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.lead-draft-panel a {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.lead-draft-panel strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.lead-draft-panel textarea {
+  width: 100%;
+  min-height: 150px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  resize: vertical;
+}
+
 .inline-check {
   display: flex;
   align-items: center;

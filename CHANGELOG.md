@@ -8,6 +8,17 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P6: lead follow-up loop
+
+- Added an authenticated lead digest endpoint with active counts, new leads,
+  stale follow-ups, and qualified leads
+- Added follow-up email draft generation with subject, body, and mailto URL
+- Added a lead payload endpoint so operators can load a qualified lead back
+  into the main project intake form
+- Extended **Public leads** with digest summary, **Email draft**, and
+  **Load intake** actions
+- Added regression tests for digest, draft, and payload auth/content behavior
+
 ### 2026-05-20 — Web UI P5: lead lifecycle workbench
 
 - Added lead lifecycle statuses for public estimate requests:

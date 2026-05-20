@@ -62,8 +62,9 @@ uploaded bill under `<workdir>/leads/<lead_id>/`. If the utility upload contains
 The internal **Public leads** panel is visible in the main operator UI after
 login. Operators can filter by status, search by name/email/address, save
 follow-up notes, update lifecycle status, archive inactive leads, export the
-visible queue to CSV, and click **Generate estimate**. Lead conversion creates
-an estimate-only package:
+visible queue to CSV, view the active lead digest, prepare a follow-up email
+draft, load intake fields back into the project form, and click
+**Generate estimate**. Lead conversion creates an estimate-only package:
 
 - customer summary enabled
 - permit, DXF, labels, and QET disabled
@@ -83,6 +84,10 @@ Lead statuses are:
 
 Archived leads are hidden from the default active queue but remain available
 through the `Archived` filter and CSV export.
+
+P6 follow-up helpers are intentionally local-first. The system generates a
+mailto draft and prefilled payload, but it does not send email or submit a
+permit package without an operator action.
 
 ## Address Lookup
 

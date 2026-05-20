@@ -22,6 +22,11 @@ const leadStatus = document.querySelector("#lead-status");
 const leadQuery = document.querySelector("#lead-query");
 const leadRefresh = document.querySelector("#lead-refresh");
 const leadExport = document.querySelector("#lead-export");
+const leadDigest = document.querySelector("#lead-digest");
+const leadDraftPanel = document.querySelector("#lead-draft-panel");
+const leadDraftSubject = document.querySelector("#lead-draft-subject");
+const leadDraftBody = document.querySelector("#lead-draft-body");
+const leadDraftMailto = document.querySelector("#lead-draft-mailto");
 const readinessEmpty = document.querySelector("#readiness-empty");
 const readinessPanel = document.querySelector("#readiness-panel");
 const packageQaEmpty = document.querySelector("#package-qa-empty");
@@ -239,6 +244,7 @@ syncBatteryOption({ preserveQuantity: true });
 loadRuntimeConfig().then(() => {
   loadHistory();
   loadLeads();
+  loadLeadDigest();
 });
 
 async function loadRuntimeConfig() {
@@ -272,6 +278,7 @@ function saveAccessToken() {
   }
   loadHistory();
   loadLeads();
+  loadLeadDigest();
 }
 
 function currentAccessToken() {
@@ -1022,6 +1029,7 @@ async function loadLeads() {
     leadList.innerHTML = "";
     leadEmpty.textContent = "Enter an operator token to view public estimate requests.";
     leadEmpty.classList.remove("hidden");
+    leadDigest.classList.add("hidden");
     return;
   }
   leadEmpty.textContent = "Public estimate requests appear here.";
@@ -1032,11 +1040,41 @@ async function loadLeads() {
       throw new Error(formatApiError(data));
     }
     renderLeads(data.leads || []);
+    loadLeadDigest();
   } catch {
     leadList.innerHTML = "";
     leadEmpty.textContent = "Lead list is unavailable.";
     leadEmpty.classList.remove("hidden");
   }
+}
+
+async function loadLeadDigest() {
+  if (runtimeConfig.auth_required && !currentAccessToken()) {
+    leadDigest.classList.add("hidden");
+    return;
+  }
+  try {
+    const response = await apiFetch("/api/leads/digest");
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    renderLeadDigest(data);
+  } catch {
+    leadDigest.classList.add("hidden");
+  }
+}
+
+function renderLeadDigest(data) {
+  const counts = data.counts || {};
+  leadDigest.classList.toggle("hidden", !data.total);
+  leadDigest.innerHTML = `
+    <strong>${escapeHtml(data.summary || "No active leads")}</strong>
+    <span>${Number(data.total || 0)} active leads</span>
+    <span>${Number(counts.new || 0)} new</span>
+    <span>${Number(counts.qualified || 0)} qualified</span>
+    <span>${(data.stale_leads || []).length} need follow-up</span>
+  `;
 }
 
 function leadQueryString() {
@@ -1092,6 +1130,8 @@ function renderLeads(leads) {
           ${leadStatusOption(lead.status, "archived", "Archived")}
         </select>
         <button type="button" data-lead-action="save" data-lead-id="${escapeHtml(lead.lead_id)}">Save</button>
+        <button type="button" data-lead-action="draft" data-lead-id="${escapeHtml(lead.lead_id)}">Email draft</button>
+        <button type="button" data-lead-action="payload" data-lead-id="${escapeHtml(lead.lead_id)}">Load intake</button>
         ${converted ? `<button type="button" data-lead-job-id="${escapeHtml(lead.converted_job_id)}">View package</button>` : ""}
         <button type="button" data-lead-action="convert" data-lead-id="${escapeHtml(lead.lead_id)}" ${converted || lead.status === "archived" ? "disabled" : ""}>Generate estimate</button>
         <button type="button" data-lead-action="archive" data-lead-id="${escapeHtml(lead.lead_id)}" ${lead.status === "archived" ? "disabled" : ""}>Archive</button>
@@ -1200,6 +1240,34 @@ leadList.addEventListener("click", async (event) => {
       await loadLeads();
       return;
     }
+    if (action === "draft") {
+      actionButton.disabled = true;
+      actionButton.textContent = "Drafting...";
+      const response = await apiFetch(`/api/leads/${encodeURIComponent(leadId)}/followup-draft`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(formatApiError(data));
+      }
+      renderLeadDraft(data);
+      statusEl.textContent = `Prepared follow-up draft for lead ${leadId}`;
+      actionButton.disabled = false;
+      actionButton.textContent = "Email draft";
+      return;
+    }
+    if (action === "payload") {
+      actionButton.disabled = true;
+      actionButton.textContent = "Loading...";
+      const response = await apiFetch(`/api/leads/${encodeURIComponent(leadId)}/payload`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(formatApiError(payload));
+      }
+      applyPayloadToForm(payload);
+      statusEl.textContent = `Loaded intake fields from lead ${leadId}`;
+      actionButton.disabled = false;
+      actionButton.textContent = "Load intake";
+      return;
+    }
     if (action === "convert") {
       actionButton.disabled = true;
       actionButton.textContent = "Generating...";
@@ -1226,6 +1294,13 @@ leadList.addEventListener("click", async (event) => {
     renderError(error.message);
   }
 });
+
+function renderLeadDraft(data) {
+  leadDraftPanel.classList.remove("hidden");
+  leadDraftSubject.textContent = data.subject || "";
+  leadDraftBody.value = data.body || "";
+  leadDraftMailto.href = data.mailto_url || "#";
+}
 
 function renderReadiness(readiness) {
   const counts = readiness.counts || {};
