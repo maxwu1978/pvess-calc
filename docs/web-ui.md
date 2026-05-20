@@ -57,8 +57,9 @@ marketing page:
   optional operator token
 - a sticky workflow rail for quick jumps through basics, site data, equipment,
   costs, evidence, and generation
-- a left-side intake form and a right-side **Run and review** console for
-  readiness, progress, QA, previews, BOM, leads, and recent projects
+- a left-side intake form and a right-side panel that behaves as a
+  **Project checklist** during intake, then becomes **Review and generate** on
+  the final step
 - a sticky generate action bar so long intake forms keep the primary run
   actions visible
 
@@ -104,6 +105,55 @@ The UX standard for this flow is that the operator should never need to scroll
 back through the full form to understand what is wrong. Step feedback, invalid
 field highlighting, and the sticky Back / Save draft / Continue controls must
 stay visible while completing each step.
+
+## P11 Right Panel
+
+P11 reduces attention cost in the right-side panel:
+
+- Steps 1-5 show **Project checklist** only: current-step validation, next
+  action, error count, warning count, and passed checks.
+- Step 6 switches to **Review and generate**: readiness check, generation
+  progress, delivery ZIP, handoff readiness, preview, BOM, generated files,
+  and source-material status.
+- Leads, recent projects, and Package QA are grouped under collapsed
+  **Operator tools** so they are available without competing with intake.
+
+The panel should read as guidance while the operator is entering facts, and as
+a run console only when the operator intentionally reaches Review.
+
+### Field UX Audit
+
+P11 also audited every visible intake field from the user's point of view. The
+main conclusion is that P12 should reduce typing by adding presets and hiding
+estimate-only defaults, rather than deleting payload fields that downstream
+generation still uses.
+
+| Step | Field group | UX decision |
+|---|---|---|
+| Project | Project type, sample address, lookup mode, NEC edition, permit profile | Already good as selects. Keep. |
+| Project | Project name, client, site address | Keep as typed fields; these are project-specific. |
+| Project | Coordinates, APN, location, AHJ, utility | Keep, but P12 should make coordinates/APN advanced and use lookup/autocomplete for AHJ and utility. |
+| Usage | Meter number, ESID | Keep typed; project-specific utility identifiers. |
+| Usage | Meter location | Convert to select + Other in P12 (`Exterior garage wall`, `Exterior side wall`, `Basement`, `Meter bank`, `Other`). |
+| Usage | ESS install location, roof condition, attic access | Already good as selects. Keep. |
+| Usage | Door/window/egress setbacks | Hide until ESS location is indoor/garage. They are not useful for PV-only or unknown-location estimates. |
+| Usage | Roof type, roof construction, roof framing | Convert to selects in P12 with common North American values and an Other option. |
+| Usage | Roof height, decking thickness, roof layers | Keep numeric but move behind `Advanced roof details` unless AHJ-ready mode is selected. |
+| Usage | Engineer firm/contact/address | Make a saved profile selector in P12. Default profile should fill these fields; manual editing should be advanced. |
+| Usage | Installer company/address | Make a saved installer profile selector. For TGE-only operation these should be defaulted, not repeatedly typed. |
+| Usage | Equipment coordinates | Hide behind `Advanced routing coordinates`; most users cannot enter these confidently without a site-plan drawing. |
+| Usage | Monthly kWh | Keep textarea for pasted bills, but P12 should add monthly total presets and CSV/Smart Meter import affordance. |
+| Equipment | Module, inverter, battery | Already good as selects. Keep one inverter brand/model family selected at a time. |
+| Equipment | Module watts/brand/model, inverter model, battery kWh/model | These are read-only derived fields. P12 should visually mark them as derived or collapse them under equipment details. |
+| Equipment | Modules, strings, inverter qty, battery qty | Keep numeric. P12 should offer steppers or suggested package sizes. |
+| Equipment | AC output amps | Usually derived from selected inverter. Keep editable only under advanced override. |
+| Electrical | Main breaker, busbar | Convert to standard amperage selects in P12 (`100/125/150/175/200/225/400`). |
+| Electrical | Interconnection, export tariff | Already good as selects. Keep. |
+| Electrical | Self-consumption | Replace raw 0-1 input with a scenario select in P12 (`PV-only`, `PV+ESS typical`, `High backup/load shifting`, `Custom`). |
+| Electrical | PV turnkey $/W, inverter cost, battery cost | Keep for quoting, but show as BOM cost assumptions rather than general electrical inputs. |
+| Electrical | Roof pitch, azimuth, width, height | Keep for manual fallback. P12 should prefer roof lookup/manual roof editor and make raw dimensions advanced. |
+| Evidence | Source mode, files, photos | Keep. P12 should show required-vs-optional status by selected mode and output target. |
+| Review | Output checkboxes | Keep. They are explicit and understandable. |
 
 ### P10 Testing Plan
 

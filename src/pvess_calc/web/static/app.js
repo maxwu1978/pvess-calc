@@ -7,6 +7,10 @@ const wizardBackButton = document.querySelector("#wizard-back");
 const wizardContinueButton = document.querySelector("#wizard-continue");
 const saveDraftButton = document.querySelector("#save-draft");
 const stepFeedback = document.querySelector("#step-feedback");
+const checklistStatus = document.querySelector("#checklist-status");
+const resultsAside = document.querySelector(".results");
+const sideConsoleTitle = document.querySelector("#side-console-title");
+const sideConsoleLink = document.querySelector("#side-console-link");
 const bomEmpty = document.querySelector("#bom-empty");
 const bomTable = document.querySelector("#bom-table");
 const bomBody = document.querySelector("#bom-table tbody");
@@ -454,8 +458,9 @@ function setWizardStep(index, options = {}) {
   wizardBackButton.disabled = currentStepIndex === 0;
   const isLast = currentStepIndex === wizardStepOrder.length - 1;
   wizardContinueButton.textContent = isLast ? "Run readiness" : "Continue";
-  preflightButton.classList.toggle("hidden", !isLast);
+  preflightButton.classList.add("hidden");
   button.classList.toggle("hidden", !isLast);
+  updateSideConsoleMode(isLast);
   renderCurrentStepValidation({ quiet: options.validate === false });
   if (options.replaceUrl !== false) {
     const url = new URL(window.location.href);
@@ -514,8 +519,19 @@ function updateWizardNavStates() {
   }
 }
 
+function updateSideConsoleMode(isReviewStep) {
+  resultsAside.classList.toggle("review-mode", isReviewStep);
+  resultsAside.classList.toggle("checklist-mode", !isReviewStep);
+  sideConsoleTitle.textContent = isReviewStep
+    ? sideConsoleTitle.dataset.reviewTitle
+    : sideConsoleTitle.dataset.checklistTitle;
+  sideConsoleLink.textContent = isReviewStep ? "Go to outputs" : "Go to review";
+  sideConsoleLink.href = isReviewStep ? "#package-outputs" : "#package-outputs";
+}
+
 function renderStepValidation(validation) {
   markIssueFields(validation);
+  renderChecklistStatus(validation);
   const step = wizardSteps[currentStepId()];
   const issues = [
     ...validation.errors.map((item) => ({ ...item, level: "error", label: "Error" })),
@@ -541,6 +557,30 @@ function renderStepValidation(validation) {
         </li>
       `).join("")}
     </ul>
+  `;
+}
+
+function renderChecklistStatus(validation) {
+  const errorCount = validation.errors?.length || 0;
+  const warningCount = validation.warnings?.length || 0;
+  const passCount = validation.passes?.length || 0;
+  const isReviewStep = currentStepId() === "package-outputs";
+  const action = errorCount
+    ? `Fix ${errorCount} blocking item${errorCount === 1 ? "" : "s"} before continuing.`
+    : (isReviewStep ? "Ready for readiness check and generation review." : "Ready to continue to the next step.");
+  const detail = errorCount
+    ? "The first blocking field is focused when you click Continue."
+    : (warningCount
+      ? "Warnings stay visible for estimate-stage review but do not block progress."
+      : "Current step inputs are clean for the estimate workflow.");
+  checklistStatus.innerHTML = `
+    <strong>${escapeHtml(action)}</strong>
+    <p>${escapeHtml(detail)}</p>
+    <div class="checklist-counts">
+      <span class="${errorCount ? "error" : ""}">${errorCount} error${errorCount === 1 ? "" : "s"}</span>
+      <span class="${warningCount ? "warning" : ""}">${warningCount} warning${warningCount === 1 ? "" : "s"}</span>
+      <span class="${passCount ? "pass" : ""}">${passCount} passed</span>
+    </div>
   `;
 }
 

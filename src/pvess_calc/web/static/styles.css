@@ -263,6 +263,14 @@ h1 {
   text-decoration: none;
 }
 
+.results.checklist-mode .results-header a {
+  display: none;
+}
+
+.results.checklist-mode .run-console-section {
+  display: none;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -971,6 +979,99 @@ button:disabled {
 
 .step-feedback-list li.pass strong {
   color: var(--green);
+}
+
+.checklist-status {
+  display: grid;
+  gap: 8px;
+}
+
+.checklist-status strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.checklist-status p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.checklist-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.checklist-counts span {
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #ffffff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.checklist-counts .error {
+  border-color: rgba(157, 59, 29, 0.34);
+  color: var(--warn);
+}
+
+.checklist-counts .warning {
+  border-color: rgba(198, 106, 22, 0.34);
+  color: var(--orange);
+}
+
+.checklist-counts .pass {
+  border-color: rgba(18, 128, 92, 0.28);
+  color: var(--green);
+}
+
+.operator-tools {
+  margin-top: 14px;
+}
+
+.operator-tools summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 760;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(29, 36, 48, 0.02);
+}
+
+.operator-tools summary span {
+  display: grid;
+  gap: 2px;
+}
+
+.operator-tools summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.operator-tools summary::after {
+  content: "+";
+  color: var(--blue);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.operator-tools[open] summary {
+  margin-bottom: 12px;
+}
+
+.operator-tools[open] summary::after {
+  content: "-";
 }
 
 .summary-strip div {

@@ -13,10 +13,39 @@ When a K-phase ships:
 
 ## Planned
 
-Next planned engineering work should be selected from P4/P5 business workflow
-priorities or the non-Web backlog below.
+Next planned engineering work should focus on P12 field simplification:
+convert high-confidence free-text fields into selects/presets, hide
+advanced-only fields until needed, and keep the existing payload contract
+intact.
 
 ## Completed Milestones
+
+### Web UI P11 — staged checklist and review console ✅ DONE 2026-05-20
+
+Goal: make the right-side panel helpful during intake without showing
+generation, history, lead, and QA controls before they are relevant.
+
+Completed:
+
+- Renamed the side panel behavior into two modes:
+  **Project checklist** for steps 1-5 and **Review and generate** for step 6.
+- Hid run-console sections until Review: readiness, progress, delivery ZIP,
+  handoff readiness, preview, errors, BOM, generated files, and source status.
+- Grouped Package QA, Public leads, and Recent projects into collapsed
+  **Operator tools**.
+- Added a next-action checklist block with current error, warning, and passed
+  counts.
+- Audited all visible intake fields and documented P12 candidates for selects,
+  derived fields, presets, advanced-only sections, and removal-from-primary
+  flow.
+
+Closing standards met:
+
+- Steps 1-5 no longer present generation controls or historical/operator
+  utilities as primary content.
+- Review step restores the full run console and existing generation behavior.
+- Operator tools remain accessible without competing with intake guidance.
+- Current-step validation remains visible and actionable in all wizard steps.
 
 ### Web UI P10 — step-by-step intake wizard ✅ DONE 2026-05-20
 

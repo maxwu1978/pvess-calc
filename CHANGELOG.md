@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P11: staged checklist and review console
+
+- Reworked the wizard side panel so steps 1-5 show **Project checklist**
+  guidance instead of the full generation console
+- Moved readiness, progress, preview, BOM, generated files, delivery ZIP, and
+  source-material status into the final **Review and generate** step
+- Collapsed leads, recent projects, and Package QA under **Operator tools**
+- Added a next-action status block with error, warning, and passed counts for
+  the current wizard step
+- Documented a field-by-field UX audit identifying which inputs should become
+  selects, presets, derived fields, or advanced-only controls in P12
+
 ### 2026-05-20 — Web UI P10: step-by-step intake wizard
 
 - Added a Figma capture baseline for the operator UI:

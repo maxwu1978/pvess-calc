@@ -38,6 +38,9 @@ Avoid:
 | Marketing attribution | UTM/referrer source attached to a public lead | Lead metrics panel |
 | Load intake | Pre-fill the project form from a lead without generating output | Lead action |
 | Run and review | Right-side operator console for readiness, progress, QA, previews, BOM, leads, and history | Operator panel |
+| Project checklist | Right-side intake guidance for steps 1-5 | Wizard side panel |
+| Review and generate | Final-step run console for readiness, generation, previews, BOM, and files | Wizard side panel |
+| Operator tools | Collapsed lead, QA, and recent-project utilities | Wizard side panel |
 | Package outputs | Output selection before generation | Generate panel |
 | Wizard intake | Guided step-by-step internal project intake | Main operator workflow |
 | Save draft | Persist the current wizard payload and step | Wizard action bar |
@@ -102,6 +105,10 @@ Use a work-focused, scan-first layout:
   long form at once.
 - Keep the active-step validation summary near the current form on desktop and
   directly below it on mobile.
+- Show **Project checklist** while the operator is filling steps 1-5.
+- Show **Review and generate** only on the final step, when readiness and
+  output actions are relevant.
+- Keep leads, history, and package QA inside collapsed **Operator tools**.
 - Keep Back / Save draft / Continue visible near the bottom of the viewport.
 - Prefer code-native layout tokens for day-to-day iteration. Bring in Figma
   only when collaborative mockups or reusable component specifications are

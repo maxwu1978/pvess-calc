@@ -523,8 +523,12 @@
 
       <aside class="results" aria-live="polite">
         <div class="results-header">
-          <strong>Run and review</strong>
-          <a href="#package-outputs">Go to outputs</a>
+          <strong
+            id="side-console-title"
+            data-checklist-title="Project checklist"
+            data-review-title="Review and generate"
+          >Project checklist</strong>
+          <a id="side-console-link" href="#package-outputs">Go to review</a>
         </div>
         <section class="panel step-feedback-panel">
           <div class="section-head">
@@ -532,14 +536,20 @@
           </div>
           <div id="step-feedback" class="step-feedback"></div>
         </section>
-        <section class="summary-strip" id="summary-strip">
+        <section class="panel checklist-status-panel">
+          <div class="section-head">
+            <h2>Next action</h2>
+          </div>
+          <div id="checklist-status" class="checklist-status"></div>
+        </section>
+        <section class="summary-strip run-console-section" id="summary-strip">
           <div><strong>-</strong><span>DC kW</span></div>
           <div><strong>-</strong><span>Modules</span></div>
           <div><strong>-</strong><span>Installed cost</span></div>
           <div><strong>-</strong><span>ITC cost</span></div>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>Readiness check</h2>
           </div>
@@ -547,7 +557,7 @@
           <div id="preflight-panel" class="preflight-panel hidden"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>Generation progress</h2>
           </div>
@@ -557,7 +567,7 @@
           <div id="progress-message" class="empty">No active job.</div>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>Delivery ZIP</h2>
           </div>
@@ -565,7 +575,7 @@
           <div id="delivery-package" class="delivery-package hidden"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>Handoff readiness</h2>
           </div>
@@ -573,16 +583,7 @@
           <div id="readiness-panel" class="readiness-panel hidden"></div>
         </section>
 
-        <section class="panel">
-          <div class="section-head">
-            <h2>Package QA</h2>
-            <button id="run-package-qa" type="button" class="secondary-button" disabled>Run package QA</button>
-          </div>
-          <div id="package-qa-empty" class="empty">Run package QA after generation to verify doctor, ZIP, and PDF checks before handoff.</div>
-          <div id="package-qa-panel" class="package-qa-panel hidden"></div>
-        </section>
-
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>Review preview</h2>
           </div>
@@ -590,7 +591,7 @@
           <div id="preview-panel" class="preview-panel hidden"></div>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>What needs attention</h2>
           </div>
@@ -598,7 +599,7 @@
           <pre id="error-panel" class="error-panel hidden"></pre>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>BOM and quote estimate</h2>
           </div>
@@ -619,7 +620,7 @@
           <dl id="cost-totals" class="totals hidden"></dl>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>Generated deliverables</h2>
           </div>
@@ -644,7 +645,7 @@
           <ul id="file-list" class="file-list"></ul>
         </section>
 
-        <section class="panel">
+        <section class="panel run-console-section">
           <div class="section-head">
             <h2>Source material status</h2>
           </div>
@@ -652,68 +653,85 @@
           <dl id="source-materials" class="source-materials hidden"></dl>
         </section>
 
-        <section class="panel">
-          <div class="section-head">
-            <h2>Public leads</h2>
-          </div>
-          <div class="lead-toolbar">
-            <select id="lead-status" aria-label="Lead status filter">
-              <option value="active" selected>Active leads</option>
-              <option value="">All statuses</option>
-              <option value="new">New</option>
-              <option value="contacted">Contacted</option>
-              <option value="qualified">Qualified</option>
-              <option value="converted">Converted</option>
-              <option value="archived">Archived</option>
-            </select>
-            <input id="lead-query" type="search" placeholder="Search name, email, address" />
-            <button id="lead-refresh" type="button" class="secondary-button">Refresh</button>
-            <button id="lead-export" type="button" class="secondary-button">Export CSV</button>
-          </div>
-          <div id="lead-digest" class="lead-digest hidden"></div>
-          <div id="lead-metrics-panel" class="lead-metrics-panel hidden"></div>
-          <div id="lead-notification-panel" class="lead-notification-panel hidden"></div>
-          <div id="lead-draft-panel" class="lead-draft-panel hidden">
+        <details class="operator-tools" id="operator-tools">
+          <summary>
+            <span>
+              <strong>Operator tools</strong>
+              <small>Leads, QA, and recent project utilities</small>
+            </span>
+          </summary>
+          <section class="panel">
             <div class="section-head">
-              <h3>Email follow-up draft</h3>
-              <a id="lead-draft-mailto" href="#">Open email</a>
+              <h2>Package QA</h2>
+              <button id="run-package-qa" type="button" class="secondary-button" disabled>Run package QA</button>
             </div>
-            <strong id="lead-draft-subject"></strong>
-            <textarea id="lead-draft-body" readonly></textarea>
-          </div>
-          <div id="lead-empty" class="empty">Public estimate requests appear here.</div>
-          <ul id="lead-list" class="file-list lead-list"></ul>
-        </section>
+            <div id="package-qa-empty" class="empty">Run package QA after generation to verify doctor, ZIP, and PDF checks before handoff.</div>
+            <div id="package-qa-panel" class="package-qa-panel hidden"></div>
+          </section>
 
-        <section class="panel">
-          <div class="section-head">
-            <h2>Recent projects</h2>
-          </div>
-          <div class="history-toolbar">
-            <select id="history-status" aria-label="Job status filter">
-              <option value="">All statuses</option>
-              <option value="done">Done</option>
-              <option value="running">Running</option>
-              <option value="queued">Queued</option>
-              <option value="failed">Failed</option>
-            </select>
-            <input
-              id="history-query"
-              type="search"
-              placeholder="Project or address"
-              aria-label="Project or address filter"
-            >
-            <input id="history-from" type="date" aria-label="Created from">
-            <input id="history-to" type="date" aria-label="Created to">
-            <label class="inline-check">
-              <input id="history-all" type="checkbox">
-              All jobs
-            </label>
-            <button id="history-refresh" type="button" class="secondary-button">Refresh</button>
-          </div>
-          <div id="history-empty" class="empty">No generated projects yet.</div>
-          <ul id="history-list" class="file-list history-list"></ul>
-        </section>
+          <section class="panel">
+            <div class="section-head">
+              <h2>Public leads</h2>
+            </div>
+            <div class="lead-toolbar">
+              <select id="lead-status" aria-label="Lead status filter">
+                <option value="active" selected>Active leads</option>
+                <option value="">All statuses</option>
+                <option value="new">New</option>
+                <option value="contacted">Contacted</option>
+                <option value="qualified">Qualified</option>
+                <option value="converted">Converted</option>
+                <option value="archived">Archived</option>
+              </select>
+              <input id="lead-query" type="search" placeholder="Search name, email, address" />
+              <button id="lead-refresh" type="button" class="secondary-button">Refresh</button>
+              <button id="lead-export" type="button" class="secondary-button">Export CSV</button>
+            </div>
+            <div id="lead-digest" class="lead-digest hidden"></div>
+            <div id="lead-metrics-panel" class="lead-metrics-panel hidden"></div>
+            <div id="lead-notification-panel" class="lead-notification-panel hidden"></div>
+            <div id="lead-draft-panel" class="lead-draft-panel hidden">
+              <div class="section-head">
+                <h3>Email follow-up draft</h3>
+                <a id="lead-draft-mailto" href="#">Open email</a>
+              </div>
+              <strong id="lead-draft-subject"></strong>
+              <textarea id="lead-draft-body" readonly></textarea>
+            </div>
+            <div id="lead-empty" class="empty">Public estimate requests appear here.</div>
+            <ul id="lead-list" class="file-list lead-list"></ul>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Recent projects</h2>
+            </div>
+            <div class="history-toolbar">
+              <select id="history-status" aria-label="Job status filter">
+                <option value="">All statuses</option>
+                <option value="done">Done</option>
+                <option value="running">Running</option>
+                <option value="queued">Queued</option>
+                <option value="failed">Failed</option>
+              </select>
+              <input
+                id="history-query"
+                type="search"
+                placeholder="Project or address"
+                aria-label="Project or address filter"
+              >
+              <input id="history-from" type="date" aria-label="Created from">
+              <input id="history-to" type="date" aria-label="Created to">
+              <label class="inline-check">
+                <input id="history-all" type="checkbox">
+                All jobs
+              </label>
+              <button id="history-refresh" type="button" class="secondary-button">Refresh</button>
+            </div>
+            <div id="history-empty" class="empty">No generated projects yet.</div>
+            <ul id="history-list" class="file-list history-list"></ul>
+          </section>
+        </details>
       </aside>
     </main>
 
