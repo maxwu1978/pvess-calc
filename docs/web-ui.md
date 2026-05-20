@@ -113,14 +113,17 @@ stay visible while completing each step.
 
 P11 reduces attention cost in the right-side panel:
 
-- Steps 1-5 show compact **Step status** only: step number, next action, and
-  error/warning/pass counts. Detailed cards appear only when a step has an
-  error or warning.
+- Steps 1-5 show compact **Step status** only: step number, a short outcome
+  such as **Address verified**, and error/warning/check counts. Detailed cards
+  appear only when a step has an error or warning.
 - Field-level error and warning text is written directly below the affected
   input whenever a step check identifies a specific field.
 - Step 6 switches to **Review and generate**: readiness check, generation
   progress, delivery ZIP, handoff readiness, preview, BOM, generated files,
   and source-material status.
+- Step 6 is the only place for the full **Review checklist**, including
+  readiness, blocking issues, warnings, missing evidence, selected
+  deliverables, and Package QA access.
 - Leads, recent projects, and Package QA are grouped under collapsed
   **Operator tools** on Step 6 only, so internal utilities stay out of the
   customer-intake path.

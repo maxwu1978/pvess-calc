@@ -318,7 +318,7 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Package QA" in response.text
     assert "Package outputs" in response.text
     assert "Review preview" in response.text
-    assert "Needs attention" in response.text
+    assert "Review checklist" in response.text
     assert "Save draft" in response.text
     assert "Continue" in response.text
     assert "Back" in response.text

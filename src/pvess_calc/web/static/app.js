@@ -111,26 +111,32 @@ const wizardSteps = {
   "project-basics": {
     title: "Project & Address",
     summary: "Select the project scope, enter the U.S. address, then confirm local utility, AHJ, and code basis when available.",
+    readyLabel: "Address verified.",
   },
   "site-field-data": {
     title: "Usage & Goals",
     summary: "Check meter, usage, ESS location, roof condition, and field-team ownership data for the estimate stage.",
+    readyLabel: "Usage and site data ready.",
   },
   "system-equipment": {
     title: "System Equipment",
     summary: "Select one inverter family, module count, string count, battery mode, and equipment quantities.",
+    readyLabel: "Equipment selected.",
   },
   "service-costs": {
     title: "Electrical & Roof Costs",
     summary: "Review service constraints, interconnection method, tariff assumptions, roof geometry, and turnkey costs.",
+    readyLabel: "Electrical assumptions ready.",
   },
   "source-materials": {
     title: "Roof & Evidence",
     summary: "Upload or explicitly mark simulated photos, utility bills, structural letters, and equipment spec sheets.",
+    readyLabel: "Evidence status ready.",
   },
   "package-outputs": {
     title: "Review & Generate",
     summary: "Run readiness, select deliverables, review blocking issues, and generate the estimate package.",
+    readyLabel: "Ready for readiness check and generation review.",
   },
 };
 
@@ -480,7 +486,8 @@ function recordCurrentStepValidation(options = {}) {
 function renderCurrentStepValidation(options = {}) {
   const payload = buildPayload(new FormData(form));
   const validation = validateStep(currentStepId(), payload);
-  if (!options.quiet) {
+  const isReviewStep = currentStepId() === "package-outputs";
+  if (!options.quiet || isReviewStep) {
     renderStepValidation(validation);
   } else {
     renderStepValidation({
@@ -534,8 +541,8 @@ function renderStepValidation(validation) {
   }
 
   stepFeedbackPanel.classList.remove("hidden");
-  stepFeedbackTitle.textContent = isReviewStep ? "Step validation" : "Needs attention";
-  const visiblePasses = isReviewStep ? validation.passes.slice(0, Math.max(2, 5 - issues.length)) : [];
+  stepFeedbackTitle.textContent = isReviewStep ? "Review checklist" : "Needs attention";
+  const visiblePasses = isReviewStep ? validation.passes : [];
   stepFeedback.innerHTML = `
     <div class="step-feedback-head">
       <strong>${escapeHtml(step.title)}</strong>
@@ -568,12 +575,12 @@ function renderChecklistStatus(validation) {
   checklistStatusTitle.textContent = isReviewStep ? "Review status" : "Current step";
   const action = errorCount
     ? `Fix ${errorCount} blocking item${errorCount === 1 ? "" : "s"} before continuing.`
-    : (isReviewStep ? "Ready for readiness check and generation review." : "Ready to continue.");
+    : step.readyLabel;
   const detail = errorCount
     ? "The first blocking field is focused when you click Continue."
     : (warningCount
-      ? "Warnings stay visible for estimate-stage review but do not block progress."
-      : `${step.title} inputs are clean for the estimate workflow.`);
+      ? "Warnings do not block this estimate, but they remain visible for review."
+      : (isReviewStep ? "Run readiness, review evidence, then generate the package." : `${passCount} checks passed.`));
   checklistStatus.innerHTML = `
     <span class="step-status-eyebrow">Step ${stepNumber} of ${wizardStepOrder.length}</span>
     <strong>${escapeHtml(action)}</strong>
@@ -581,7 +588,7 @@ function renderChecklistStatus(validation) {
     <div class="checklist-counts">
       <span class="${errorCount ? "error" : ""}">${errorCount} error${errorCount === 1 ? "" : "s"}</span>
       <span class="${warningCount ? "warning" : ""}">${warningCount} warning${warningCount === 1 ? "" : "s"}</span>
-      <span class="${passCount ? "pass" : ""}">${passCount} passed</span>
+      <span class="${passCount ? "pass" : ""}">${passCount} check${passCount === 1 ? "" : "s"} passed</span>
     </div>
   `;
 }
@@ -770,7 +777,9 @@ function validateStep(stepId, payload) {
     errors.push(...full.errors);
     warnings.push(...full.warnings.slice(0, 8));
     if (selectedOutputs) passes.push(issue("", `${selectedOutputs} output type(s) selected.`));
-    passes.push(issue("", "Review final warnings, then run readiness or generate."));
+    passes.push(issue("", "Readiness can be checked before generation."));
+    passes.push(issue("", "Missing evidence and estimate-stage warnings are summarized here before handoff."));
+    passes.push(issue("", "Package QA is available in Operator tools after generation."));
   }
 
   return { errors, warnings, passes };
