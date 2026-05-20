@@ -123,6 +123,14 @@ class JobStore:
                         sent_at TEXT NOT NULL DEFAULT '',
                         updated_at TEXT NOT NULL
                     );
+                    CREATE TABLE IF NOT EXISTS web_drafts (
+                        draft_id TEXT PRIMARY KEY,
+                        owner_id TEXT NOT NULL DEFAULT 'local',
+                        step TEXT NOT NULL DEFAULT 'project-basics',
+                        payload_json TEXT NOT NULL DEFAULT '{}',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_owner
                         ON web_jobs(owner_id);
                     CREATE INDEX IF NOT EXISTS idx_web_jobs_status
@@ -147,6 +155,10 @@ class JobStore:
                         ON web_lead_notifications(status);
                     CREATE INDEX IF NOT EXISTS idx_web_lead_notifications_lead
                         ON web_lead_notifications(lead_id);
+                    CREATE INDEX IF NOT EXISTS idx_web_drafts_owner
+                        ON web_drafts(owner_id);
+                    CREATE INDEX IF NOT EXISTS idx_web_drafts_updated_at
+                        ON web_drafts(updated_at DESC);
                     """
                 )
                 _ensure_column(
@@ -457,6 +469,56 @@ class JobStore:
             return
         with self._connect() as conn:
             conn.execute("DELETE FROM web_jobs WHERE job_id = ?", (job_id,))
+
+    def upsert_draft(
+        self,
+        *,
+        draft_id: str,
+        owner_id: str,
+        step: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(draft_id):
+            raise ValueError("invalid draft_id")
+        clean_owner = _clean_operator_id(owner_id or "local")
+        clean_step = _first_text(step, "project-basics")[:80]
+        now = datetime.now(timezone.utc).isoformat()
+        existing = self._draft_row(draft_id)
+        created_at = str(existing["created_at"]) if existing is not None else now
+        row = {
+            "draft_id": draft_id,
+            "owner_id": clean_owner,
+            "step": clean_step,
+            "payload_json": json.dumps(payload or {}, ensure_ascii=False),
+            "created_at": created_at,
+            "updated_at": now,
+        }
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO web_drafts (
+                    draft_id, owner_id, step, payload_json, created_at, updated_at
+                ) VALUES (
+                    :draft_id, :owner_id, :step, :payload_json,
+                    :created_at, :updated_at
+                )
+                ON CONFLICT(draft_id) DO UPDATE SET
+                    owner_id = excluded.owner_id,
+                    step = excluded.step,
+                    payload_json = excluded.payload_json,
+                    updated_at = excluded.updated_at
+                """,
+                row,
+            )
+        return _draft_from_row(row)
+
+    def get_draft(self, draft_id: str) -> dict[str, Any] | None:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(draft_id):
+            return None
+        row = self._draft_row(draft_id)
+        return _draft_from_row(row) if row is not None else None
 
     def create_lead(self, lead: dict[str, Any]) -> dict[str, Any]:
         self.ensure_ready()
@@ -915,6 +977,13 @@ class JobStore:
                 (notification_id,),
             ).fetchone()
 
+    def _draft_row(self, draft_id: str) -> sqlite3.Row | None:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT * FROM web_drafts WHERE draft_id = ?",
+                (draft_id,),
+            ).fetchone()
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
@@ -992,6 +1061,22 @@ def _lead_notification_from_row(
         "error": str(row["error"] or ""),
         "created_at": str(row["created_at"] or ""),
         "sent_at": str(row["sent_at"] or ""),
+        "updated_at": str(row["updated_at"] or ""),
+    }
+
+
+def _draft_from_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    payload_raw = row["payload_json"] if "payload_json" in row.keys() else "{}"
+    try:
+        payload = json.loads(payload_raw or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    return {
+        "draft_id": str(row["draft_id"] or ""),
+        "owner_id": str(row["owner_id"] or "local"),
+        "step": str(row["step"] or "project-basics"),
+        "payload": payload if isinstance(payload, dict) else {},
+        "created_at": str(row["created_at"] or ""),
         "updated_at": str(row["updated_at"] or ""),
     }
 

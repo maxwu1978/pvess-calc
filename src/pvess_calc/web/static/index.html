@@ -12,6 +12,7 @@
         <span class="eyebrow">Operator workspace</span>
         <h1>TGE Solar Project Generator</h1>
         <p>Build an address-based PV + ESS estimate package, review readiness, and hand off drawings, BOM, and source-material checks.</p>
+        <span id="draft-status" class="draft-status">Draft autosave ready</span>
       </div>
       <div class="topbar-actions">
         <a class="lead-link" href="/lead" target="_blank" rel="noreferrer">Open public request page</a>
@@ -29,17 +30,17 @@
     </header>
 
     <nav class="workflow-rail" aria-label="Project workflow">
-      <a href="#project-basics"><strong>01</strong><span>Basics</span></a>
-      <a href="#site-field-data"><strong>02</strong><span>Site data</span></a>
-      <a href="#system-equipment"><strong>03</strong><span>Equipment</span></a>
-      <a href="#service-costs"><strong>04</strong><span>Costs</span></a>
-      <a href="#source-materials"><strong>05</strong><span>Evidence</span></a>
-      <a href="#package-outputs"><strong>06</strong><span>Generate</span></a>
+      <a href="#project-basics" data-wizard-step="project-basics"><strong>01</strong><span>Project</span></a>
+      <a href="#site-field-data" data-wizard-step="site-field-data"><strong>02</strong><span>Usage</span></a>
+      <a href="#system-equipment" data-wizard-step="system-equipment"><strong>03</strong><span>Equipment</span></a>
+      <a href="#service-costs" data-wizard-step="service-costs"><strong>04</strong><span>Electrical</span></a>
+      <a href="#source-materials" data-wizard-step="source-materials"><strong>05</strong><span>Evidence</span></a>
+      <a href="#package-outputs" data-wizard-step="package-outputs"><strong>06</strong><span>Review</span></a>
     </nav>
 
     <main class="workspace">
       <form id="project-form" class="editor">
-        <section id="project-basics" class="panel flow-section" data-step="01">
+        <section id="project-basics" class="panel flow-section active-step" data-step="01" data-wizard-title="Project & Address">
           <div class="section-head">
             <h2>Project basics</h2>
             <div class="lookup-controls">
@@ -108,7 +109,7 @@
           <div id="lookup-panel" class="lookup-panel hidden"></div>
         </section>
 
-        <section id="site-field-data" class="panel flow-section" data-step="02">
+        <section id="site-field-data" class="panel flow-section" data-step="02" data-wizard-title="Usage & Goals">
           <div class="section-head">
             <h2>Site and field data</h2>
           </div>
@@ -233,7 +234,7 @@
           </div>
         </section>
 
-        <section id="system-equipment" class="panel flow-section" data-step="03">
+        <section id="system-equipment" class="panel flow-section" data-step="03" data-wizard-title="System Equipment">
           <div class="section-head">
             <h2>System equipment</h2>
           </div>
@@ -373,7 +374,7 @@
           </div>
         </section>
 
-        <section id="service-costs" class="panel flow-section" data-step="04">
+        <section id="service-costs" class="panel flow-section" data-step="04" data-wizard-title="Electrical & Roof Costs">
           <div class="section-head">
             <h2>Service, roof, and cost assumptions</h2>
           </div>
@@ -431,7 +432,7 @@
           </div>
         </section>
 
-        <section id="source-materials" class="panel flow-section" data-step="05">
+        <section id="source-materials" class="panel flow-section" data-step="05" data-wizard-title="Roof & Evidence">
           <div class="section-head">
             <h2>Source materials and evidence</h2>
           </div>
@@ -495,7 +496,7 @@
           </div>
         </section>
 
-        <section id="package-outputs" class="panel output-options run-panel" data-step="06">
+        <section id="package-outputs" class="panel output-options run-panel flow-section" data-step="06" data-wizard-title="Review & Generate">
           <div class="section-head">
             <div>
               <h2>Package outputs</h2>
@@ -510,6 +511,9 @@
         </section>
 
         <div class="actions">
+          <button id="wizard-back" type="button" class="secondary-button">Back</button>
+          <button id="save-draft" type="button" class="secondary-button">Save draft</button>
+          <button id="wizard-continue" type="button">Continue</button>
           <button id="preflight" type="button" class="secondary-button">Check readiness</button>
           <button id="generate" type="submit">Generate estimate package</button>
           <span id="status" role="status"></span>
@@ -522,6 +526,12 @@
           <strong>Run and review</strong>
           <a href="#package-outputs">Go to outputs</a>
         </div>
+        <section class="panel step-feedback-panel">
+          <div class="section-head">
+            <h2>Step validation</h2>
+          </div>
+          <div id="step-feedback" class="step-feedback"></div>
+        </section>
         <section class="summary-strip" id="summary-strip">
           <div><strong>-</strong><span>DC kW</span></div>
           <div><strong>-</strong><span>Modules</span></div>

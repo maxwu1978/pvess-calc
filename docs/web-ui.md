@@ -68,6 +68,73 @@ introduced later when the page needs collaborative mocks or a reusable
 component library, but it is not required for the current local-hosted
 operator workflow.
 
+## Wizard Intake
+
+P10 changes the operator page from a single long intake form into a guided
+wizard. The same browser form fields and generation API remain underneath, but
+the operator now works through six reviewable steps:
+
+1. **Project & Address** — project type, client, address, AHJ, utility, NEC,
+   permit profile, and address lookup.
+2. **Usage & Goals** — monthly usage, simulated-vs-real source status, meter
+   data, and ESS install constraints.
+3. **System Equipment** — module, string, inverter, and battery selections.
+4. **Electrical & Roof Costs** — service, interconnection, tariff, roof
+   geometry, and cost assumptions.
+5. **Evidence** — utility bill, site photos, structural letter, and spec
+   sheets.
+6. **Review & Generate** — output selection, readiness check, and package
+   generation.
+
+Each step validates only the inputs needed for that step. `Error` items block
+**Continue**. `Warning` items remain visible but allow the operator to move on,
+because many estimate-stage packages intentionally start with simulated site
+data. The final generation still runs the full payload validation and
+preflight checks.
+
+Draft behavior has two layers:
+
+- Browser autosave stores the current payload, step, and timestamp in
+  `localStorage` so refresh/back navigation does not lose work.
+- Authenticated operators can also save the same draft to the Web SQLite
+  index through `/api/drafts`; the local draft remains available if an
+  operator token is not present.
+
+The UX standard for this flow is that the operator should never need to scroll
+back through the full form to understand what is wrong. Step feedback, invalid
+field highlighting, and the sticky Back / Save draft / Continue controls must
+stay visible while completing each step.
+
+### P10 Testing Plan
+
+User-experience testing must cover more than API success:
+
+- first-screen comprehension: the first viewport shows one step, not the full
+  long form
+- step feedback: invalid inputs produce field-level highlights and clear
+  messages before the operator can continue
+- warning tolerance: simulated evidence and missing AHJ-ready attachments warn
+  without blocking estimate generation
+- navigation safety: Back and completed-step navigation preserve entered data
+- draft safety: manual save and refresh restore the payload and current step
+- lead/history safety: **Load intake** and **Load form** enter the wizard with
+  the prefilled payload visible
+- responsive safety: desktop keeps intake plus review side-by-side, while
+  mobile collapses to one column with no horizontal overflow
+
+### P10 Closing Standards
+
+- No step displays more than one task group as the primary form surface.
+- Every **Continue** click runs current-step validation and focuses the first
+  blocking field when present.
+- Errors, warnings, and passed checks are visually distinct and readable.
+- Save draft works locally without a token and server-side when authenticated.
+- Back/Continue/step navigation never clears entered values.
+- Final generation remains compatible with the existing `/api/projects/form`
+  payload and file-upload path.
+- Browser QA includes at least one failed-step path, one successful
+  multi-step path, draft restore, and a mobile viewport check.
+
 ## Public Lead Intake
 
 `/lead` serves a lightweight public estimate-request form for homeowners. It

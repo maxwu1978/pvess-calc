@@ -457,6 +457,21 @@ class WebArtifactReviewUpdate(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+class WebDraftRequest(BaseModel):
+    draft_id: str = Field(default="", max_length=90)
+    step: str = Field(default="project-basics", max_length=80)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class WebDraftRecord(BaseModel):
+    draft_id: str
+    owner_id: str
+    step: str
+    payload: dict[str, Any]
+    created_at: str
+    updated_at: str
+
+
 LeadStatus = Literal["new", "contacted", "qualified", "converted", "archived"]
 
 
@@ -933,6 +948,38 @@ def create_app(
         except Exception as exc:  # pragma: no cover - exercised by UI as 500.
             raise HTTPException(status_code=500, detail=repr(exc)) from exc
 
+    @app.post("/api/drafts", response_model=WebDraftRecord)
+    def save_draft(
+        request: Request,
+        payload: WebDraftRequest,
+    ) -> WebDraftRecord:
+        context = _require_auth_context(request)
+        draft_id = _clean_draft_id(payload.draft_id)
+        try:
+            return WebDraftRecord.model_validate(
+                app.state.job_store.upsert_draft(
+                    draft_id=draft_id,
+                    owner_id=context.operator_id,
+                    step=payload.step,
+                    payload=payload.payload,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/drafts/{draft_id}", response_model=WebDraftRecord)
+    def get_draft(
+        request: Request,
+        draft_id: str,
+    ) -> WebDraftRecord:
+        context = _require_auth_context(request)
+        draft = app.state.job_store.get_draft(draft_id)
+        if draft is None:
+            raise HTTPException(status_code=404, detail="draft not found")
+        if not context.is_admin and draft.get("owner_id") != context.operator_id:
+            raise HTTPException(status_code=404, detail="draft not found")
+        return WebDraftRecord.model_validate(draft)
+
     @app.post("/api/projects", response_model=WebJobState)
     def create_project(request: Request, payload: WebProjectRequest) -> WebJobState:
         try:
@@ -1264,6 +1311,14 @@ def _auth_modes(app: FastAPI) -> list[str]:
     if app.state.basic_auth_credentials:
         modes.insert(0, "basic_auth")
     return modes
+
+
+def _clean_draft_id(value: str) -> str:
+    raw = (value or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_.-]{1,90}", raw):
+        return raw
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    return f"draft-{stamp}-{uuid4().hex[:8]}"
 
 
 def _has_valid_basic_auth(app: FastAPI, request: Request) -> bool:

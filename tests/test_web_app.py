@@ -313,6 +313,10 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Package QA" in response.text
     assert "Package outputs" in response.text
     assert "Review preview" in response.text
+    assert "Step validation" in response.text
+    assert "Save draft" in response.text
+    assert "Continue" in response.text
+    assert "Back" in response.text
     assert "Operator access token" in response.text
     assert "Open public request page" in response.text
     assert response.text.count('name="engineer_phone"') == 1
@@ -331,6 +335,36 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Frisco PV + ESS Estimate" not in response.text
     assert "Project Estimator" not in response.text
     assert client.get("/favicon.ico").status_code == 204
+
+
+def test_web_draft_api_round_trip(tmp_path: Path):
+    client = _client(tmp_path)
+
+    response = client.post(
+        "/api/drafts",
+        json={
+            "draft_id": "draft-unit-test",
+            "step": "system-equipment",
+            "payload": {
+                "project_name": "Draft Test",
+                "site_address": "905 Crossvine Drive, Mansfield, TX",
+                "modules": 32,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["draft_id"] == "draft-unit-test"
+    assert data["owner_id"] == "local"
+    assert data["step"] == "system-equipment"
+    assert data["payload"]["modules"] == 32
+    assert data["created_at"]
+    assert data["updated_at"]
+
+    readback = client.get("/api/drafts/draft-unit-test")
+    assert readback.status_code == 200
+    assert readback.json()["payload"]["site_address"].startswith("905 Crossvine")
 
 
 def test_web_health_endpoint(tmp_path: Path):

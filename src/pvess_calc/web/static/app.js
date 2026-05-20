@@ -2,6 +2,11 @@ const form = document.querySelector("#project-form");
 const button = document.querySelector("#generate");
 const preflightButton = document.querySelector("#preflight");
 const statusEl = document.querySelector("#status");
+const draftStatus = document.querySelector("#draft-status");
+const wizardBackButton = document.querySelector("#wizard-back");
+const wizardContinueButton = document.querySelector("#wizard-continue");
+const saveDraftButton = document.querySelector("#save-draft");
+const stepFeedback = document.querySelector("#step-feedback");
 const bomEmpty = document.querySelector("#bom-empty");
 const bomTable = document.querySelector("#bom-table");
 const bomBody = document.querySelector("#bom-table tbody");
@@ -59,6 +64,8 @@ const lookupButton = document.querySelector("#lookup-address");
 const lookupMode = document.querySelector("#lookup-mode");
 const lookupPanel = document.querySelector("#lookup-panel");
 const addressSample = document.querySelector("#address-sample");
+const wizardLinks = [...document.querySelectorAll("[data-wizard-step]")];
+const wizardSections = [...document.querySelectorAll(".flow-section")];
 
 const projectTemplate = document.querySelector("#project-template");
 const moduleChoice = document.querySelector("#module-choice");
@@ -81,6 +88,46 @@ let currentReadiness = {};
 let artifactReviews = {};
 let lastLookupRoofCandidates = [];
 let runtimeConfig = { auth_required: false };
+let currentStepIndex = 0;
+let wizardStepStates = {};
+let draftSaveTimer = null;
+let localDraftRestored = false;
+
+const wizardDraftKey = "tge_pvess_wizard_draft_v1";
+const wizardStepOrder = [
+  "project-basics",
+  "site-field-data",
+  "system-equipment",
+  "service-costs",
+  "source-materials",
+  "package-outputs",
+];
+const wizardSteps = {
+  "project-basics": {
+    title: "Project & Address",
+    summary: "Confirm the project identity, address, AHJ, utility, NEC edition, and lookup source before moving on.",
+  },
+  "site-field-data": {
+    title: "Usage & Goals",
+    summary: "Check meter, usage, ESS location, roof condition, and field-team ownership data for the estimate stage.",
+  },
+  "system-equipment": {
+    title: "System Equipment",
+    summary: "Select one inverter family, module count, string count, battery mode, and equipment quantities.",
+  },
+  "service-costs": {
+    title: "Electrical & Roof Costs",
+    summary: "Review service constraints, interconnection method, tariff assumptions, roof geometry, and turnkey costs.",
+  },
+  "source-materials": {
+    title: "Roof & Evidence",
+    summary: "Upload or explicitly mark simulated photos, utility bills, structural letters, and equipment spec sheets.",
+  },
+  "package-outputs": {
+    title: "Review & Generate",
+    summary: "Run readiness, select deliverables, review blocking issues, and generate the estimate package.",
+  },
+};
 
 const numberFields = new Set([
   "modules",
@@ -192,6 +239,11 @@ form.addEventListener("submit", async (event) => {
   const validation = validatePayload(payload);
   renderValidation(validation.errors, validation.warnings);
   if (validation.errors.length > 0) {
+    const stepValidation = validateStep("package-outputs", payload);
+    renderStepValidation(stepValidation);
+    if (stepValidation.errors[0]) {
+      focusIssueField(stepValidation.errors[0]);
+    }
     statusEl.textContent = "Fix the highlighted inputs before generating the package.";
     statusEl.classList.add("error");
     return;
@@ -233,6 +285,14 @@ fileList.addEventListener("change", handleArtifactReviewChange);
 runPackageQaButton.addEventListener("click", runPackageQa);
 leadRefresh.addEventListener("click", loadLeads);
 leadExport.addEventListener("click", exportLeadsCsv);
+wizardBackButton.addEventListener("click", goToPreviousStep);
+wizardContinueButton.addEventListener("click", continueWizard);
+saveDraftButton.addEventListener("click", () => saveDraft({ manual: true }));
+for (const link of wizardLinks) {
+  link.addEventListener("click", handleWizardNavClick);
+}
+form.addEventListener("input", handleWizardFormInput);
+form.addEventListener("change", handleWizardFormInput);
 projectTemplate.addEventListener("change", () => applyTemplate(projectTemplate.value));
 addressSample.addEventListener("change", () => applyAddressSample(addressSample.value));
 moduleChoice.addEventListener("change", syncModuleOption);
@@ -243,6 +303,8 @@ loadAccessToken();
 syncModuleOption();
 syncInverterOption();
 syncBatteryOption({ preserveQuantity: true });
+restoreDraftFromLocal();
+initWizard();
 loadRuntimeConfig().then(() => {
   loadHistory();
   loadLeads();
@@ -263,7 +325,7 @@ async function loadRuntimeConfig() {
 }
 
 function loadAccessToken() {
-  const token = localStorage.getItem("pvess_access_token") || "";
+  const token = storageGet("pvess_access_token") || "";
   accessTokenInput.value = token;
   tokenStatus.textContent = token ? "Operator token saved for API and files" : "No token required on local server";
 }
@@ -271,10 +333,10 @@ function loadAccessToken() {
 function saveAccessToken() {
   const token = accessTokenInput.value.trim();
   if (token) {
-    localStorage.setItem("pvess_access_token", token);
+    storageSet("pvess_access_token", token);
     tokenStatus.textContent = "Operator token saved for API and files";
   } else {
-    localStorage.removeItem("pvess_access_token");
+    storageRemove("pvess_access_token");
     tokenStatus.textContent = "No token required on local server";
   }
   loadHistory();
@@ -282,7 +344,7 @@ function saveAccessToken() {
 }
 
 function currentAccessToken() {
-  return (accessTokenInput.value || localStorage.getItem("pvess_access_token") || "").trim();
+  return (accessTokenInput.value || storageGet("pvess_access_token") || "").trim();
 }
 
 function apiFetch(url, options = {}) {
@@ -297,6 +359,31 @@ function apiFetch(url, options = {}) {
   });
 }
 
+function storageGet(key) {
+  try {
+    return window.localStorage?.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    window.localStorage?.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function storageRemove(key) {
+  try {
+    window.localStorage?.removeItem(key);
+  } catch {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
+}
+
 function withAuthUrl(url) {
   const token = currentAccessToken();
   if (!token || !url) {
@@ -304,6 +391,473 @@ function withAuthUrl(url) {
   }
   const separator = url.includes("?") ? "&" : "?";
   return `${url}${separator}token=${encodeURIComponent(token)}`;
+}
+
+function initWizard() {
+  const requestedStep = new URLSearchParams(window.location.search).get("step") || window.location.hash.replace("#", "");
+  const targetIndex = wizardStepOrder.includes(requestedStep)
+    ? wizardStepOrder.indexOf(requestedStep)
+    : currentStepIndex;
+  setWizardStep(targetIndex, { validate: false, replaceUrl: false });
+}
+
+function currentStepId() {
+  return wizardStepOrder[currentStepIndex] || wizardStepOrder[0];
+}
+
+function handleWizardNavClick(event) {
+  event.preventDefault();
+  const stepId = event.currentTarget.dataset.wizardStep;
+  const targetIndex = wizardStepOrder.indexOf(stepId);
+  if (targetIndex < 0 || targetIndex === currentStepIndex) {
+    return;
+  }
+  if (targetIndex > currentStepIndex && !recordCurrentStepValidation({ focus: true })) {
+    return;
+  }
+  setWizardStep(targetIndex);
+}
+
+function goToPreviousStep() {
+  if (currentStepIndex > 0) {
+    setWizardStep(currentStepIndex - 1);
+  }
+}
+
+function continueWizard() {
+  if (!recordCurrentStepValidation({ focus: true })) {
+    statusEl.textContent = "Fix the blocking items before continuing.";
+    statusEl.classList.add("error");
+    return;
+  }
+  clearError();
+  if (currentStepIndex < wizardStepOrder.length - 1) {
+    setWizardStep(currentStepIndex + 1);
+  } else {
+    runPreflight();
+  }
+}
+
+function setWizardStep(index, options = {}) {
+  currentStepIndex = Math.max(0, Math.min(index, wizardStepOrder.length - 1));
+  const stepId = currentStepId();
+  for (const section of wizardSections) {
+    section.classList.toggle("active-step", section.id === stepId);
+  }
+  for (const link of wizardLinks) {
+    const state = wizardStepStates[link.dataset.wizardStep] || "todo";
+    link.classList.toggle("active", link.dataset.wizardStep === stepId);
+    link.classList.toggle("valid", state === "valid");
+    link.classList.toggle("warning", state === "warning");
+    link.classList.toggle("error", state === "error");
+  }
+  wizardBackButton.disabled = currentStepIndex === 0;
+  const isLast = currentStepIndex === wizardStepOrder.length - 1;
+  wizardContinueButton.textContent = isLast ? "Run readiness" : "Continue";
+  preflightButton.classList.toggle("hidden", !isLast);
+  button.classList.toggle("hidden", !isLast);
+  renderCurrentStepValidation({ quiet: options.validate === false });
+  if (options.replaceUrl !== false) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", stepId);
+    history.replaceState({}, "", url);
+  }
+  localAutosave();
+}
+
+function handleWizardFormInput(event) {
+  if (event.target?.type === "file") {
+    return;
+  }
+  window.clearTimeout(draftSaveTimer);
+  draftSaveTimer = window.setTimeout(() => {
+    localAutosave();
+    renderCurrentStepValidation({ quiet: false });
+  }, 180);
+}
+
+function recordCurrentStepValidation(options = {}) {
+  const payload = buildPayload(new FormData(form));
+  const validation = validateStep(currentStepId(), payload);
+  const state = validation.errors.length ? "error" : (validation.warnings.length ? "warning" : "valid");
+  wizardStepStates[currentStepId()] = state;
+  renderStepValidation(validation);
+  updateWizardNavStates();
+  if (validation.errors.length && options.focus) {
+    focusIssueField(validation.errors[0]);
+  }
+  return validation.errors.length === 0;
+}
+
+function renderCurrentStepValidation(options = {}) {
+  const payload = buildPayload(new FormData(form));
+  const validation = validateStep(currentStepId(), payload);
+  if (!options.quiet) {
+    renderStepValidation(validation);
+  } else {
+    renderStepValidation({
+      ...validation,
+      errors: [],
+      warnings: [],
+      passes: validation.passes.slice(0, 3),
+    });
+  }
+}
+
+function updateWizardNavStates() {
+  for (const link of wizardLinks) {
+    const state = wizardStepStates[link.dataset.wizardStep] || "todo";
+    link.classList.toggle("valid", state === "valid");
+    link.classList.toggle("warning", state === "warning");
+    link.classList.toggle("error", state === "error");
+    link.classList.toggle("active", link.dataset.wizardStep === currentStepId());
+  }
+}
+
+function renderStepValidation(validation) {
+  markIssueFields(validation);
+  const step = wizardSteps[currentStepId()];
+  const issues = [
+    ...validation.errors.map((item) => ({ ...item, level: "error", label: "Error" })),
+    ...validation.warnings.map((item) => ({ ...item, level: "warning", label: "Warning" })),
+  ];
+  const visiblePasses = validation.passes.slice(0, Math.max(2, 5 - issues.length));
+  stepFeedback.innerHTML = `
+    <div class="step-feedback-head">
+      <strong>${escapeHtml(step.title)}</strong>
+      <span>${escapeHtml(step.summary)}</span>
+    </div>
+    <ul class="step-feedback-list">
+      ${issues.map((item) => `
+        <li class="${item.level}">
+          <strong>${item.label}</strong>
+          ${escapeHtml(item.message)}
+        </li>
+      `).join("")}
+      ${visiblePasses.map((item) => `
+        <li class="pass">
+          <strong>Passed</strong>
+          ${escapeHtml(item.message || item)}
+        </li>
+      `).join("")}
+    </ul>
+  `;
+}
+
+function markIssueFields(validation) {
+  for (const label of form.querySelectorAll(".field-invalid, .field-warning")) {
+    label.classList.remove("field-invalid", "field-warning");
+  }
+  for (const item of validation.errors || []) {
+    markField(item.field, "field-invalid");
+  }
+  for (const item of validation.warnings || []) {
+    markField(item.field, "field-warning");
+  }
+}
+
+function markField(name, className) {
+  if (!name) {
+    return;
+  }
+  const field = form.elements[name] || document.querySelector(`[name="${CSS.escape(name)}"]`);
+  const wrapper = field?.closest?.("label");
+  if (wrapper) {
+    wrapper.classList.add(className);
+  }
+}
+
+function focusIssueField(issue) {
+  const field = issue?.field ? (form.elements[issue.field] || document.querySelector(`[name="${CSS.escape(issue.field)}"]`)) : null;
+  const step = field?.closest?.(".flow-section")?.id;
+  if (step && step !== currentStepId()) {
+    setWizardStep(wizardStepOrder.indexOf(step));
+  }
+  if (field && typeof field.focus === "function") {
+    field.focus({ preventScroll: false });
+  }
+}
+
+function issue(field, message) {
+  return { field, message };
+}
+
+function validateStep(stepId, payload) {
+  const errors = [];
+  const warnings = [];
+  const passes = [];
+  const modules = Number(payload.modules || 0);
+  const strings = Number(payload.strings || 0);
+  const moduleWatts = Number(moduleChoice.selectedOptions[0]?.dataset.watts || payload.module_power_w || 0);
+  const inverterAmps = Number(payload.inverter_ac_output_a || 0);
+  const inverterQty = Number(payload.inverter_quantity || 1);
+  const dcKw = modules * moduleWatts / 1000;
+  const acKw = inverterAmps * 240 * inverterQty / 1000;
+
+  if (stepId === "project-basics") {
+    if (!payload.project_name) errors.push(issue("project_name", "Project name is required."));
+    if (!payload.site_address) errors.push(issue("site_address", "Site address is required before lookup or generation."));
+    if (!payload.location) errors.push(issue("location", "Location is required for climate, rate, and AHJ assumptions."));
+    if (!payload.ahj) warnings.push(issue("ahj", "AHJ is blank; estimate can continue but permit routing will need review."));
+    if (!payload.utility) warnings.push(issue("utility", "Utility is blank; default economics and interconnection assumptions may be used."));
+    if (!payload.coordinates) warnings.push(issue("coordinates", "Coordinates are missing; satellite/roof lookup confidence may be lower."));
+    if (payload.site_address) passes.push(issue("site_address", "Address captured for project lookup and output title block."));
+    if (payload.nec_edition) passes.push(issue("nec_edition", `NEC ${payload.nec_edition} selected.`));
+  }
+
+  if (stepId === "site-field-data") {
+    if (payload.monthly_kwh && payload.monthly_kwh.length !== 12) {
+      errors.push(issue("monthly_kwh_text", "Monthly kWh must contain exactly 12 numeric values."));
+    }
+    if (!payload.monthly_kwh || payload.monthly_kwh.length === 0) {
+      warnings.push(issue("monthly_kwh_text", "Usage is missing; DFW defaults or estimate-stage assumptions may be used."));
+    }
+    if (!payload.meter_number) warnings.push(issue("meter_number", "Meter number missing; AHJ-ready package will need it."));
+    if (!payload.meter_location) warnings.push(issue("meter_location", "Meter location missing; site plan callouts will need review."));
+    if (payload.battery_choice !== "none" && payload.battery_install_location === "unknown") {
+      warnings.push(issue("battery_install_location", "ESS location is unknown; setback checks remain estimate-stage only."));
+    }
+    if (payload.battery_install_location === "garage" || payload.battery_install_location === "indoor") {
+      if (Number(payload.distance_to_doorway_ft || 0) > 0 && Number(payload.distance_to_doorway_ft || 0) < 3) {
+        errors.push(issue("distance_to_doorway_ft", "Indoor/garage ESS doorway setback should be at least 3 ft."));
+      }
+      if (Number(payload.distance_to_window_ft || 0) > 0 && Number(payload.distance_to_window_ft || 0) < 3) {
+        errors.push(issue("distance_to_window_ft", "Indoor/garage ESS window setback should be at least 3 ft."));
+      }
+      if (Number(payload.distance_to_egress_ft || 0) > 0 && Number(payload.distance_to_egress_ft || 0) < 3) {
+        errors.push(issue("distance_to_egress_ft", "Indoor/garage ESS egress setback should be at least 3 ft."));
+      }
+    }
+    if (!payload.engineer_firm || !payload.engineer_email || !payload.engineer_phone) {
+      warnings.push(issue("engineer_firm", "Engineer contact is incomplete; okay for estimate, not AHJ-ready."));
+    }
+    if (payload.monthly_kwh?.length === 12) passes.push(issue("monthly_kwh_text", "Twelve monthly usage values are ready."));
+    if (payload.installer_company) passes.push(issue("installer_company", "Installer company is captured."));
+  }
+
+  if (stepId === "system-equipment") {
+    if (modules < 1) errors.push(issue("modules", "At least one module is required."));
+    if (strings < 1) errors.push(issue("strings", "At least one string is required."));
+    if (strings > 0 && modules > 0 && modules % strings !== 0) {
+      errors.push(issue("strings", "Module count must divide evenly by string count."));
+    }
+    if (payload.battery_choice === "none" && Number(payload.battery_quantity || 0) > 0) {
+      errors.push(issue("battery_quantity", "Battery quantity must be 0 when No battery is selected."));
+    }
+    if (payload.battery_choice !== "none" && Number(payload.battery_quantity || 0) === 0) {
+      warnings.push(issue("battery_quantity", "A battery model is selected but quantity is 0; this will generate PV-only economics."));
+    }
+    if (acKw > 0) {
+      const ratio = dcKw / acKw;
+      if (ratio > 1.7) {
+        errors.push(issue("modules", `DC/AC ratio is ${ratio.toFixed(2)}; reduce modules or add inverter capacity.`));
+      } else if (ratio > 1.45) {
+        warnings.push(issue("modules", `DC/AC ratio is ${ratio.toFixed(2)}; engineering review recommended.`));
+      }
+    }
+    if (modules && strings && modules % strings === 0) passes.push(issue("strings", `${modules} modules across ${strings} string(s).`));
+    if (payload.inverter_choice) passes.push(issue("inverter_choice", "One inverter brand/model family is selected."));
+  }
+
+  if (stepId === "service-costs") {
+    if (Number(payload.main_panel_a || 0) <= 0) errors.push(issue("main_panel_a", "Main breaker amperage is required."));
+    if (Number(payload.busbar_a || 0) <= 0) errors.push(issue("busbar_a", "Busbar amperage is required."));
+    if (Number(payload.self_consumption_fraction || 0) < 0 || Number(payload.self_consumption_fraction || 0) > 1) {
+      errors.push(issue("self_consumption_fraction", "Self-consumption must be between 0 and 1."));
+    }
+    if (Number(payload.pv_turnkey_usd_per_w || 0) <= 0) {
+      errors.push(issue("pv_turnkey_usd_per_w", "PV turnkey $/W must be greater than 0."));
+    }
+    if (Number(payload.roof_width_ft || 0) <= 0 || Number(payload.roof_height_ft || 0) <= 0) {
+      errors.push(issue("roof_width_ft", "Roof width and height must be greater than 0."));
+    }
+    if (!payload.msp_x_ft || !payload.inverter_x_ft) {
+      warnings.push(issue("msp_x_ft", "Equipment coordinates are incomplete; routing and site callouts may use defaults."));
+    }
+    if (payload.interconnection_method === "supply_side_tap") {
+      passes.push(issue("interconnection_method", "Supply-side tap selected for service interconnection."));
+    } else {
+      warnings.push(issue("interconnection_method", "Non-supply-side interconnection selected; verify 705 busbar rules."));
+    }
+    if (Number(payload.pv_turnkey_usd_per_w || 0) > 0) passes.push(issue("pv_turnkey_usd_per_w", "Turnkey PV cost assumption is ready."));
+  }
+
+  if (stepId === "source-materials") {
+    if (payload.site_data_source === "simulated") {
+      warnings.push(issue("site_data_source", "Source materials are simulated; estimate can proceed but AHJ submission needs real evidence."));
+    }
+    const requiredPhotoFields = ["front_elevation", "roof", "meter", "main_panel"];
+    const missingUploads = requiredPhotoFields.filter((name) => !fileInputHasValue(name));
+    if (payload.site_data_source === "real" && missingUploads.length) {
+      warnings.push(issue("site_data_source", `Field-uploaded mode is selected but ${missingUploads.length} core photo(s) are missing.`));
+    }
+    if (!fileInputHasValue("utility_bill") && !payload.monthly_kwh?.length) {
+      warnings.push(issue("utility_bill", "No utility bill or monthly usage is attached."));
+    }
+    if (!fileInputHasValue("structural_letter")) {
+      warnings.push(issue("structural_letter", "Structural letter is not attached; package remains estimate/internal-review only."));
+    }
+    if (payload.site_data_source === "real" && !missingUploads.length) {
+      passes.push(issue("site_data_source", "Core site photos are attached for review."));
+    } else {
+      passes.push(issue("site_data_source", "Evidence state is explicit for downstream handoff checks."));
+    }
+  }
+
+  if (stepId === "package-outputs") {
+    const selectedOutputs = Object.values(payload.outputs || {}).filter(Boolean).length;
+    if (!selectedOutputs) {
+      errors.push(issue("", "Select at least one package output before generation."));
+    }
+    const full = validateAllSteps(payload, { includeReview: false });
+    errors.push(...full.errors);
+    warnings.push(...full.warnings.slice(0, 8));
+    if (selectedOutputs) passes.push(issue("", `${selectedOutputs} output type(s) selected.`));
+    passes.push(issue("", "Review final warnings, then run readiness or generate."));
+  }
+
+  return { errors, warnings, passes };
+}
+
+function validateAllSteps(payload, options = {}) {
+  const stepIds = options.includeReview === false
+    ? wizardStepOrder.filter((id) => id !== "package-outputs")
+    : wizardStepOrder;
+  const errors = [];
+  const warnings = [];
+  for (const stepId of stepIds) {
+    const validation = validateStep(stepId, payload);
+    errors.push(...validation.errors);
+    warnings.push(...validation.warnings);
+  }
+  return { errors, warnings };
+}
+
+function fileInputHasValue(name) {
+  const field = form.elements[name];
+  if (!field) {
+    return false;
+  }
+  const files = field.files || [];
+  return files.length > 0 && [...files].some((file) => file.size > 0);
+}
+
+function normalizeMessages(items) {
+  return items.map((item) => typeof item === "string" ? item : item.message);
+}
+
+function currentDraftId() {
+  const existing = storageGet("tge_pvess_draft_id") || "";
+  if (existing) {
+    return existing;
+  }
+  const generated = `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  storageSet("tge_pvess_draft_id", generated);
+  return generated;
+}
+
+function localAutosave() {
+  try {
+    const payload = buildPayload(new FormData(form));
+    const record = {
+      draft_id: currentDraftId(),
+      step: currentStepId(),
+      payload,
+      updated_at: new Date().toISOString(),
+    };
+    if (!storageSet(wizardDraftKey, JSON.stringify(record))) {
+      throw new Error("storage unavailable");
+    }
+    draftStatus.textContent = `Draft autosaved ${formatTime(record.updated_at)}`;
+    draftStatus.classList.add("saved");
+    draftStatus.classList.remove("warning");
+  } catch {
+    draftStatus.textContent = "Draft autosave unavailable";
+    draftStatus.classList.add("warning");
+  }
+}
+
+function restoreDraftFromLocal() {
+  const raw = storageGet(wizardDraftKey);
+  if (!raw) {
+    return;
+  }
+  try {
+    const record = JSON.parse(raw);
+    if (!record || !record.payload) {
+      return;
+    }
+    applyPayloadToForm(record.payload, {
+      message: `Restored local draft from ${formatTime(record.updated_at)}.`,
+      preserveStep: true,
+    });
+    if (wizardStepOrder.includes(record.step)) {
+      currentStepIndex = wizardStepOrder.indexOf(record.step);
+    }
+    localDraftRestored = true;
+    draftStatus.textContent = `Draft restored ${formatTime(record.updated_at)}`;
+    draftStatus.classList.add("saved");
+  } catch {
+    draftStatus.textContent = "Saved draft could not be restored";
+    draftStatus.classList.add("warning");
+  }
+}
+
+async function saveDraft(options = {}) {
+  const record = {
+    draft_id: currentDraftId(),
+    step: currentStepId(),
+    payload: buildPayload(new FormData(form)),
+  };
+  const localSaved = storageSet(wizardDraftKey, JSON.stringify({
+    ...record,
+    updated_at: new Date().toISOString(),
+  }));
+  draftStatus.textContent = localSaved ? "Draft saved locally" : "Draft storage unavailable";
+  draftStatus.classList.add("saved");
+  draftStatus.classList.remove("warning");
+  if (options.manual) {
+    saveDraftButton.disabled = true;
+    saveDraftButton.textContent = "Saving...";
+  }
+  try {
+    const response = await apiFetch("/api/drafts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(record),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(formatApiError(data));
+    }
+    storageSet("tge_pvess_draft_id", data.draft_id);
+    storageSet(wizardDraftKey, JSON.stringify(data));
+    draftStatus.textContent = `Draft saved ${formatTime(data.updated_at)}`;
+    if (options.manual) {
+      statusEl.textContent = `Draft ${data.draft_id} saved.`;
+    }
+  } catch (error) {
+    draftStatus.textContent = "Draft saved locally; server draft needs operator token";
+    draftStatus.classList.add("warning");
+    if (options.manual) {
+      statusEl.textContent = error.message.includes("required")
+        ? "Draft saved locally. Enter an operator token to save it to the server."
+        : `Draft saved locally. ${error.message}`;
+    }
+  } finally {
+    if (options.manual) {
+      saveDraftButton.disabled = false;
+      saveDraftButton.textContent = "Save draft";
+    }
+  }
+}
+
+function formatTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "recently";
+  }
+  return date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
 function applyTemplate(name) {
@@ -321,6 +875,8 @@ function applyTemplate(name) {
   syncInverterOption();
   syncBatteryOption({ preserveQuantity: true });
   renderValidation([], [`Project type set to ${labelForTemplate(name)}.`]);
+  renderCurrentStepValidation({ quiet: false });
+  localAutosave();
 }
 
 function applyAddressSample(name) {
@@ -332,6 +888,8 @@ function applyAddressSample(name) {
     setFieldValue(key, value);
   }
   renderValidation([], [`Loaded sample address: ${sample.site_address}. Monthly usage is simulated until a bill or Smart Meter export is uploaded.`]);
+  renderCurrentStepValidation({ quiet: false });
+  localAutosave();
 }
 
 function buildPayload(data) {
@@ -374,37 +932,14 @@ function buildPayload(data) {
 }
 
 function validatePayload(payload) {
-  const errors = [];
-  const warnings = [];
-  const modules = Number(payload.modules || 0);
-  const strings = Number(payload.strings || 0);
-  const moduleWatts = Number(moduleChoice.selectedOptions[0]?.dataset.watts || 0);
-  const inverterAmps = Number(inverterAmpsInput.value || 0);
-  const inverterQty = Number(payload.inverter_quantity || 1);
-  const acKw = inverterAmps * 240 * inverterQty / 1000;
-  const dcKw = modules * moduleWatts / 1000;
-
-  if (strings > 0 && modules % strings !== 0) {
-    errors.push("Module count must divide evenly by string count.");
+  const validation = validateAllSteps(payload, { includeReview: false });
+  if (!Object.values(payload.outputs || {}).some(Boolean)) {
+    validation.errors.push(issue("", "Select at least one package output before generation."));
   }
-  if (payload.battery_choice === "none" && Number(payload.battery_quantity || 0) > 0) {
-    errors.push("Battery quantity must be 0 when No battery is selected.");
-  }
-  if (payload.battery_choice !== "none" && Number(payload.battery_quantity || 0) === 0) {
-    warnings.push("A battery model is selected but quantity is 0; this will generate a PV-only package.");
-  }
-  if (payload.monthly_kwh && payload.monthly_kwh.length !== 12) {
-    errors.push("Monthly kWh must contain exactly 12 numeric values.");
-  }
-  if (acKw > 0) {
-    const ratio = dcKw / acKw;
-    if (ratio > 1.7) {
-      errors.push(`DC/AC ratio is ${ratio.toFixed(2)}; reduce modules or add inverter capacity.`);
-    } else if (ratio > 1.45) {
-      warnings.push(`DC/AC ratio is ${ratio.toFixed(2)}; engineering review recommended.`);
-    }
-  }
-  return { errors, warnings };
+  return {
+    errors: normalizeMessages(validation.errors),
+    warnings: normalizeMessages(validation.warnings),
+  };
 }
 
 function parseMonthlyKwh(raw) {
@@ -425,6 +960,11 @@ async function runPreflight() {
   const validation = validatePayload(payload);
   renderValidation(validation.errors, validation.warnings);
   if (validation.errors.length > 0) {
+    const stepValidation = validateStep("package-outputs", payload);
+    renderStepValidation(stepValidation);
+    if (stepValidation.errors[0]) {
+      focusIssueField(stepValidation.errors[0]);
+    }
     statusEl.textContent = "Fix the highlighted inputs before checking readiness.";
     statusEl.classList.add("error");
     return;
@@ -554,6 +1094,8 @@ function handleLookupCandidateClick(event) {
     }
   }
   renderValidation([], [`Roof candidate applied: ${section.name || "Roof Section"}. Review dimensions before generation.`]);
+  renderCurrentStepValidation({ quiet: false });
+  localAutosave();
 }
 
 function renderLookupMessage(message, type) {
@@ -1711,7 +2253,7 @@ historyList.addEventListener("click", async (event) => {
   }
 });
 
-function applyPayloadToForm(payload) {
+function applyPayloadToForm(payload, options = {}) {
   for (const [key, value] of Object.entries(payload || {})) {
     if (key === "outputs") {
       continue;
@@ -1735,7 +2277,14 @@ function applyPayloadToForm(payload) {
   syncModuleOption();
   syncInverterOption();
   syncBatteryOption({ preserveQuantity: true });
-  renderValidation([], ["Loaded a prior project form. Reattach file uploads before rerunning with new source materials."]);
+  const message = options.message || "Loaded a prior project form. Reattach file uploads before rerunning with new source materials.";
+  renderValidation([], [message]);
+  if (!options.preserveStep) {
+    setWizardStep(0, { validate: false });
+  } else {
+    renderCurrentStepValidation({ quiet: false });
+  }
+  localAutosave();
 }
 
 function setFieldValue(name, value) {

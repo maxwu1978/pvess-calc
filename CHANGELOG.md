@@ -8,6 +8,20 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P10: step-by-step intake wizard
+
+- Added a Figma capture baseline for the operator UI:
+  <https://www.figma.com/design/Vtl8mcaTAZ0BlAkGIlF4OS>
+- Reworked the internal generator into a six-step wizard with Back,
+  Save draft, Continue, and final review/generate controls
+- Added current-step validation with blocking errors, non-blocking warnings,
+  passed checks, and field-level highlighting
+- Added local autosave plus authenticated server-side draft persistence
+- Kept lead intake prefill, history form loading, preflight, and generation
+  compatible with the existing Web payload
+- Added regression and browser UX coverage for step navigation, validation,
+  draft restore, and responsive behavior
+
 ### 2026-05-20 — Web UI P9: operator layout polish
 
 - Reworked the main Web UI into a denser operator workspace with a compact

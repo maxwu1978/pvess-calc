@@ -18,6 +18,54 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P10 — step-by-step intake wizard ✅ DONE 2026-05-20
+
+Goal: reduce operator cognitive load by replacing the single long intake form
+with a guided workflow that validates each step, preserves progress, and keeps
+generation compatible with the existing project pipeline.
+
+Detailed development plan:
+
+1. Establish a Figma baseline from the current operator page and lock the
+   engineering-dashboard visual style before implementation.
+2. Add wizard state to the existing static HTML/CSS/JS page without replacing
+   the FastAPI backend or adding a frontend framework.
+3. Split the existing form into six steps: project/address, usage/goals,
+   equipment, electrical/roof/costs, evidence, and review/generate.
+4. Add current-step validation with field highlighting, passed checks,
+   warnings, and blocking errors.
+5. Add Back / Save draft / Continue behavior while preserving all entered
+   values and file inputs.
+6. Add browser local autosave and authenticated server-side draft persistence.
+7. Keep lead **Load intake**, history **Load form**, preflight, and generation
+   behavior compatible with existing payloads.
+8. Validate with unit tests, API tests, Browser/IAB interaction checks, desktop
+   and mobile visual QA, then deploy to the local tunnel service.
+
+Detailed test plan:
+
+- Static page tests cover wizard copy, step controls, and no duplicated
+  engineer phone input.
+- Draft API tests cover create/update and readback from SQLite.
+- Browser UX tests cover failed Continue on missing project fields, successful
+  step advancement, Back preserving data, Save draft status, refresh restore,
+  final-step preflight/generate visibility, and mobile no-overflow rendering.
+- Regression tests keep the existing generation, lead, package QA, and docs
+  checks green.
+
+Closing standards met:
+
+- The first screen shows one active intake step instead of the full form.
+- Every step gives immediate validation feedback before advancing.
+- Blocking errors focus the relevant field; warnings remain visible but do not
+  block estimate-stage progress.
+- Save draft works locally without an operator token and server-side with the
+  same authenticated Web API model.
+- Back, Continue, step navigation, lead prefill, and history prefill preserve
+  entered values.
+- Final generation still uses `/api/projects/form` and the existing output
+  pipeline.
+
 ### Web UI P9 — operator layout polish ✅ DONE 2026-05-20
 
 Goal: make the internal generator page easier to operate for long intake,

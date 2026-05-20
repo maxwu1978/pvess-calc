@@ -39,6 +39,11 @@ Avoid:
 | Load intake | Pre-fill the project form from a lead without generating output | Lead action |
 | Run and review | Right-side operator console for readiness, progress, QA, previews, BOM, leads, and history | Operator panel |
 | Package outputs | Output selection before generation | Generate panel |
+| Wizard intake | Guided step-by-step internal project intake | Main operator workflow |
+| Save draft | Persist the current wizard payload and step | Wizard action bar |
+| Continue | Validate the current wizard step and move forward | Wizard action bar |
+| Back | Return to the previous wizard step without clearing fields | Wizard action bar |
+| Step validation | Current-step errors, warnings, and passed checks | Wizard feedback panel |
 
 ## Button Language
 
@@ -54,6 +59,9 @@ Use direct verb phrases:
 - `Load intake`
 - `Archive`
 - `Download complete ZIP`
+- `Back`
+- `Continue`
+- `Save draft`
 - `Load form`
 - `Rerun package`
 - `Delete`
@@ -88,11 +96,13 @@ internal-only terms as primary labels when a workflow label is clearer.
 Use a work-focused, scan-first layout:
 
 - Keep product identity and security controls compact in the top bar.
-- Use the workflow rail as navigation, not as explanatory marketing copy.
-- Keep the intake form on the left and review/output state on the right on
-  desktop screens.
-- Keep the generate actions visible near the bottom of the viewport while the
-  operator scrolls long forms.
+- Use the workflow rail as a stepper. It should show active, completed,
+  warning, and error states.
+- Keep only the active wizard step in the main form area; do not show the full
+  long form at once.
+- Keep the active-step validation summary near the current form on desktop and
+  directly below it on mobile.
+- Keep Back / Save draft / Continue visible near the bottom of the viewport.
 - Prefer code-native layout tokens for day-to-day iteration. Bring in Figma
   only when collaborative mockups or reusable component specifications are
   needed.
