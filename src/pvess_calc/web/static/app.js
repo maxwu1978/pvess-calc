@@ -18,7 +18,10 @@ const sourceEmpty = document.querySelector("#source-empty");
 const sourceMaterials = document.querySelector("#source-materials");
 const leadEmpty = document.querySelector("#lead-empty");
 const leadList = document.querySelector("#lead-list");
+const leadStatus = document.querySelector("#lead-status");
+const leadQuery = document.querySelector("#lead-query");
 const leadRefresh = document.querySelector("#lead-refresh");
+const leadExport = document.querySelector("#lead-export");
 const readinessEmpty = document.querySelector("#readiness-empty");
 const readinessPanel = document.querySelector("#readiness-panel");
 const packageQaEmpty = document.querySelector("#package-qa-empty");
@@ -222,6 +225,7 @@ previewPanel.addEventListener("click", handlePreviewClick);
 fileList.addEventListener("change", handleArtifactReviewChange);
 runPackageQaButton.addEventListener("click", runPackageQa);
 leadRefresh.addEventListener("click", loadLeads);
+leadExport.addEventListener("click", exportLeadsCsv);
 projectTemplate.addEventListener("change", () => applyTemplate(projectTemplate.value));
 addressSample.addEventListener("change", () => applyAddressSample(addressSample.value));
 moduleChoice.addEventListener("change", syncModuleOption);
@@ -1022,7 +1026,7 @@ async function loadLeads() {
   }
   leadEmpty.textContent = "Public estimate requests appear here.";
   try {
-    const response = await apiFetch("/api/leads");
+    const response = await apiFetch(`/api/leads${leadQueryString()}`);
     const data = await response.json();
     if (!response.ok) {
       throw new Error(formatApiError(data));
@@ -1035,6 +1039,27 @@ async function loadLeads() {
   }
 }
 
+function leadQueryString() {
+  const params = new URLSearchParams();
+  if (leadStatus.value) {
+    params.set("status", leadStatus.value);
+  }
+  if (leadQuery.value.trim()) {
+    params.set("q", leadQuery.value.trim());
+  }
+  const text = params.toString();
+  return text ? `?${text}` : "";
+}
+
+function exportLeadsCsv() {
+  if (runtimeConfig.auth_required && !currentAccessToken()) {
+    leadEmpty.textContent = "Enter an operator token before exporting leads.";
+    leadEmpty.classList.remove("hidden");
+    return;
+  }
+  window.location.href = withAuthUrl(`/api/leads/export.csv${leadQueryString()}`);
+}
+
 function renderLeads(leads) {
   leadList.innerHTML = "";
   leadEmpty.classList.toggle("hidden", leads.length > 0);
@@ -1045,19 +1070,39 @@ function renderLeads(leads) {
       : "usage missing";
     const converted = lead.status === "converted" && lead.converted_job_id;
     item.innerHTML = `
-      <span>
+      <span class="lead-details">
         <strong>${escapeHtml(lead.contact_name || "New lead")}</strong>
         <em>${escapeHtml(lead.site_address || "")}</em>
-        <em>${escapeHtml(lead.email || "")}${lead.phone ? ` · ${escapeHtml(lead.phone)}` : ""}</em>
-        <em>${escapeHtml(labelForLeadType(lead.project_type))} · ${usage} · ${escapeHtml(lead.status || "new")}</em>
+        <em>
+          ${lead.email ? `<a href="mailto:${escapeHtml(lead.email)}">${escapeHtml(lead.email)}</a>` : ""}
+          ${lead.phone ? ` · <a href="tel:${escapeHtml(lead.phone)}">${escapeHtml(lead.phone)}</a>` : ""}
+        </em>
+        <em>${escapeHtml(labelForLeadType(lead.project_type))} · ${usage} · last contact ${escapeHtml(formatLeadDate(lead.last_contacted_at) || "not recorded")}</em>
+        <label class="lead-note-label">
+          Follow-up notes
+          <textarea class="lead-note" data-lead-note="${escapeHtml(lead.lead_id)}">${escapeHtml(lead.notes || "")}</textarea>
+        </label>
       </span>
       <span class="history-actions">
+        <select data-lead-status="${escapeHtml(lead.lead_id)}">
+          ${leadStatusOption(lead.status, "new", "New")}
+          ${leadStatusOption(lead.status, "contacted", "Contacted")}
+          ${leadStatusOption(lead.status, "qualified", "Qualified")}
+          ${leadStatusOption(lead.status, "converted", "Converted")}
+          ${leadStatusOption(lead.status, "archived", "Archived")}
+        </select>
+        <button type="button" data-lead-action="save" data-lead-id="${escapeHtml(lead.lead_id)}">Save</button>
         ${converted ? `<button type="button" data-lead-job-id="${escapeHtml(lead.converted_job_id)}">View package</button>` : ""}
-        <button type="button" data-lead-action="convert" data-lead-id="${escapeHtml(lead.lead_id)}" ${converted ? "disabled" : ""}>Generate estimate</button>
+        <button type="button" data-lead-action="convert" data-lead-id="${escapeHtml(lead.lead_id)}" ${converted || lead.status === "archived" ? "disabled" : ""}>Generate estimate</button>
+        <button type="button" data-lead-action="archive" data-lead-id="${escapeHtml(lead.lead_id)}" ${lead.status === "archived" ? "disabled" : ""}>Archive</button>
       </span>
     `;
     leadList.appendChild(item);
   }
+}
+
+function leadStatusOption(current, value, label) {
+  return `<option value="${value}" ${current === value ? "selected" : ""}>${label}</option>`;
 }
 
 function labelForLeadType(value) {
@@ -1069,6 +1114,28 @@ function labelForLeadType(value) {
   }
   return "Solar + battery";
 }
+
+function formatLeadDate(value) {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+leadStatus.addEventListener("change", loadLeads);
+
+leadQuery.addEventListener("input", () => {
+  window.clearTimeout(leadQuery._timer);
+  leadQuery._timer = window.setTimeout(loadLeads, 250);
+});
 
 leadList.addEventListener("click", async (event) => {
   const jobButton = event.target.closest("[data-lead-job-id]");
@@ -1091,28 +1158,69 @@ leadList.addEventListener("click", async (event) => {
     }
     return;
   }
-  const button = event.target.closest("[data-lead-action='convert']");
-  if (!button) {
+  const actionButton = event.target.closest("[data-lead-action]");
+  if (!actionButton) {
     return;
   }
-  const leadId = button.dataset.leadId;
-  button.disabled = true;
-  button.textContent = "Generating...";
+  const action = actionButton.dataset.leadAction;
+  const leadId = actionButton.dataset.leadId;
   clearError();
   try {
-    const response = await apiFetch(`/api/leads/${encodeURIComponent(leadId)}/convert`, {
-      method: "POST",
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(formatApiError(data));
+    if (action === "save") {
+      actionButton.disabled = true;
+      actionButton.textContent = "Saving...";
+      const response = await apiFetch(`/api/leads/${encodeURIComponent(leadId)}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          status: document.querySelector(`[data-lead-status="${CSS.escape(leadId)}"]`)?.value || "new",
+          notes: document.querySelector(`[data-lead-note="${CSS.escape(leadId)}"]`)?.value || "",
+          mark_contacted: false,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(formatApiError(data));
+      }
+      statusEl.textContent = `Saved lead ${leadId}`;
+      await loadLeads();
+      return;
     }
-    await loadLeads();
-    setBusy(true, `Generating estimate package from lead ${leadId}.`);
-    pollJob(data.job.job_id);
+    if (action === "archive") {
+      actionButton.disabled = true;
+      actionButton.textContent = "Archiving...";
+      const response = await apiFetch(`/api/leads/${encodeURIComponent(leadId)}/archive`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(formatApiError(data));
+      }
+      statusEl.textContent = `Archived lead ${leadId}`;
+      await loadLeads();
+      return;
+    }
+    if (action === "convert") {
+      actionButton.disabled = true;
+      actionButton.textContent = "Generating...";
+      const response = await apiFetch(`/api/leads/${encodeURIComponent(leadId)}/convert`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(formatApiError(data));
+      }
+      await loadLeads();
+      setBusy(true, `Generating estimate package from lead ${leadId}.`);
+      pollJob(data.job.job_id);
+    }
   } catch (error) {
-    button.disabled = false;
-    button.textContent = "Generate estimate";
+    actionButton.disabled = false;
+    actionButton.textContent = {
+      save: "Save",
+      archive: "Archive",
+      convert: "Generate estimate",
+    }[action] || "Retry";
     statusEl.textContent = error.message;
     statusEl.classList.add("error");
     renderError(error.message);

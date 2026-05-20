@@ -278,6 +278,8 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "905 Crossvine Drive, Mansfield, TX" in response.text
     assert "2806 Green Circle Drive, Mansfield, TX" in response.text
     assert "Public leads" in response.text
+    assert "Lead status filter" in response.text
+    assert "Export CSV" in response.text
     assert "What needs attention" in response.text
     assert "Filter" in response.text
     assert "Generate estimate package" in response.text
@@ -499,6 +501,79 @@ def test_web_public_lead_page_and_submission_bypass_auth(tmp_path: Path):
     listed = client.get("/api/leads", headers=headers)
     assert listed.status_code == 200
     assert listed.json()["leads"][0]["lead_id"] == lead["lead_id"]
+
+
+def test_web_lead_lifecycle_update_archive_and_export(tmp_path: Path):
+    client = TestClient(create_app(jobs_dir=tmp_path, access_token="secret"))
+    headers = _token_headers("secret")
+    lead_response = client.post(
+        "/api/leads",
+        data={
+            "contact_name": "Lifecycle Lead",
+            "email": "lifecycle@example.com",
+            "phone": "817-555-0123",
+            "site_address": "905 Crossvine Drive, Mansfield, TX",
+            "project_type": "not_sure",
+            "monthly_kwh_text": "880 780 720 820 1050 1450 1700 1750 1450 1050 820 860",
+        },
+    )
+    assert lead_response.status_code == 200, lead_response.text
+    lead = lead_response.json()["lead"]
+
+    no_auth_update = client.patch(
+        f"/api/leads/{lead['lead_id']}",
+        json={"status": "contacted"},
+    )
+    assert no_auth_update.status_code == 401
+
+    update = client.patch(
+        f"/api/leads/{lead['lead_id']}",
+        headers=headers,
+        json={
+            "status": "contacted",
+            "notes": "Called homeowner; bill requested.",
+            "mark_contacted": True,
+        },
+    )
+    assert update.status_code == 200, update.text
+    updated = update.json()
+    assert updated["status"] == "contacted"
+    assert updated["notes"] == "Called homeowner; bill requested."
+    assert updated["last_contacted_at"]
+
+    contacted = client.get(
+        "/api/leads",
+        params={"status": "contacted", "q": "lifecycle"},
+        headers=headers,
+    )
+    assert contacted.status_code == 200
+    assert [item["lead_id"] for item in contacted.json()["leads"]] == [lead["lead_id"]]
+
+    export = client.get(
+        "/api/leads/export.csv",
+        params={"status": "active"},
+        headers=headers,
+    )
+    assert export.status_code == 200
+    assert "text/csv" in export.headers["content-type"]
+    assert "lifecycle@example.com" in export.text
+    assert "Called homeowner; bill requested." in export.text
+    assert "monthly_kwh_avg" in export.text
+
+    archive = client.post(
+        f"/api/leads/{lead['lead_id']}/archive",
+        headers=headers,
+    )
+    assert archive.status_code == 200, archive.text
+    assert archive.json()["status"] == "archived"
+
+    active = client.get("/api/leads", params={"status": "active"}, headers=headers)
+    assert active.status_code == 200
+    assert lead["lead_id"] not in [item["lead_id"] for item in active.json()["leads"]]
+
+    archived = client.get("/api/leads", params={"status": "archived"}, headers=headers)
+    assert archived.status_code == 200
+    assert [item["lead_id"] for item in archived.json()["leads"]] == [lead["lead_id"]]
 
 
 def test_web_lead_conversion_creates_customer_estimate_job(tmp_path: Path):

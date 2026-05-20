@@ -632,7 +632,20 @@
         <section class="panel">
           <div class="section-head">
             <h2>Public leads</h2>
+          </div>
+          <div class="lead-toolbar">
+            <select id="lead-status" aria-label="Lead status filter">
+              <option value="active" selected>Active leads</option>
+              <option value="">All statuses</option>
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="qualified">Qualified</option>
+              <option value="converted">Converted</option>
+              <option value="archived">Archived</option>
+            </select>
+            <input id="lead-query" type="search" placeholder="Search name, email, address" />
             <button id="lead-refresh" type="button" class="secondary-button">Refresh</button>
+            <button id="lead-export" type="button" class="secondary-button">Export CSV</button>
           </div>
           <div id="lead-empty" class="empty">Public estimate requests appear here.</div>
           <ul id="lead-list" class="file-list lead-list"></ul>

@@ -18,6 +18,32 @@ priorities or the non-Web backlog below.
 
 ## Completed Milestones
 
+### Web UI P5 — lead lifecycle workbench ✅ DONE 2026-05-20
+
+Goal: turn public estimate requests into a manageable internal queue before
+they become generated estimate packages.
+
+Completed:
+
+- Added lead lifecycle statuses: `new`, `contacted`, `qualified`,
+  `converted`, and `archived`.
+- Added `last_contacted_at` to persisted Web lead records with SQLite
+  migration support.
+- Added authenticated lead update, archive, and CSV export endpoints.
+- Extended the **Public leads** panel with status filtering, search, notes,
+  lifecycle status updates, archive action, CSV export, email links, and phone
+  links.
+- Added regression coverage for protected update/export/archive behavior and
+  active-vs-archived filtering.
+
+Closing standards met:
+
+- Public intake remains anonymous, but lead lifecycle operations require
+  operator/admin auth.
+- Archive is reversible by status update and does not delete customer data.
+- CSV export uses the same status/search filters as the visible queue.
+- Converted estimate package behavior from P4 remains unchanged.
+
 ### Web UI P4 — public lead intake and estimate conversion ✅ DONE 2026-05-20
 
 Goal: let prospective customers submit project requests publicly while keeping

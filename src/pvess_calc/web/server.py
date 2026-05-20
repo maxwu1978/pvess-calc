@@ -449,9 +449,12 @@ class WebArtifactReviewUpdate(BaseModel):
     note: str = Field(default="", max_length=500)
 
 
+LeadStatus = Literal["new", "contacted", "qualified", "converted", "archived"]
+
+
 class WebLeadRecord(BaseModel):
     lead_id: str
-    status: Literal["new", "converted", "archived"] = "new"
+    status: LeadStatus = "new"
     contact_name: str
     email: str
     phone: str = ""
@@ -463,8 +466,15 @@ class WebLeadRecord(BaseModel):
     utility_bill_path: str = ""
     source: str = "public_form"
     converted_job_id: str = ""
+    last_contacted_at: str = ""
     created_at: str
     updated_at: str
+
+
+class WebLeadUpdateRequest(BaseModel):
+    status: LeadStatus | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+    mark_contacted: bool = False
 
 
 class WebLeadCreateResponse(BaseModel):
@@ -645,7 +655,7 @@ def create_app(
     @app.get("/api/leads")
     def list_leads(
         request: Request,
-        status: Literal["new", "converted", "archived"] | None = Query(None),
+        status: LeadStatus | Literal["active"] | None = Query(None),
         q: str = Query("", max_length=120),
         limit: int = Query(50, ge=1, le=100),
     ) -> dict[str, Any]:
@@ -658,6 +668,60 @@ def create_app(
             ),
             "filters": {"status": status, "q": q, "limit": limit},
         }
+
+    @app.get("/api/leads/export.csv")
+    def export_leads_csv(
+        request: Request,
+        status: LeadStatus | Literal["active"] | None = Query("active"),
+        q: str = Query("", max_length=120),
+    ) -> Response:
+        _require_auth_context(request)
+        leads = app.state.job_store.list_leads(
+            status=status,
+            query=q,
+            limit=10000,
+        )
+        body = build_leads_csv(leads)
+        return Response(
+            content=body,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": 'attachment; filename="tge-leads.csv"',
+            },
+        )
+
+    @app.patch("/api/leads/{lead_id}", response_model=WebLeadRecord)
+    def update_lead(
+        request: Request,
+        lead_id: str,
+        payload: WebLeadUpdateRequest,
+    ) -> WebLeadRecord:
+        _require_auth_context(request)
+        try:
+            updated = app.state.job_store.update_lead(
+                lead_id,
+                status=payload.status,
+                notes=payload.notes,
+                mark_contacted=payload.mark_contacted,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return WebLeadRecord.model_validate(updated)
+
+    @app.post("/api/leads/{lead_id}/archive", response_model=WebLeadRecord)
+    def archive_lead(
+        request: Request,
+        lead_id: str,
+    ) -> WebLeadRecord:
+        _require_auth_context(request)
+        try:
+            updated = app.state.job_store.update_lead(
+                lead_id,
+                status="archived",
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return WebLeadRecord.model_validate(updated)
 
     @app.post("/api/leads/{lead_id}/convert", response_model=WebLeadConvertResponse)
     def convert_lead_to_project(
@@ -3284,6 +3348,55 @@ def web_request_from_lead(lead: dict[str, Any]) -> WebProjectRequest:
             qet=False,
         ),
     )
+
+
+def build_leads_csv(leads: list[dict[str, Any]]) -> str:
+    buffer = io.StringIO()
+    fieldnames = [
+        "lead_id",
+        "status",
+        "contact_name",
+        "email",
+        "phone",
+        "site_address",
+        "project_type",
+        "utility",
+        "monthly_kwh_avg",
+        "monthly_kwh_values",
+        "notes",
+        "converted_job_id",
+        "last_contacted_at",
+        "created_at",
+        "updated_at",
+    ]
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+    writer.writeheader()
+    for lead in leads:
+        monthly = [
+            float(value)
+            for value in (lead.get("monthly_kwh") or [])
+            if _is_finite_number(value)
+        ]
+        writer.writerow({
+            "lead_id": lead.get("lead_id", ""),
+            "status": lead.get("status", ""),
+            "contact_name": lead.get("contact_name", ""),
+            "email": lead.get("email", ""),
+            "phone": lead.get("phone", ""),
+            "site_address": lead.get("site_address", ""),
+            "project_type": lead.get("project_type", ""),
+            "utility": lead.get("utility", ""),
+            "monthly_kwh_avg": (
+                f"{sum(monthly) / len(monthly):.1f}" if monthly else ""
+            ),
+            "monthly_kwh_values": ";".join(f"{value:g}" for value in monthly),
+            "notes": lead.get("notes", ""),
+            "converted_job_id": lead.get("converted_job_id", ""),
+            "last_contacted_at": lead.get("last_contacted_at", ""),
+            "created_at": lead.get("created_at", ""),
+            "updated_at": lead.get("updated_at", ""),
+        })
+    return buffer.getvalue()
 
 
 def _parse_lead_monthly_kwh(raw: str) -> list[float]:

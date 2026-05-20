@@ -32,6 +32,7 @@ Avoid:
 | Generated deliverables | Complete artifact list | File panel |
 | Estimate request | Public homeowner request submitted before operator review | Public lead page |
 | Public leads | Internal queue of public estimate requests | Operator panel |
+| Follow-up notes | Internal sales/design notes for a public lead | Lead row notes |
 
 ## Button Language
 
@@ -42,6 +43,8 @@ Use direct verb phrases:
 - `Generate estimate package`
 - `Request estimate`
 - `Generate estimate`
+- `Export CSV`
+- `Archive`
 - `Download complete ZIP`
 - `Load form`
 - `Rerun package`
@@ -83,6 +86,11 @@ Use these status labels consistently:
 - `Field-uploaded source materials` — user uploaded real site data
 - `Missing source data` — required item not present
 - `Review before AHJ submission` — package has warnings or simulated data
+- `New` — public lead received but not contacted
+- `Contacted` — first outreach completed or in progress
+- `Qualified` — lead has enough detail for estimate/design follow-up
+- `Converted` — estimate package has been generated from the lead
+- `Archived` — inactive lead hidden from the default active queue
 
 ## Mansfield Test Addresses
 

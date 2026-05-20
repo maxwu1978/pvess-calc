@@ -60,8 +60,10 @@ uploaded bill under `<workdir>/leads/<lead_id>/`. If the utility upload contains
 12 valid monthly kWh values, those values are attached to the lead.
 
 The internal **Public leads** panel is visible in the main operator UI after
-login. Operators can refresh the list, see which leads have usage data, and
-click **Generate estimate**. Lead conversion creates an estimate-only package:
+login. Operators can filter by status, search by name/email/address, save
+follow-up notes, update lifecycle status, archive inactive leads, export the
+visible queue to CSV, and click **Generate estimate**. Lead conversion creates
+an estimate-only package:
 
 - customer summary enabled
 - permit, DXF, labels, and QET disabled
@@ -70,6 +72,17 @@ click **Generate estimate**. Lead conversion creates an estimate-only package:
 
 Converted leads keep the generated job ID so operators can reopen the package
 from the lead row.
+
+Lead statuses are:
+
+- `new`
+- `contacted`
+- `qualified`
+- `converted`
+- `archived`
+
+Archived leads are hidden from the default active queue but remain available
+through the `Archived` filter and CSV export.
 
 ## Address Lookup
 

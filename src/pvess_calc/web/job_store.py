@@ -96,6 +96,7 @@ class JobStore:
                         utility_bill_path TEXT NOT NULL DEFAULT '',
                         source TEXT NOT NULL DEFAULT 'public_form',
                         converted_job_id TEXT NOT NULL DEFAULT '',
+                        last_contacted_at TEXT NOT NULL DEFAULT '',
                         created_at TEXT NOT NULL,
                         updated_at TEXT NOT NULL
                     );
@@ -129,6 +130,12 @@ class JobStore:
                     conn,
                     "web_jobs",
                     "package_qa_status",
+                    "TEXT NOT NULL DEFAULT ''",
+                )
+                _ensure_column(
+                    conn,
+                    "web_leads",
+                    "last_contacted_at",
                     "TEXT NOT NULL DEFAULT ''",
                 )
             self._initialized = True
@@ -417,6 +424,7 @@ class JobStore:
             "utility_bill_path": str(lead.get("utility_bill_path") or ""),
             "source": str(lead.get("source") or "public_form"),
             "converted_job_id": str(lead.get("converted_job_id") or ""),
+            "last_contacted_at": str(lead.get("last_contacted_at") or ""),
             "created_at": now,
             "updated_at": str(lead.get("updated_at") or now),
         }
@@ -427,11 +435,13 @@ class JobStore:
                     lead_id, status, contact_name, email, phone,
                     site_address, project_type, utility, monthly_kwh_json,
                     notes, utility_bill_path, source, converted_job_id,
+                    last_contacted_at,
                     created_at, updated_at
                 ) VALUES (
                     :lead_id, :status, :contact_name, :email, :phone,
                     :site_address, :project_type, :utility, :monthly_kwh_json,
                     :notes, :utility_bill_path, :source, :converted_job_id,
+                    :last_contacted_at,
                     :created_at, :updated_at
                 )
                 """,
@@ -450,8 +460,12 @@ class JobStore:
         clauses: list[str] = []
         params: list[Any] = []
         if status:
-            clauses.append("status = ?")
-            params.append(status)
+            if status == "active":
+                clauses.append("status != ?")
+                params.append("archived")
+            else:
+                clauses.append("status = ?")
+                params.append(status)
         if query.strip():
             like = f"%{query.strip().lower()}%"
             clauses.append(
@@ -476,6 +490,49 @@ class JobStore:
         row = self._lead_row(lead_id)
         return _lead_from_row(row) if row is not None else None
 
+    def update_lead(
+        self,
+        lead_id: str,
+        *,
+        status: str | None = None,
+        notes: str | None = None,
+        mark_contacted: bool = False,
+    ) -> dict[str, Any]:
+        self.ensure_ready()
+        if not VALID_JOB_ID.fullmatch(lead_id):
+            raise ValueError("invalid lead_id")
+        allowed = {"new", "contacted", "qualified", "converted", "archived"}
+        assignments: list[str] = []
+        params: list[Any] = []
+        if status is not None:
+            if status not in allowed:
+                raise ValueError("invalid lead status")
+            assignments.append("status = ?")
+            params.append(status)
+        if notes is not None:
+            assignments.append("notes = ?")
+            params.append(str(notes)[:1000])
+        if mark_contacted or status == "contacted":
+            assignments.append("last_contacted_at = ?")
+            params.append(datetime.now(timezone.utc).isoformat())
+        if not assignments:
+            row = self._lead_row(lead_id)
+            if row is None:
+                raise ValueError("lead not found")
+            return _lead_from_row(row)
+        assignments.append("updated_at = ?")
+        params.append(datetime.now(timezone.utc).isoformat())
+        params.append(lead_id)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE web_leads SET {', '.join(assignments)} WHERE lead_id = ?",
+                params,
+            )
+        row = self._lead_row(lead_id)
+        if row is None:
+            raise ValueError("lead not found")
+        return _lead_from_row(row)
+
     def mark_lead_converted(
         self,
         lead_id: str,
@@ -492,10 +549,11 @@ class JobStore:
                 UPDATE web_leads
                 SET status = 'converted',
                     converted_job_id = ?,
+                    last_contacted_at = COALESCE(NULLIF(last_contacted_at, ''), ?),
                     updated_at = ?
                 WHERE lead_id = ?
                 """,
-                (converted_job_id, updated_at, lead_id),
+                (converted_job_id, updated_at, updated_at, lead_id),
             )
         row = self._lead_row(lead_id)
         if row is None:
@@ -618,6 +676,7 @@ def _lead_from_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
         "utility_bill_path": str(row["utility_bill_path"] or ""),
         "source": str(row["source"] or "public_form"),
         "converted_job_id": str(row["converted_job_id"] or ""),
+        "last_contacted_at": str(row["last_contacted_at"] or ""),
         "created_at": str(row["created_at"] or ""),
         "updated_at": str(row["updated_at"] or ""),
     }

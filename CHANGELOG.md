@@ -8,6 +8,18 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-20 — Web UI P5: lead lifecycle workbench
+
+- Added lead lifecycle statuses for public estimate requests:
+  `new`, `contacted`, `qualified`, `converted`, and `archived`
+- Added authenticated lead update, archive, and CSV export endpoints
+- Added persisted `last_contacted_at` with SQLite migration support
+- Extended the internal **Public leads** panel with status filtering, search,
+  follow-up notes, status updates, archive action, CSV export, mail links, and
+  phone links
+- Added regression tests for lifecycle auth, active/archived filtering, and
+  CSV export
+
 ### 2026-05-20 — Web UI P4: public lead intake
 
 - Added a public `/lead` estimate-request page for homeowner contact,
