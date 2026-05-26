@@ -12,13 +12,14 @@ from .conductor import ConductorResult, VoltageDropResult, select_copper, voltag
 from .ess import EssResult, compute_ess
 from .grounding import GroundingResult, compute_grounding
 from .ess_install import EssInstallCompliance, evaluate_ess_install
+from .geometry import polygons_overlap_area
 from .interconnect import InterconnectResult, compute_interconnection
 from .ocpd import select_ocpd
 from .pv_string import PvStringResult, compute_pv_string
 from .roof_layout import RoofLayoutResult, compute_roof_layout
 from .site_layout import apply_auto_anchors, auto_anchor_sections
 from .voltage_drop import VoltageDropAnalysis, compute_voltage_drop
-from .wire_routing import WireRoutingResult, compute_wire_routing
+from .wire_routing import WireRoutingResult, compute_wire_routing, _face_local_to_site
 
 
 @dataclass
@@ -306,7 +307,8 @@ def _compute_module_placements(inputs: Inputs) -> dict[str, list]:
       3. K.10.2 — assign each placement a string_index. Flat-list pass
          over ALL faces so a string can span face boundaries when needed
          (typical: South + South #2 each hold partial strings). The
-         algorithm prefers face-coupling and ridge-first sequence.
+         algorithm prefers face-coupling and keeps string sequencing
+         deterministic after the final geometry is selected.
 
     Returns empty dict for legacy single-orientation projects → PV-4
     v2 falls back to the K.2.8 grid concept; K.11 wire-routing falls
@@ -317,27 +319,54 @@ def _compute_module_placements(inputs: Inputs) -> dict[str, list]:
     path also pulls from lookup_fields but engine doesn't have those.
     """
     from .face_distribution import distribute_modules_to_faces
-    from .module_placement import place_modules
+    from .module_placement import place_module_candidates, place_modules
     from .string_assignment import assign_modules_to_strings
 
     latitude_deg = _try_parse_lat(inputs.project.coordinates)
     face_counts = distribute_modules_to_faces(
         inputs, latitude_deg=latitude_deg,
     )
-    placements: dict[str, list] = {}
+    candidates_by_face: dict[str, list] = {}
     mod = inputs.pv_array.module
     for section in inputs.site.roof_sections:
         count = face_counts.get(section.name, 0)
         if count <= 0:
+            candidates_by_face[section.name] = []
             continue
-        placed = place_modules(
+        candidates = place_modules(
             section,
             module_length_in=mod.length_in,
             module_width_in=mod.width_in,
-            target_count=count,
+            target_count=max(inputs.pv_array.modules * 2, 60),
         )
-        if placed:
-            placements[section.name] = placed
+        if _should_use_polygon_wedge_candidates(section, count, candidates):
+            all_candidates = place_module_candidates(
+                section,
+                module_length_in=mod.length_in,
+                module_width_in=mod.width_in,
+            )
+            portrait = [
+                module for module in all_candidates
+                if round(float(module.rotation_deg), 2) == 0.0
+            ]
+            if (
+                len(portrait) >= count
+                and _candidate_set_uses_low_left_wedge(portrait)
+            ):
+                candidates = portrait
+            else:
+                candidates = all_candidates
+        candidates_by_face[section.name] = _ordered_module_candidates(
+            section,
+            candidates,
+            requested_count=count,
+        )
+
+    placements = _select_module_placements(
+        inputs,
+        face_counts=face_counts,
+        candidates_by_face=candidates_by_face,
+    )
 
     all_placements = [m for face_list in placements.values()
                       for m in face_list]
@@ -350,3 +379,192 @@ def _compute_module_placements(inputs: Inputs) -> dict[str, list]:
     for m in assigned:
         placements.setdefault(m.face_name, []).append(m)
     return placements
+
+
+def _select_module_placements(
+    inputs: Inputs,
+    *,
+    face_counts: dict[str, int],
+    candidates_by_face: dict[str, list],
+) -> dict[str, list]:
+    """Select final modules from per-face candidates.
+
+    R4 contract:
+      * keep designer-declared counts when the geometry allows them;
+      * recycle shortfall into better faces before worse faces;
+      * prevent the same physical roof area from receiving overlapping
+        module rectangles when CAD-reviewed facets overlap.
+    """
+    target_total = max(0, int(inputs.pv_array.modules))
+    if target_total <= 0:
+        return {}
+
+    ordered_sections = sorted(
+        enumerate(inputs.site.roof_sections),
+        key=lambda item: (
+            _roof_face_install_priority(item[1]),
+            -face_counts.get(item[1].name, 0),
+            item[0],
+        ),
+    )
+    placements: dict[str, list] = {}
+    selected_polys: list[list[tuple[float, float]]] = []
+    used_keys: set[tuple] = set()
+
+    def _try_take(section, module) -> bool:
+        key = _module_candidate_key(module)
+        if key in used_keys:
+            return False
+        module_poly = _module_site_polygon(section, module)
+        if any(polygons_overlap_area(module_poly, existing)
+               for existing in selected_polys):
+            return False
+        placements.setdefault(section.name, []).append(module)
+        selected_polys.append(module_poly)
+        used_keys.add(key)
+        return True
+
+    non_north_sections = [
+        item for item in ordered_sections
+        if _roof_face_install_priority(item[1]) < 9
+    ]
+
+    def _placed_total_now() -> int:
+        return sum(len(face) for face in placements.values())
+
+    def _fill_from_sections(sections) -> None:
+        while _placed_total_now() < target_total:
+            progressed = False
+            for _, section in sections:
+                if _placed_total_now() >= target_total:
+                    break
+                for module in candidates_by_face.get(section.name, []):
+                    if _try_take(section, module):
+                        progressed = True
+                        break
+            if not progressed:
+                break
+
+    # First pass: honor requested per-face counts as much as possible on
+    # usable solar faces. Small requested facets go first so a broad face
+    # does not consume the only legal candidate on an adjacent tiny facet.
+    # North-facing faces are intentionally deferred until the end; they are
+    # a last resort, not a peer target.
+    first_pass_sections = sorted(
+        non_north_sections,
+        key=lambda item: (
+            _roof_face_install_priority(item[1]),
+            max(0, face_counts.get(item[1].name, 0)),
+            item[0],
+        ),
+    )
+    for _, section in first_pass_sections:
+        requested = max(0, face_counts.get(section.name, 0))
+        if requested <= 0:
+            continue
+        for module in candidates_by_face.get(section.name, []):
+            if len(placements.get(section.name, [])) >= requested:
+                break
+            _try_take(section, module)
+
+    # Second pass: recycle shortfall into available roof area. The same
+    # priority order encodes the R4 design preference: southwest first,
+    # east second, south/west acceptable.
+    _fill_from_sections(non_north_sections)
+
+    # Final pass: use every remaining face, including north, only if the
+    # better orientations cannot physically hit the requested total.
+    if _placed_total_now() < target_total:
+        _fill_from_sections(ordered_sections)
+    return placements
+
+
+def _ordered_module_candidates(
+    section,
+    candidates: list,
+    *,
+    requested_count: int,
+) -> list:
+    """Order legal module candidates in a drafter-like selection sequence.
+
+    `place_modules()` still returns the historical ridge-first list for direct
+    callers.  The engine, however, should consume all legal candidates and
+    prefer the eave/down-slope side first.  That makes wedge/triangular usable
+    areas at the lower edge visible in the final design instead of silently
+    leaving them unused once the target count has already been met.
+    """
+    if len(candidates) <= max(1, requested_count) + 2:
+        return candidates
+    return sorted(
+        candidates,
+        key=lambda m: (
+            round(float(m.y_ft), 4),
+            round(float(m.x_ft), 4),
+        ),
+    )
+
+
+def _should_use_polygon_wedge_candidates(
+    section,
+    requested_count: int,
+    base_candidates: list,
+) -> bool:
+    """Use alternate orientation candidates only for real polygon wedges."""
+    if getattr(section, "shape", "") != "polygon":
+        return False
+    if requested_count < 20:
+        return False
+    return len(base_candidates) >= requested_count + 8
+
+
+def _candidate_set_uses_low_left_wedge(candidates: list) -> bool:
+    if not candidates:
+        return False
+    xs = sorted(float(m.x_ft) for m in candidates)
+    ys = sorted(float(m.y_ft) for m in candidates)
+    x_cut = xs[max(0, int(len(xs) * 0.30) - 1)]
+    y_cut = ys[max(0, int(len(ys) * 0.30) - 1)]
+    return any(float(m.x_ft) <= x_cut and float(m.y_ft) <= y_cut for m in candidates)
+
+
+def _roof_face_install_priority(section) -> int:
+    """Lower is better for R4 PV layout selection.
+
+    Azimuth convention follows the schema: 0 north, 90 east, 180 south,
+    270 west. This intentionally keeps north-facing roof areas as the
+    last-resort bucket.
+    """
+    az = float(getattr(section, "azimuth_deg", 180.0)) % 360.0
+    if 202.5 <= az <= 247.5:
+        return 0   # southwest target quadrant
+    if 67.5 <= az <= 112.5:
+        return 1   # east second
+    if 135.0 <= az < 202.5 or 247.5 < az <= 292.5:
+        return 2   # south / west usable
+    if 112.5 < az < 135.0 or 292.5 < az < 337.5:
+        return 3   # southeast / northwest shoulder
+    return 9       # north-facing last resort
+
+
+def _module_candidate_key(module) -> tuple:
+    return (
+        module.face_name,
+        round(float(module.x_ft), 4),
+        round(float(module.y_ft), 4),
+        round(float(module.width_ft), 4),
+        round(float(module.height_ft), 4),
+        round(float(module.rotation_deg), 2),
+    )
+
+
+def _module_site_polygon(section, module) -> list[tuple[float, float]]:
+    local = [
+        (module.x_ft, module.y_ft),
+        (module.x_ft + module.width_ft, module.y_ft),
+        (module.x_ft + module.width_ft, module.y_ft + module.height_ft),
+        (module.x_ft, module.y_ft + module.height_ft),
+    ]
+    points = [_face_local_to_site(section, x, y) for x, y in local]
+    if all(point is not None for point in points):
+        return [point for point in points if point is not None]
+    return local

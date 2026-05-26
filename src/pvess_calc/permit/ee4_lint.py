@@ -9,13 +9,15 @@ from reportlab.pdfbase import pdfmetrics
 
 from ..calc.engine import CalculationResult
 from ..calc.polygon import point_in_polygon, polygon_area
-from ..calc.wire_routing import _face_local_to_site
+from .ee4_trace_modules import ee4_module_geometries
 from .site_plan import (
     _ee4_36_fire_offset_label_position,
     _ee4_drawing_bounds,
     _ee4_equipment_items,
     _ee4_equipment_label_layout,
     _ee4_equipment_leader_label,
+    _ee4_module_site_points,
+    _ee4_section_points,
     _ee4_trace_active,
 )
 
@@ -35,6 +37,8 @@ def lint_ee4_preview(result: CalculationResult) -> list[EE4LintResult]:
     """Run visual-risk checks that can be evaluated without OCR."""
     return [
         _lint_module_rectangles_no_overlap(result),
+        _lint_module_count_matches_face_allocation(result),
+        _lint_module_rectangles_inside_assigned_faces(result),
         _lint_module_rectangles_clear_fire_pathway(result),
         _lint_modules_inside_trace_roof(result),
         _lint_modules_clear_fire_pathway(result),
@@ -66,6 +70,78 @@ def _lint_module_rectangles_no_overlap(
     return EE4LintResult(
         name, "PASS",
         f"{len(modules)} module rectangle(s) have no area overlap",
+    )
+
+
+def _lint_module_count_matches_face_allocation(
+    result: CalculationResult,
+) -> EE4LintResult:
+    name = "ee4_module_count_matches_face_allocation"
+    sections = list(result.inputs.site.roof_sections)
+    if not sections:
+        return EE4LintResult(name, "PASS", "no per-face roof sections")
+    if all(section.module_count <= 0 for section in sections):
+        placed = sum(len(mods) for mods in result.module_placements.values())
+        return EE4LintResult(
+            name, "PASS",
+            f"{placed} module rectangle(s) auto-distributed; no pinned "
+            "face counts declared",
+        )
+
+    mismatches: list[str] = []
+    checked = 0
+    for section in sections:
+        if section.module_count <= 0:
+            continue
+        checked += 1
+        placed = len(result.module_placements.get(section.name, []))
+        if placed != section.module_count:
+            mismatches.append(f"{section.name} {placed}/{section.module_count}")
+    if mismatches:
+        return EE4LintResult(
+            name, "WARN",
+            "module count does not match face allocation: "
+            + "; ".join(mismatches[:6]),
+        )
+    return EE4LintResult(
+        name, "PASS",
+        f"{checked} face allocation(s) match placed module counts",
+    )
+
+
+def _lint_module_rectangles_inside_assigned_faces(
+    result: CalculationResult,
+) -> EE4LintResult:
+    name = "ee4_module_rectangles_inside_assigned_faces"
+    outside: list[str] = []
+    checked = 0
+    for section in result.inputs.site.roof_sections:
+        face_poly = _ee4_section_points(section)
+        if len(face_poly) < 3:
+            continue
+        for idx, module in enumerate(
+            result.module_placements.get(section.name, []),
+            1,
+        ):
+            checked += 1
+            corners = _ee4_module_site_points(section, module)
+            if len(corners) < 4:
+                outside.append(f"{section.name}#{idx} missing geometry")
+                continue
+            if any(
+                not _point_in_or_on_polygon(corner, face_poly)
+                for corner in corners
+            ):
+                outside.append(f"{section.name}#{idx}")
+    if outside:
+        return EE4LintResult(
+            name, "WARN",
+            f"{len(outside)} module rectangle(s) outside assigned roof face: "
+            + ", ".join(outside[:8]),
+        )
+    return EE4LintResult(
+        name, "PASS",
+        f"{checked} module rectangle(s) are inside assigned roof faces",
     )
 
 
@@ -318,45 +394,19 @@ def _lint_drawing_scale_readable(
 def _module_centers(
     result: CalculationResult,
 ) -> list[tuple[str, tuple[float, float]]]:
-    centers: list[tuple[str, tuple[float, float]]] = []
-    for section in result.inputs.site.roof_sections:
-        for idx, module in enumerate(
-            result.module_placements.get(section.name, []),
-            1,
-        ):
-            center = _face_local_to_site(
-                section,
-                module.x_ft + module.width_ft / 2,
-                module.y_ft + module.height_ft / 2,
-            )
-            if center is not None:
-                centers.append((f"{section.name}#{idx}", center))
-    return centers
+    return [
+        (module.label, module.center)
+        for module in ee4_module_geometries(result)
+    ]
 
 
 def _module_polygons(
     result: CalculationResult,
 ) -> list[tuple[str, list[tuple[float, float]]]]:
-    modules: list[tuple[str, list[tuple[float, float]]]] = []
-    for section in result.inputs.site.roof_sections:
-        for idx, module in enumerate(
-            result.module_placements.get(section.name, []),
-            1,
-        ):
-            corners_local = [
-                (module.x_ft, module.y_ft),
-                (module.x_ft + module.width_ft, module.y_ft),
-                (module.x_ft + module.width_ft, module.y_ft + module.height_ft),
-                (module.x_ft, module.y_ft + module.height_ft),
-            ]
-            corners = [
-                _face_local_to_site(section, px, py)
-                for px, py in corners_local
-            ]
-            corners = [p for p in corners if p is not None]
-            if len(corners) == 4:
-                modules.append((f"{section.name}#{idx}", corners))
-    return modules
+    return [
+        (module.label, module.corners)
+        for module in ee4_module_geometries(result)
+    ]
 
 
 def _point_in_or_on_polygon(

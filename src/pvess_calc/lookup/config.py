@@ -33,6 +33,10 @@ ENV_NREL_API_KEY: str = "PVESS_NREL_API_KEY"
 # Same pattern as the others: a missing key turns the provider into a
 # clean 'miss' without breaking the offline chain.
 ENV_GOOGLE_SOLAR_KEY: str = "PVESS_GOOGLE_SOLAR_KEY"
+# Optional Google Maps Platform key for Static Maps / Map Tiles visual
+# fallbacks. If unset, callers may reuse the Solar key; restricted keys
+# should prefer this separate env var.
+ENV_GOOGLE_MAPS_KEY: str = "PVESS_GOOGLE_MAPS_KEY"
 
 # Network defaults — every provider uses these unless it has a reason not to.
 DEFAULT_HTTP_TIMEOUT_S: float = 5.0
@@ -124,11 +128,26 @@ def get_google_solar_key() -> Optional[str]:
     return val or None
 
 
+@lru_cache(maxsize=1)
+def get_google_maps_key() -> Optional[str]:
+    """Google Maps Platform key for visual satellite fallback imagery.
+
+    `PVESS_GOOGLE_MAPS_KEY` is preferred because production keys are often
+    API-restricted. Falling back to `PVESS_GOOGLE_SOLAR_KEY` keeps existing
+    local setups working when the same key is allowed to call Static Maps.
+    """
+    val = os.environ.get(ENV_GOOGLE_MAPS_KEY, "").strip()
+    if val:
+        return val
+    return get_google_solar_key()
+
+
 def reset_cache_for_tests() -> None:
     """Clear lru_cache so tests can set / unset env vars between cases."""
     get_mapbox_token.cache_clear()
     get_nrel_api_key.cache_clear()
     get_google_solar_key.cache_clear()
+    get_google_maps_key.cache_clear()
 
 
 # ─── Public helpers for the verification CLI / doctor ──────────────────────

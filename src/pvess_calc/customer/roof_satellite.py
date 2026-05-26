@@ -82,6 +82,18 @@ class SatelliteAssets:
     mask: np.ndarray             # (H, W) bool — True = roof
     imagery_date: str
     imagery_quality: str
+    target_px: Optional[tuple[float, float]] = None
+
+
+@dataclass(frozen=True)
+class TargetMaskComponent:
+    """Connected Google Solar mask component selected for the project roof."""
+    mask: np.ndarray
+    bbox: tuple[int, int, int, int]  # y0, x0, y1, x1
+    area_px: int
+    component_count: int
+    target_px: tuple[float, float]
+    distance_px2: float
 
 
 def _decode_tiff(buf: bytes) -> np.ndarray:
@@ -195,10 +207,184 @@ def render_satellite_diagram(
     return out_path.absolute()
 
 
+def crop_satellite_assets_to_target(
+    assets: SatelliteAssets,
+    *,
+    padding_ratio: float = 0.20,
+    min_padding_px: int = 12,
+    min_side_px: int = 72,
+) -> SatelliteAssets:
+    """Crop Google Solar layers around the target building mask.
+
+    The raw dataLayers frame is a square around the geocoded lat/lng, which
+    often includes several neighboring homes in dense subdivisions. For the
+    R8 review step, the useful view is the connected roof-mask component that
+    contains, or is nearest to, the target center point.
+    """
+    mask = np.asarray(assets.mask).astype(bool)
+    if mask.ndim != 2 or not mask.any():
+        return assets
+    if assets.rgb.shape[:2] != mask.shape or assets.annual_flux.shape[:2] != mask.shape:
+        return assets
+
+    component = target_component_from_mask(mask, assets.target_px)
+    if component is None:
+        return assets
+    bbox = component.bbox
+    y0, x0, y1, x1 = bbox
+    h, w = mask.shape
+    target_x, target_y = component.target_px
+    side_hint = max(x1 - x0, y1 - y0)
+    pad = max(min_padding_px, int(round(side_hint * padding_ratio)))
+
+    crop_x0 = max(0, min(x0 - pad, int(target_x) - pad))
+    crop_y0 = max(0, min(y0 - pad, int(target_y) - pad))
+    crop_x1 = min(w, max(x1 + pad, int(target_x) + pad))
+    crop_y1 = min(h, max(y1 + pad, int(target_y) + pad))
+    crop_x0, crop_x1 = _expand_interval(crop_x0, crop_x1, w, min_side_px)
+    crop_y0, crop_y1 = _expand_interval(crop_y0, crop_y1, h, min_side_px)
+
+    if (crop_x1 - crop_x0) >= w * 0.92 and (crop_y1 - crop_y0) >= h * 0.92:
+        return assets
+
+    return SatelliteAssets(
+        rgb=assets.rgb[crop_y0:crop_y1, crop_x0:crop_x1, :],
+        annual_flux=assets.annual_flux[crop_y0:crop_y1, crop_x0:crop_x1],
+        mask=component.mask[crop_y0:crop_y1, crop_x0:crop_x1],
+        imagery_date=assets.imagery_date,
+        imagery_quality=assets.imagery_quality,
+        target_px=(target_x - crop_x0, target_y - crop_y0),
+    )
+
+
+def target_component_from_mask(
+    mask: np.ndarray,
+    target_px: Optional[tuple[float, float]] = None,
+) -> TargetMaskComponent | None:
+    """Return the mask component containing/nearest the target point.
+
+    Google Solar dataLayers frames often include neighboring roofs. The
+    project roof is the connected component that contains the geocoded target
+    pixel, falling back to nearest component and then larger area when the
+    point lands in a small gap.
+    """
+    arr = np.asarray(mask).astype(bool)
+    if arr.ndim != 2 or not arr.any():
+        return None
+    h, w = arr.shape
+    target_x, target_y = target_px or (w / 2.0, h / 2.0)
+    visited = np.zeros(arr.shape, dtype=bool)
+    best: tuple[
+        tuple[float, int],
+        tuple[int, int, int, int],
+        int,
+        list[tuple[int, int]],
+    ] | None = None
+    component_count = 0
+    for y in range(h):
+        for x in range(w):
+            if not arr[y, x] or visited[y, x]:
+                continue
+            bbox, area, pixels = _flood_component(arr, visited, x, y)
+            component_count += 1
+            y0, x0, y1, x1 = bbox
+            distance = _distance_to_bbox(target_x, target_y, x0, y0, x1, y1)
+            score = (distance, -area)
+            if best is None or score < best[0]:
+                best = (score, bbox, area, pixels)
+    if best is None:
+        return None
+    score, bbox, area, pixels = best
+    component_mask = np.zeros(arr.shape, dtype=bool)
+    for px, py in pixels:
+        component_mask[py, px] = True
+    return TargetMaskComponent(
+        mask=component_mask,
+        bbox=bbox,
+        area_px=area,
+        component_count=component_count,
+        target_px=(target_x, target_y),
+        distance_px2=score[0],
+    )
+
+
+def _target_component_bbox(
+    mask: np.ndarray,
+    target_px: Optional[tuple[float, float]] = None,
+) -> tuple[int, int, int, int] | None:
+    component = target_component_from_mask(mask, target_px)
+    return component.bbox if component is not None else None
+
+
+def _flood_component(
+    mask: np.ndarray,
+    visited: np.ndarray,
+    start_x: int,
+    start_y: int,
+) -> tuple[tuple[int, int, int, int], int, list[tuple[int, int]]]:
+    h, w = mask.shape
+    stack = [(start_x, start_y)]
+    visited[start_y, start_x] = True
+    min_x = max_x = start_x
+    min_y = max_y = start_y
+    area = 0
+    pixels: list[tuple[int, int]] = []
+    while stack:
+        x, y = stack.pop()
+        area += 1
+        pixels.append((x, y))
+        min_x = min(min_x, x)
+        max_x = max(max_x, x)
+        min_y = min(min_y, y)
+        max_y = max(max_y, y)
+        for ny in range(max(0, y - 1), min(h, y + 2)):
+            for nx in range(max(0, x - 1), min(w, x + 2)):
+                if visited[ny, nx] or not mask[ny, nx]:
+                    continue
+                visited[ny, nx] = True
+                stack.append((nx, ny))
+    return (min_y, min_x, max_y + 1, max_x + 1), area, pixels
+
+
+def _distance_to_bbox(
+    x: float,
+    y: float,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+) -> float:
+    dx = 0.0 if x0 <= x < x1 else min(abs(x - x0), abs(x - (x1 - 1)))
+    dy = 0.0 if y0 <= y < y1 else min(abs(y - y0), abs(y - (y1 - 1)))
+    return dx * dx + dy * dy
+
+
+def _expand_interval(start: int, end: int, limit: int, minimum: int) -> tuple[int, int]:
+    size = end - start
+    if size >= minimum or size >= limit:
+        return start, end
+    extra = minimum - size
+    left = extra // 2
+    right = extra - left
+    start = max(0, start - left)
+    end = min(limit, end + right)
+    if end - start < minimum:
+        if start == 0:
+            end = min(limit, minimum)
+        elif end == limit:
+            start = max(0, limit - minimum)
+    return start, end
+
+
 # ─── Panel renderers ───────────────────────────────────────────────────
 
 
-def _draw_target_marker(ax, h: int, w: int) -> None:
+def _draw_target_marker(
+    ax,
+    h: int,
+    w: int,
+    target_px: Optional[tuple[float, float]] = None,
+) -> None:
     """Pin the target building's lat/lng centre with a red ring + cross.
     Critical UX: in dense subdivisions a 50 m × 50 m frame still shows
     3-5 neighbouring houses, and without a marker the viewer can't
@@ -206,7 +392,7 @@ def _draw_target_marker(ax, h: int, w: int) -> None:
     Google's reported lat/lng (= Mapbox-resolved address) ± half a
     pixel of round-off.
     """
-    cy, cx = h / 2.0, w / 2.0
+    cx, cy = target_px or (w / 2.0, h / 2.0)
     # Outer ring — large enough to stand out, thin enough not to obscure
     # the target itself.
     ax.add_patch(plt.Circle(
@@ -228,7 +414,7 @@ def _draw_target_marker(ax, h: int, w: int) -> None:
 def _draw_rgb(ax, assets: SatelliteAssets) -> None:
     ax.imshow(assets.rgb)
     h, w = assets.rgb.shape[:2]
-    _draw_target_marker(ax, h, w)
+    _draw_target_marker(ax, h, w, assets.target_px)
     ax.set_title(
         f"Aerial imagery  ·  {assets.imagery_date}  ·  {assets.imagery_quality}"
         "   (red = target lat/lng)",
@@ -256,7 +442,7 @@ def _draw_flux(ax, assets: SatelliteAssets) -> None:
 
     ax.imshow(rgba)
     h, w = assets.annual_flux.shape[:2]
-    _draw_target_marker(ax, h, w)
+    _draw_target_marker(ax, h, w, assets.target_px)
     ax.set_title("Annual flux (kWh/m²/yr)  ·  building only",
                  fontsize=10, color="#1f2937", pad=6)
     ax.set_xticks([])

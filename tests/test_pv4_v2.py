@@ -81,12 +81,7 @@ def test_pv4_renders_for_frisco_k3c_init_path(tmp_path: Path):
     draws the placed rectangles. Renders ≥ 10 KB."""
     result = run(Inputs.from_yaml(FRISCO))
     total_placed = sum(len(m) for m in result.module_placements.values())
-    # Frisco target = 36; some shortfall is geometrically OK (small
-    # faces can't fit their LRM quota). Lock the lower bound.
-    assert total_placed >= 30, (
-        f"Frisco K.3c → only {total_placed} placements (target 36); "
-        "LRM auto-distribute may have regressed"
-    )
+    assert total_placed == result.inputs.pv_array.modules
     out = tmp_path / "frisco-pv4.pdf"
     render_attachment_plan(result, out)
     assert out.exists()
@@ -106,6 +101,10 @@ def test_stage97_frisco_pv4_uses_traced_roof_attachment_overlay(tmp_path: Path):
     assert "48\" MAX SPACING" in text
     assert "24\" FRAMING SPACING" in text
     assert "RED SQUARES = ATTACHMENT POINTS" in text
+    assert "ORANGE HATCH = FIRE / NO-PV CLEARANCE" in text
+    assert "P1 SOUTH" in text
+    assert "P2 WEST" in text
+    assert "PANEL QA: PASS" in text
     assert "TOTAL\n36\n72" in text
 
 

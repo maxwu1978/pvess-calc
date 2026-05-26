@@ -7,6 +7,7 @@ import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 import yaml
@@ -15,14 +16,18 @@ from pvess_calc.web.server import (
     GeneratedFile,
     WebProjectRequest,
     build_ahj_gate,
+    build_inputs_data,
     build_source_materials,
     create_app,
     default_qet_template,
+    find_pdftoppm,
     _lookup_suggested_payload,
 )
+from pvess_calc.web import server as web_server
 from pvess_calc.lookup.address import parse_address
 from pvess_calc.web.job_store import JOB_DB_FILENAME, JobStore
 from pvess_calc.web.notifications import LeadNotificationConfig, WebhookResult
+from pvess_calc.schema import EE4Trace, Inputs
 
 
 DFW_SIMULATED_MONTHLY_KWH = [
@@ -37,6 +42,120 @@ MANSFIELD_SAMPLE_ADDRESSES = [
 
 def _client(tmp_path: Path) -> TestClient:
     return TestClient(create_app(jobs_dir=tmp_path))
+
+
+def test_pdf_preview_finds_homebrew_pdftoppm_when_path_is_thin(monkeypatch, tmp_path: Path):
+    fake = tmp_path / "opt" / "homebrew" / "bin" / "pdftoppm"
+    fake.parent.mkdir(parents=True)
+    fake.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(web_server.shutil, "which", lambda name: None)
+    monkeypatch.setattr(web_server, "PDFTOPPM_CANDIDATES", (fake,))
+
+    assert find_pdftoppm() == str(fake)
+
+
+def test_build_inputs_auto_injects_lookup_roof_sections_when_missing(monkeypatch):
+    def fake_resolve_lookup(address: str, **kwargs):
+        return SimpleNamespace(fields={
+            "latitude": 33.141418,
+            "longitude": -96.801258,
+            "roof_sections": [
+                {
+                    "name": "South Face",
+                    "roof_type": "Comp Shingle",
+                    "pitch_deg": 26.0,
+                    "azimuth_deg": 181.0,
+                    "width_ft": 42.0,
+                    "height_ft": 18.0,
+                    "module_count": 0,
+                    "shape": "rect",
+                },
+                {
+                    "name": "West Face",
+                    "roof_type": "Comp Shingle",
+                    "pitch_deg": 24.0,
+                    "azimuth_deg": 250.0,
+                    "width_ft": 30.0,
+                    "height_ft": 16.0,
+                    "module_count": 0,
+                    "shape": "rect",
+                },
+            ],
+        })
+
+    monkeypatch.setattr(web_server, "resolve_lookup", fake_resolve_lookup)
+    payload = WebProjectRequest.model_validate(_light_payload(
+        site_address="7652 Glasshouse Walk, Frisco, TX 75035",
+        coordinates="33.141418, -96.801258",
+        roof_sections=[],
+    ))
+
+    data = build_inputs_data(payload, project_id="lookup-roof")
+
+    assert data["project"]["coordinates"] == "33.141418, -96.801258"
+    assert [section["name"] for section in data["site"]["roof_sections"]] == [
+        "South Face",
+        "West Face",
+    ]
+    assert data["site"]["roof_sections"][0]["module_count"] == 0
+
+
+def test_build_inputs_accepts_web_ee4_trace_payload():
+    trace = {
+        "enabled": True,
+        "roof_outline": {
+            "name": "Reviewed roof outline",
+            "vertices": [[0, 0], [50, 0], [50, 30], [0, 30]],
+        },
+        "roof_facets": [
+            {
+                "name": "Main roof",
+                "vertices": [[4, 4], [46, 4], [46, 26], [4, 26]],
+            }
+        ],
+        "roof_lines": [{"kind": "ridge", "points": [[4, 15], [46, 15]]}],
+        "fire_pathways": [
+            {
+                "name": "Fire setback",
+                "vertices": [[2, 2], [48, 2], [48, 28], [2, 28]],
+            }
+        ],
+    }
+    payload = WebProjectRequest.model_validate(_light_payload(ee4_trace=trace))
+
+    data = build_inputs_data(payload, project_id="trace-web")
+    inputs = Inputs.model_validate(data)
+
+    assert inputs.site.ee4_trace.enabled is True
+    assert inputs.site.ee4_trace.roof_outline is not None
+    assert len(inputs.site.ee4_trace.fire_pathways) == 1
+
+
+def test_web_lookup_refreshes_stale_cache_when_roof_sections_missing(monkeypatch):
+    calls: list[bool] = []
+
+    def fake_resolve_lookup(address: str, *, providers=None, use_cache: bool = True):
+        calls.append(use_cache)
+        fields = {}
+        if not use_cache:
+            fields["roof_sections"] = [
+                {
+                    "name": "Refreshed Face",
+                    "pitch_deg": 22.0,
+                    "azimuth_deg": 180.0,
+                    "width_ft": 40.0,
+                    "height_ft": 18.0,
+                    "module_count": 0,
+                }
+            ]
+        return SimpleNamespace(fields=fields)
+
+    monkeypatch.setattr(web_server, "resolve_lookup", fake_resolve_lookup)
+
+    result = web_server._resolve_lookup_for_web("7652 Glasshouse Walk, Frisco, TX")
+
+    assert calls == [True, False]
+    assert result.fields["roof_sections"][0]["name"] == "Refreshed Face"
 
 
 def test_job_store_migrates_campaign_columns_before_indexes(tmp_path: Path):
@@ -296,29 +415,50 @@ def test_web_index_serves_static_page(tmp_path: Path):
     response = client.get("/")
 
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store, max-age=0"
     assert "TGE Solar Project Generator" in response.text
     assert "Project basics" in response.text
     assert "System type" in response.text
     assert "Talesun TP7G54M-415" in response.text
-    assert "InHouse HV-16" in response.text
-    assert "Megarova / Megarevo" in response.text
-    assert "Hoymile / Hoymiles" in response.text
+    assert "Pytes V16" in response.text
+    assert "Hoymiles HBX-10LV-USG1" in response.text
+    assert "Megarevo" in response.text
+    assert "Hoymiles" in response.text
     assert "Growatt" in response.text
     assert "PV modules" in response.text
     assert "Inverter" in response.text
-    assert "Select a battery package" in response.text
-    assert "Usage and site basics" in response.text
+    assert "Battery package follows the inverter brand" in response.text
+    assert "Roof and usage" in response.text
+    assert "Roof confirmation" in response.text
+    assert "Build roof preview" in response.text
+    assert 'id="roof-preview-panel"' in response.text
+    assert 'name="roof_satellite_image"' in response.text
+    assert response.text.count('name="satellite_crop_mode"') == 1
     assert "Usage source" in response.text
     assert "Average monthly kWh" in response.text
     assert "Roof material" in response.text
+    assert "Electrical and cost assumptions" in response.text
+    assert "Electrical service" in response.text
+    assert "Existing solar" in response.text
+    assert "Usage behavior" in response.text
+    assert "Advanced roof geometry" in response.text
+    assert "Advanced cost overrides" in response.text
     assert "We will verify battery clearances" in response.text
     assert "Doorway setback ft" not in response.text
     assert "Window setback ft" not in response.text
     assert "Egress setback ft" not in response.text
     assert "Source materials and evidence" in response.text
-    assert "Drop any site photos" in response.text
-    assert "Drop any spec sheets" in response.text
-    assert "Structural letter" in response.text
+    assert "Evidence mode" in response.text
+    assert "Quick estimate - use simulated evidence" in response.text
+    assert "Use uploaded field evidence" in response.text
+    assert "Upload site photos" in response.text
+    assert "PV-7 photo targets" in response.text
+    assert "Engineering and manufacturer documents" in response.text
+    assert "Signed structural letter" in response.text
+    assert "Upload missing manufacturer documents" in response.text
+    assert "Module spec sheet" not in response.text
+    assert "Inverter spec sheet" not in response.text
+    assert "Battery spec sheet" not in response.text
     assert "Check readiness" in response.text
     assert "Readiness check" in response.text
     assert "Step status" in response.text
@@ -326,7 +466,17 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Operator tools" in response.text
     assert "Current step" in response.text
     assert "Package QA" in response.text
-    assert "Package outputs" in response.text
+    assert "Final project summary" in response.text
+    assert "Package type" in response.text
+    assert "Customer estimate" in response.text
+    assert "Engineering review" in response.text
+    assert "AHJ-ready candidate" in response.text
+    assert "Selected deliverables" in response.text
+    assert "Advanced files" in response.text
+    assert "Package review workspace" in response.text
+    assert "Generated files are reviewed one page at a time" in response.text
+    assert "Status details" in response.text
+    assert "Readiness, warnings, Package QA, and required approvals" in response.text
     assert "Review preview" in response.text
     assert "Review checklist" in response.text
     assert "Save draft" in response.text
@@ -351,7 +501,7 @@ def test_web_index_serves_static_page(tmp_path: Path):
     assert "Email follow-up draft" in response.text
     assert "What needs attention" in response.text
     assert "Filter" in response.text
-    assert "Generate estimate package" in response.text
+    assert "Generate package" in response.text
     assert "Frisco PV + ESS Estimate" not in response.text
     assert "Project Estimator" not in response.text
     assert client.get("/favicon.ico").status_code == 204
@@ -364,6 +514,50 @@ def test_lookup_suggested_payload_maps_parcel_identifier_to_apn():
     )
 
     assert suggested["apn"] == "R-12345"
+
+
+def test_web_generation_uses_lookup_roof_sections_when_present():
+    payload = WebProjectRequest.model_validate(
+        _light_payload(
+            roof_pitch_deg=20,
+            roof_azimuth_deg=180,
+            roof_width_ft=40,
+            roof_height_ft=20,
+            roof_sections=[
+                {
+                    "name": "Southeast Roof",
+                    "roof_type": "Comp Shingle",
+                    "pitch_deg": 32.8,
+                    "azimuth_deg": 126.0,
+                    "width_ft": 17.5,
+                    "height_ft": 17.5,
+                    "module_count": 0,
+                    "shape": "rect",
+                },
+                {
+                    "name": "Southwest Roof",
+                    "roof_type": "Comp Shingle",
+                    "pitch_deg": 28.4,
+                    "azimuth_deg": 224.0,
+                    "width_ft": 19.0,
+                    "height_ft": 16.0,
+                    "module_count": 0,
+                    "shape": "rect",
+                },
+            ],
+        )
+    )
+
+    data = build_inputs_data(payload, project_id="lookup-roof-test")
+
+    sections = data["site"]["roof_sections"]
+    assert [section["name"] for section in sections] == [
+        "Southeast Roof",
+        "Southwest Roof",
+    ]
+    assert all(section["module_count"] == 0 for section in sections)
+    assert sections[0]["pitch_deg"] == 32.8
+    assert sections[1]["azimuth_deg"] == 224.0
 
 
 def test_web_draft_api_round_trip(tmp_path: Path):
@@ -440,13 +634,14 @@ def test_web_catalog_exposes_device_options(tmp_path: Path):
         "rec_alpha_pure_410",
     }
     assert {i["key"] for i in data["inverters"]} >= {
-        "megarova",
-        "hoymile",
+        "megarevo",
+        "hoymiles",
         "growatt",
     }
     assert {b["key"] for b in data["batteries"]} >= {
         "none",
-        "inhouse_16kwh_hv",
+        "pytes_v16",
+        "hoymiles_hbx_10lv_usg1",
         "growatt_apx_20kwh",
     }
 
@@ -560,6 +755,13 @@ def test_web_basic_auth_protects_static_and_health_pages(tmp_path: Path):
     assert health.json()["site_auth_required"] is True
     assert "basic_auth" in health.json()["auth_modes"]
 
+    jobs = client.get("/api/jobs", headers=headers)
+    assert jobs.status_code == 200
+    session = client.get("/api/session", headers=headers)
+    assert session.status_code == 200
+    assert session.json()["operator_id"] == "local"
+    assert session.json()["is_admin"] is True
+
     api_headers = {**headers, "X-PVESS-Token": "secret"}
     assert client.get("/api/jobs", headers=api_headers).status_code == 200
 
@@ -615,10 +817,7 @@ def test_web_public_lead_page_and_submission_bypass_auth(tmp_path: Path):
 
     assert client.get("/api/leads").status_code == 401
     assert client.get("/api/leads/metrics").status_code == 401
-    headers = {
-        **_basic_headers("site-user", "site-pass"),
-        **_token_headers("secret"),
-    }
+    headers = _basic_headers("site-user", "site-pass")
     listed = client.get("/api/leads", headers=headers)
     assert listed.status_code == 200
     assert listed.json()["leads"][0]["lead_id"] == lead["lead_id"]
@@ -752,7 +951,7 @@ def test_web_lead_digest_draft_and_payload_are_protected(tmp_path: Path):
     payload_data = payload.json()
     assert payload_data["client_name"] == "Digest Homeowner"
     assert payload_data["site_address"] == "905 Crossvine Drive, Mansfield, TX"
-    assert payload_data["battery_choice"] == "inhouse_16kwh_hv"
+    assert payload_data["battery_choice"] == "growatt_apx_20kwh"
     assert payload_data["outputs"]["customer"] is True
     assert payload_data["outputs"]["permit"] is False
 
@@ -1053,6 +1252,21 @@ def test_web_project_generation_writes_core_outputs(tmp_path: Path):
     assert (project_dir / "output" / "artifact-manifest.json").exists()
     assert (project_dir / "output" / "reference-readiness.md").exists()
     assert (project_dir / "output" / "real-data-checklist.md").exists()
+    assert (project_dir / "output" / "roof-trace-status.json").exists()
+    assert (project_dir / "output" / "roof-trace-status.md").exists()
+    assert (project_dir / "output" / "ee4-trace-draft.yaml").exists()
+    assert (project_dir / "output" / "trace-module-layout-status.json").exists()
+    assert (project_dir / "output" / "trace-module-layout-status.md").exists()
+    assert (project_dir / "output" / "r8-validation-status.json").exists()
+    assert (project_dir / "output" / "r8-validation-guide.md").exists()
+    assert (project_dir / "output" / "roof-workflow-validation.json").exists()
+    assert (project_dir / "output" / "roof-workflow-validation.md").exists()
+    assert (project_dir / "output" / "r8-step-2-satellite-review.png").exists()
+    assert (project_dir / "output" / "satellite-data-chain-audit.json").exists()
+    assert (project_dir / "output" / "satellite-data-chain-audit.md").exists()
+    assert (project_dir / "output" / "satellite-roof-outline-candidate.json").exists()
+    assert (project_dir / "output" / "r8-step-3-roof-trace-layout.pdf").exists()
+    assert (project_dir / "output" / "r8-step-4-panel-attachment-layout.pdf").exists()
     archive_path = project_dir / "output" / f"project-package-{state['job_id']}.zip"
     assert archive_path.exists()
     assert {f["label"] for f in data["files"]} >= {
@@ -1063,6 +1277,21 @@ def test_web_project_generation_writes_core_outputs(tmp_path: Path):
         "BOM + Cost CSV",
         "Reference Readiness Report",
         "Real Data Checklist",
+        "Roof Trace Status JSON",
+        "Roof Trace Readiness Report",
+        "EE-4 Trace Draft YAML",
+        "Trace Module Layout Status JSON",
+        "Trace Module Layout Readiness Report",
+        "R8 Step 1 Address Confirmation",
+        "R8 Validation Status JSON",
+        "Roof Workflow Validation JSON",
+        "Roof Workflow Validation Report",
+        "R8 Step 2 Satellite Review PNG",
+        "Satellite Data Chain Audit JSON",
+        "Satellite Data Chain Audit Report",
+        "Satellite Roof Outline Candidate JSON",
+        "R8 Step 3 Roof Trace Layout PDF",
+        "R8 Step 4 Panel Attachment Layout PDF",
         "Artifact Manifest JSON",
         "Complete Project ZIP",
     }
@@ -1071,11 +1300,34 @@ def test_web_project_generation_writes_core_outputs(tmp_path: Path):
         "Engineering",
         "Cost",
         "Readiness",
+        "Verification",
         "Manifest",
         "Archive",
     }
     assert data["source_materials"]["site_data_source"] == "simulated"
+    assert data["source_materials"]["roof_trace"]["mode"] == "coarse_roof_sections"
+    assert data["source_materials"]["trace_module_layout"]["mode"] == "waiting_for_trace"
+    assert data["source_materials"]["r8_validation"]["overall_status"] in {
+        "PASS",
+        "WARN",
+    }
+    assert data["source_materials"]["roof_topology"]["stage"] in {
+        "needs_roof_evidence",
+        "evidence_ready_needs_outline",
+        "outline_ready_needs_topology",
+    }
     assert data["readiness"]["status"] == "WARN"
+    assert data["readiness"]["roof_trace"]["can_ahj_ready"] is False
+    assert data["readiness"]["trace_module_layout"]["can_ahj_ready"] is False
+    assert [step["code"] for step in data["readiness"]["roof_topology"]["steps"]] == [
+        "OSR3",
+        "OSR4",
+        "OSR5",
+        "OSR6",
+    ]
+    assert data["readiness"]["roof_topology"]["editor"]["available"] is True
+    assert data["readiness"]["roof_topology"]["editor"]["trace"]["roof_outline"]
+    assert len(data["readiness"]["r8_validation"]["steps"]) == 5
     assert data["readiness"]["counts"]["missing"] > 0
 
     with zipfile.ZipFile(archive_path) as zf:
@@ -1092,6 +1344,21 @@ def test_web_project_generation_writes_core_outputs(tmp_path: Path):
         "output/artifact-manifest.json",
         "output/reference-readiness.md",
         "output/real-data-checklist.md",
+        "output/roof-trace-status.json",
+        "output/roof-trace-status.md",
+        "output/ee4-trace-draft.yaml",
+        "output/trace-module-layout-status.json",
+        "output/trace-module-layout-status.md",
+        "output/r8-validation-status.json",
+        "output/r8-validation-guide.md",
+        "output/roof-workflow-validation.json",
+        "output/roof-workflow-validation.md",
+        "output/r8-step-2-satellite-review.png",
+        "output/satellite-data-chain-audit.json",
+        "output/satellite-data-chain-audit.md",
+        "output/satellite-roof-outline-candidate.json",
+        "output/r8-step-3-roof-trace-layout.pdf",
+        "output/r8-step-4-panel-attachment-layout.pdf",
     }.issubset(names)
 
     artifact_manifest = json.loads(
@@ -1102,6 +1369,348 @@ def test_web_project_generation_writes_core_outputs(tmp_path: Path):
     assert artifact_manifest["project_name"] == "Web Smoke Test"
     assert artifact_manifest["category_counts"]["Cost"] >= 2
     assert any(file["label"] == "BOM + Cost CSV" for file in artifact_manifest["files"])
+
+
+def test_web_generation_passes_paid_satellite_flag(monkeypatch, tmp_path: Path):
+    captured: list[bool] = []
+
+    def fake_r8_artifacts(
+        result,
+        output_dir: Path,
+        *,
+        satellite_crop_mode: str = "tight",
+        allow_paid_satellite: bool = False,
+    ):
+        captured.append(allow_paid_satellite)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        status = {
+            "overall_status": "WARN",
+            "satellite_crop_mode": satellite_crop_mode,
+            "satellite_roof_outline": {
+                "status": "WARN",
+                "detail": "fake satellite outline",
+            },
+            "steps": [
+                {
+                    "step": index,
+                    "title": f"Step {index}",
+                    "status": "WARN",
+                    "artifact": "",
+                    "preview": "",
+                    "detail": "fake",
+                }
+                for index in range(1, 6)
+            ],
+        }
+        paths = {
+            "status_json": output_dir / "r8-validation-status.json",
+            "status_markdown": output_dir / "r8-validation-guide.md",
+            "satellite_png": output_dir / "r8-step-2-satellite-review.png",
+            "satellite_audit_json": output_dir / "satellite-data-chain-audit.json",
+            "satellite_audit_markdown": output_dir / "satellite-data-chain-audit.md",
+            "satellite_outline_json": output_dir / "satellite-roof-outline-candidate.json",
+            "roof_pdf": output_dir / "r8-step-3-roof-trace-layout.pdf",
+            "attachment_pdf": output_dir / "r8-step-4-panel-attachment-layout.pdf",
+        }
+        paths["status_json"].write_text(json.dumps(status), encoding="utf-8")
+        paths["status_markdown"].write_text("# fake\n", encoding="utf-8")
+        paths["satellite_png"].write_bytes(b"png")
+        paths["satellite_audit_json"].write_text("{}", encoding="utf-8")
+        paths["satellite_audit_markdown"].write_text("# audit\n", encoding="utf-8")
+        paths["satellite_outline_json"].write_text("{}", encoding="utf-8")
+        paths["roof_pdf"].write_bytes(b"%PDF fake")
+        paths["attachment_pdf"].write_bytes(b"%PDF fake")
+        return {
+            "status": status,
+            **paths,
+            "satellite_outline_yaml": None,
+            "satellite_outline_png": None,
+            "roof_png": None,
+            "attachment_png": None,
+        }
+
+    monkeypatch.setattr(web_server, "write_r8_validation_artifacts", fake_r8_artifacts)
+
+    web_server.generate_project(
+        WebProjectRequest.model_validate(_light_payload(allow_paid_satellite=True)),
+        tmp_path,
+        job_id="paid-satellite-on",
+    )
+    web_server.generate_project(
+        WebProjectRequest.model_validate(_light_payload(allow_paid_satellite=False)),
+        tmp_path,
+        job_id="paid-satellite-off",
+    )
+
+    assert captured == [True, False]
+
+
+def test_web_form_uploads_step2_roof_satellite_image(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_form_and_wait(
+        client,
+        _light_payload(),
+        files={
+            "roof_satellite_image": (
+                "recent-satellite.png",
+                b"\x89PNG\r\n\x1a\nfake-uploaded-satellite",
+                "image/png",
+            )
+        },
+    )
+    data = state["result"]
+    project_dir = Path(data["project_dir"])
+
+    assert data["source_materials"]["roof_satellite_image_uploaded"] is True
+    assert data["source_materials"]["roof_satellite_image_file"] == (
+        "recent-satellite.png"
+    )
+    assert data["readiness"]["roof_topology"]["roof_satellite_image_uploaded"] is True
+    assert data["readiness"]["roof_topology"]["evidence_status"] == "PASS"
+    uploaded = project_dir / "source_materials" / "roof" / "recent-satellite.png"
+    assert uploaded.exists()
+    assert any(
+        file["label"] == "Uploaded Roof Satellite Image"
+        for file in data["files"]
+    )
+
+
+def test_web_accept_roof_trace_draft_updates_inputs_and_gate(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(client, _light_payload())
+    job_id = state["job_id"]
+    first = state["result"]
+    project_dir = Path(first["project_dir"])
+
+    assert first["readiness"]["roof_trace"]["can_ahj_ready"] is False
+
+    response = client.post(
+        f"/api/jobs/{job_id}/roof-trace/accept-draft",
+        json={"source": "draft_yaml", "rerun": True},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["job_id"] == job_id
+    assert data["readiness"]["roof_trace"]["mode"] == "traced"
+    assert data["readiness"]["roof_trace"]["can_ahj_ready"] is True
+    assert data["readiness"]["trace_module_layout"]["mode"] == "traced_layout"
+    assert data["readiness"]["trace_module_layout"]["can_ahj_ready"] is True
+    assert data["readiness"]["roof_topology"]["stage"] == "panel_layout_confirmed"
+    assert data["readiness"]["roof_topology"]["can_use_for_internal_layout"] is True
+    assert data["source_materials"]["roof_topology"]["target_modules"] == (
+        data["source_materials"]["roof_topology"]["placed_modules"]
+    )
+    assert data["readiness"]["r8_validation"]["steps"][2]["status"] in {"PASS", "WARN"}
+    assert data["readiness"]["r8_validation"]["steps"][3]["status"] in {"PASS", "WARN"}
+    assert not any(
+        blocker["key"] == "site.ee4_trace"
+        for blocker in data["readiness"]["gate"]["blockers"]
+    )
+    assert not any(
+        blocker["key"] == "site.trace_module_layout"
+        for blocker in data["readiness"]["gate"]["blockers"]
+    )
+
+    request_payload = json.loads(
+        (project_dir / "request.json").read_text(encoding="utf-8")
+    )
+    assert request_payload["ee4_trace"]["enabled"] is True
+    assert request_payload["ee4_trace_reviewed"] is True
+    inputs = Inputs.from_yaml(project_dir / "inputs.yaml")
+    assert inputs.site.ee4_trace.enabled is True
+    assert inputs.site.ee4_trace.roof_outline is not None
+    assert len(inputs.site.roof_sections) == 1
+    assert inputs.site.roof_sections[0].shape == "polygon"
+    assert inputs.site.roof_sections[0].name == "Trace skeleton roof outline"
+
+
+def test_web_accepts_manual_roof_trace_json(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(client, _light_payload())
+    job_id = state["job_id"]
+    project_dir = Path(state["result"]["project_dir"])
+    manual_trace = {
+        "enabled": True,
+        "roof_outline": {
+            "name": "Manual reviewed roof outline",
+            "vertices": [[-30, -30], [120, -30], [120, 90], [-30, 90]],
+        },
+        "roof_lines": [{"kind": "ridge", "points": [[-30, 30], [120, 30]]}],
+        "fire_pathways": [
+            {
+                "name": "Manual fire setback",
+                "vertices": [[-30, 89], [120, 89], [120, 90], [-30, 90]],
+            }
+        ],
+        "symbols": [],
+    }
+
+    response = client.post(
+        f"/api/jobs/{job_id}/roof-trace/accept-draft",
+        json={"source": "manual", "trace": manual_trace, "rerun": True},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["readiness"]["roof_trace"]["mode"] == "traced"
+    assert data["readiness"]["trace_module_layout"]["mode"] == "traced_layout"
+    request_payload = json.loads(
+        (project_dir / "request.json").read_text(encoding="utf-8")
+    )
+    assert request_payload["ee4_trace"]["enabled"] is True
+    assert request_payload["ee4_trace_reviewed"] is True
+    assert request_payload["ee4_trace"]["roof_outline"]["name"] == (
+        "Manual reviewed roof outline"
+    )
+    inputs = Inputs.from_yaml(project_dir / "inputs.yaml")
+    assert inputs.site.ee4_trace.roof_outline is not None
+    assert inputs.site.ee4_trace.roof_outline.name == (
+        "Manual reviewed roof outline"
+    )
+
+
+def test_web_accepts_edited_roof_outline_only_and_completes_topology(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(client, _light_payload())
+    job_id = state["job_id"]
+    project_dir = Path(state["result"]["project_dir"])
+    edited_trace = {
+        "enabled": True,
+        "roof_outline": {
+            "name": "Reviewed Step 2 roof outline",
+            "vertices": [[0, 0], [90, 0], [90, 55], [0, 55]],
+        },
+    }
+
+    response = client.post(
+        f"/api/jobs/{job_id}/roof-trace/accept-draft",
+        json={"source": "manual", "trace": edited_trace, "rerun": True},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["readiness"]["roof_topology"]["stage"] == "panel_layout_confirmed"
+    request_payload = json.loads(
+        (project_dir / "request.json").read_text(encoding="utf-8")
+    )
+    assert request_payload["ee4_trace"]["roof_lines"]
+    assert request_payload["ee4_trace"]["fire_pathways"]
+    inputs = Inputs.from_yaml(project_dir / "inputs.yaml")
+    assert inputs.site.roof_sections[0].shape == "polygon"
+    assert inputs.site.roof_sections[0].module_count == request_payload["modules"]
+
+
+def test_web_accepts_satellite_roof_outline_candidate_yaml(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(client, _light_payload())
+    job_id = state["job_id"]
+    project_dir = Path(state["result"]["project_dir"])
+    candidate_yaml = project_dir / "output" / "satellite-ee4-trace-candidate.yaml"
+    candidate_yaml.write_text(
+        yaml.safe_dump({
+            "site": {
+                "ee4_trace": {
+                    "enabled": True,
+                    "roof_outline": {
+                        "name": "Satellite mask roof outline candidate",
+                        "vertices": [
+                            [-20, -10],
+                            [80, -10],
+                            [80, 45],
+                            [35, 65],
+                            [-20, 45],
+                        ],
+                    },
+                    "roof_facets": [],
+                    "roof_lines": [],
+                    "fire_pathways": [],
+                    "symbols": [],
+                }
+            }
+        }, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        f"/api/jobs/{job_id}/roof-trace/accept-draft",
+        json={"source": "satellite_candidate", "rerun": True},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["readiness"]["roof_trace"]["mode"] == "traced"
+    assert data["readiness"]["trace_module_layout"]["mode"] == "traced_layout"
+    assert data["readiness"]["trace_module_layout"]["can_ahj_ready"] is True
+    request_payload = json.loads(
+        (project_dir / "request.json").read_text(encoding="utf-8")
+    )
+    assert request_payload["ee4_trace_reviewed"] is True
+    assert request_payload["ee4_trace"]["roof_outline"]["name"] == (
+        "Satellite mask roof outline candidate"
+    )
+    assert request_payload["ee4_trace"]["roof_lines"]
+    assert request_payload["ee4_trace"]["fire_pathways"]
+    inputs = Inputs.from_yaml(project_dir / "inputs.yaml")
+    assert inputs.site.ee4_trace.enabled is True
+    assert inputs.site.ee4_trace.roof_outline is not None
+    assert inputs.site.ee4_trace.roof_outline.name == (
+        "Satellite mask roof outline candidate"
+    )
+
+
+def test_web_updates_satellite_review_range_and_regenerates(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(
+        client,
+        _light_payload(satellite_crop_mode="wide"),
+    )
+    job_id = state["job_id"]
+    project_dir = Path(state["result"]["project_dir"])
+
+    response = client.post(
+        f"/api/jobs/{job_id}/satellite-review-range",
+        json={"satellite_crop_mode": "target", "rerun": True},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["job_id"] == job_id
+    assert data["readiness"]["r8_validation"]["satellite_crop_mode"] == "target"
+    request_payload = json.loads(
+        (project_dir / "request.json").read_text(encoding="utf-8")
+    )
+    assert request_payload["satellite_crop_mode"] == "target"
+
+
+def test_web_generates_roof_topology_skill_proposal(tmp_path: Path):
+    client = _client(tmp_path)
+    state = _submit_and_wait(client, _light_payload())
+    job_id = state["job_id"]
+    project_dir = Path(state["result"]["project_dir"])
+
+    response = client.post(
+        f"/api/jobs/{job_id}/roof-topology/proposal",
+        json={"mode": "deterministic", "strict": False},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+
+    assert data["job_id"] == job_id
+    assert data["qa"]["source"] in {
+        "satellite_candidate",
+        "request_payload",
+        "ee4_trace_draft",
+        "generated_skeleton",
+    }
+    assert (project_dir / "output" / "roof-topology-vision" / "roof-topology-qa.json").exists()
+    assert (project_dir / "output" / "roof-topology-vision" / "site-ee4-trace-proposed.yaml").exists()
+    assert {
+        "Roof Topology Proposal YAML",
+        "Roof Topology Proposal QA JSON",
+        "Roof Topology Proposal QA Report",
+        "Roof Topology Proposal Review PDF",
+    }.issubset({file["label"] for file in data["files"]})
 
 
 def test_web_preflight_returns_cost_and_intake_warnings(tmp_path: Path):
@@ -1155,7 +1764,7 @@ def test_web_inverter_choice_maps_to_us_model(tmp_path: Path):
     client = _client(tmp_path)
     state = _submit_and_wait(
         client,
-        _light_payload(inverter_choice="hoymile"),
+        _light_payload(inverter_choice="hoymiles"),
     )
 
     data = state["result"]
@@ -1510,6 +2119,56 @@ def test_web_static_readiness_surfaces_artifact_review_counts():
     assert "Artifact reviews" in script
     assert "required_artifact_reviews" in script
     assert "pending_required_artifact_review_count" in script
+    assert "Package map" in script
+    assert "Permit drawing set" in script
+    assert "Evidence readiness" in script
+    assert "Advanced downloads" in script
+    assert "Final handoff" in script
+    assert "artifactReviewPageIndex" in script
+    assert "review-focus-mode" in script
+    assert "buildPermitPdfReviewPages" in script
+    assert "wide-review" in script
+    assert "Status details" in script
+    assert "reviewPageNavCode" in script
+    assert "navSubtitle" in script
+    assert "Structural review draft" in script
+    assert "D1" in script
+    assert "core" in script
+    assert "hydrateMarkdownPreviews" in script
+    assert "markdown-preview" in script
+    assert "function requestUrl" in script
+    assert "target.username = \"\"" in script
+    assert "fetch(requestUrl(url)" in script
+    assert "fetch(requestUrl(node.dataset.markdownUrl)" in script
+    assert "runRoofPreview" in script
+    assert "renderRoofPreviewResult" in script
+    assert "data-roof-preview-action" in script
+    assert "Roof topology draft" in script
+    assert "Accept full topology and regenerate preview" in script
+    assert "Accept satellite topology and regenerate preview" in script
+    assert "Editable roof outline" in script
+    assert "Tighten 5%" in script
+    assert "Save edited outline" in script
+    assert "Generate skill topology proposal" in script
+
+
+def test_web_static_file_upload_controls_use_english_labels():
+    script = Path("src/pvess_calc/web/static/app.js").read_text(encoding="utf-8")
+
+    assert "Choose file" in script
+    assert "Choose files" in script
+    assert "No file selected" in script
+
+
+def test_web_static_step5_quick_estimate_is_not_a_blocking_warning():
+    script = Path("src/pvess_calc/web/static/app.js").read_text(encoding="utf-8")
+    index = Path("src/pvess_calc/web/static/index.html").read_text(encoding="utf-8")
+
+    assert "Quick estimate evidence selected." in script
+    assert "AHJ-ready handoff requires uploaded field evidence." in script
+    assert "Quick estimate mode can proceed, but AHJ-ready review needs uploaded field evidence." not in script
+    assert "20260523-step5-evidence" in index
+    assert "No files selected" in script
 
 
 def test_web_job_history_filters_and_indexes_artifacts(tmp_path: Path):
@@ -1727,6 +2386,187 @@ def test_web_ahj_gate_allows_real_pv_only_candidate(tmp_path: Path):
     ] == ["approved_internal"] * 4
 
 
+def test_web_ahj_gate_blocks_unverified_roof_trace(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(
+        _complete_real_payload(
+            battery_choice="none",
+            battery_quantity=0,
+            battery_capacity_kwh_each=0,
+        )
+    )
+    files = _gate_files(tmp_path)
+    roof_trace = {
+        "status": "WARN",
+        "mode": "schematic_segments",
+        "label": "Schematic roof segments",
+        "can_ahj_ready": False,
+        "detail": "The roof outline is not traced.",
+    }
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(payload, roof_trace=roof_trace),
+        readiness={"status": "PASS", "roof_trace": roof_trace},
+        package_qa={"status": "PASS"},
+        files=files,
+        review_state=_approved_reviews(files),
+    )
+
+    assert gate["level"] == "Internal review"
+    assert gate["can_submit_to_ahj"] is False
+    assert any(
+        blocker["key"] == "site.ee4_trace"
+        and blocker["field"] == "site.ee4_trace"
+        for blocker in gate["blockers"]
+    )
+
+
+def test_web_ahj_gate_blocks_unverified_trace_module_layout(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(
+        _complete_real_payload(
+            battery_choice="none",
+            battery_quantity=0,
+            battery_capacity_kwh_each=0,
+        )
+    )
+    files = _gate_files(tmp_path)
+    roof_trace = {
+        "status": "PASS",
+        "mode": "traced",
+        "label": "Verified traced roof",
+        "can_ahj_ready": True,
+        "detail": "The roof outline is traced.",
+    }
+    trace_module_layout = {
+        "status": "FAIL",
+        "mode": "traced_layout_blocked",
+        "label": "Trace module layout needs revision",
+        "can_ahj_ready": False,
+        "detail": "module rectangles overlap fire pathway",
+    }
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(
+            payload,
+            roof_trace=roof_trace,
+            trace_module_layout=trace_module_layout,
+        ),
+        readiness={
+            "status": "PASS",
+            "roof_trace": roof_trace,
+            "trace_module_layout": trace_module_layout,
+        },
+        package_qa={"status": "PASS"},
+        files=files,
+        review_state=_approved_reviews(files),
+    )
+
+    assert gate["level"] == "Internal review"
+    assert gate["can_submit_to_ahj"] is False
+    assert any(
+        blocker["key"] == "site.trace_module_layout"
+        and blocker["field"] == "site.trace_module_layout"
+        for blocker in gate["blockers"]
+    )
+
+
+def test_web_ahj_gate_blocks_r8_validation_warning(tmp_path: Path):
+    payload = WebProjectRequest.model_validate(
+        _complete_real_payload(
+            battery_choice="none",
+            battery_quantity=0,
+            battery_capacity_kwh_each=0,
+        )
+    )
+    files = _gate_files(tmp_path)
+    roof_trace = {
+        "status": "PASS",
+        "mode": "traced",
+        "label": "Verified traced roof",
+        "can_ahj_ready": True,
+        "detail": "The roof outline is traced.",
+    }
+    trace_module_layout = {
+        "status": "PASS",
+        "mode": "traced_layout",
+        "label": "Trace module layout verified",
+        "can_ahj_ready": True,
+        "detail": "All modules fit traced geometry.",
+    }
+    r8_validation = {
+        "overall_status": "WARN",
+        "steps": [
+            {"step": 1, "title": "Confirm input address", "status": "PASS"},
+            {
+                "step": 3,
+                "title": "Review roof trace overlay",
+                "status": "WARN",
+                "detail": "Google Solar lookup produced many roof segment boxes.",
+            },
+        ],
+    }
+    gate = build_ahj_gate(
+        payload=payload,
+        source_materials=build_source_materials(
+            payload,
+            roof_trace=roof_trace,
+            trace_module_layout=trace_module_layout,
+            r8_validation=r8_validation,
+        ),
+        readiness={
+            "status": "PASS",
+            "roof_trace": roof_trace,
+            "trace_module_layout": trace_module_layout,
+            "r8_validation": r8_validation,
+        },
+        package_qa={"status": "PASS"},
+        files=files,
+        review_state=_approved_reviews(files),
+    )
+
+    assert gate["level"] == "Internal review"
+    assert gate["can_submit_to_ahj"] is False
+    assert any(
+        blocker["key"] == "site.r8_validation"
+        and blocker["field"] == "site.ee4_trace"
+        for blocker in gate["blockers"]
+    )
+
+
+def test_manual_trace_review_clears_r8_segment_box_warning():
+    status = {
+        "overall_status": "WARN",
+        "roof_segment_warning": "Google Solar lookup produced 13 roof segment boxes.",
+        "roof_trace": {
+            "can_ahj_ready": True,
+            "detail": "Trace active with outline and fire pathways.",
+        },
+        "trace_module_layout": {"can_ahj_ready": True},
+        "steps": [
+            {"step": 1, "title": "Confirm input address", "status": "PASS"},
+            {"step": 2, "title": "Review satellite image", "status": "PASS"},
+            {
+                "step": 3,
+                "title": "Review roof trace overlay",
+                "status": "WARN",
+                "detail": "Google Solar lookup produced 13 roof segment boxes.",
+            },
+            {
+                "step": 4,
+                "title": "Review panel and attachment layout",
+                "status": "PASS",
+            },
+            {"step": 5, "title": "Locate the issue", "status": "WARN"},
+        ],
+    }
+
+    updated = web_server._apply_manual_trace_review_to_r8(status)
+
+    assert updated["manual_trace_reviewed"] is True
+    assert updated["roof_segment_warning"] == ""
+    assert updated["overall_status"] == "PASS"
+    assert [step["status"] for step in updated["steps"]] == ["PASS"] * 5
+
+
 def test_web_ahj_gate_blocks_unapproved_required_artifacts(tmp_path: Path):
     payload = WebProjectRequest.model_validate(
         _complete_real_payload(
@@ -1783,9 +2623,9 @@ def test_web_ahj_gate_blocks_missing_package_qa(tmp_path: Path):
 def test_web_ahj_gate_blocks_pv_ess_missing_battery_spec(tmp_path: Path):
     payload = WebProjectRequest.model_validate(
         _complete_real_payload(
-            battery_choice="inhouse_16kwh_hv",
+            battery_choice="growatt_apx_20kwh",
             battery_quantity=1,
-            battery_capacity_kwh_each=16,
+            battery_capacity_kwh_each=20,
             battery_install_location="garage",
             distance_to_doorway_ft=4,
             distance_to_window_ft=4,

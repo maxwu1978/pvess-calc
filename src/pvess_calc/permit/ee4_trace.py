@@ -14,7 +14,7 @@ from typing import Iterable
 import yaml
 
 from ..calc.engine import CalculationResult
-from ..calc.polygon import polygon_area
+from ..calc.polygon import polygon_area, point_in_polygon
 from ..calc.wire_routing import _face_local_to_site
 from ..schema import (
     EE4Trace,
@@ -57,13 +57,7 @@ def build_ee4_trace_skeleton(result: CalculationResult) -> EE4Trace:
     for _name, pts in section_polys:
         roof_lines.extend(_facet_center_lines(pts))
 
-    fire_pathways: list[EE4TracePolygon] = []
-    module_pts = _module_site_points(result)
-    if module_pts:
-        fire_pathways.append(EE4TracePolygon(
-            name="Module field fire pathway candidate",
-            vertices=_bbox_polygon(_padded_bbox(module_pts, pad_ft=3.0)),
-        ))
+    fire_pathways = _fire_pathway_candidates(outline_pts)
 
     symbols = _trace_symbols_from_obstructions(site.roof_sections)
 
@@ -78,6 +72,28 @@ def build_ee4_trace_skeleton(result: CalculationResult) -> EE4Trace:
         fire_pathways=fire_pathways,
         symbols=symbols,
     )
+
+
+def complete_ee4_trace_for_review(trace: EE4Trace) -> EE4Trace:
+    """Fill review-critical trace layers when a source only has outline.
+
+    Satellite mask candidates intentionally start as a roof outline only.
+    Step 2, however, needs to produce a usable topology draft for the
+    downstream EE-4 pages.  This helper preserves the reviewed outline and
+    adds conservative linework/fire-pathway candidates so the drawing can be
+    checked and refined instead of falling back to coarse roof sections.
+    """
+    if trace.roof_outline is None:
+        return trace
+    outline = list(trace.roof_outline.vertices)
+    updates = {}
+    if not trace.roof_lines and not trace.roof_facets:
+        updates["roof_lines"] = _facet_center_lines(outline)
+    if not trace.fire_pathways:
+        updates["fire_pathways"] = _fire_pathway_candidates(outline)
+    if not updates:
+        return trace
+    return trace.model_copy(update=updates)
 
 
 def ee4_trace_yaml(trace: EE4Trace) -> str:
@@ -127,23 +143,6 @@ def _section_site_polygon(section: RoofSection) -> list[Point]:
     return [p for p in pts if p is not None]
 
 
-def _module_site_points(result: CalculationResult) -> list[Point]:
-    pts: list[Point] = []
-    for section in result.inputs.site.roof_sections:
-        for module in result.module_placements.get(section.name, []):
-            corners = [
-                (module.x_ft, module.y_ft),
-                (module.x_ft + module.width_ft, module.y_ft),
-                (module.x_ft + module.width_ft, module.y_ft + module.height_ft),
-                (module.x_ft, module.y_ft + module.height_ft),
-            ]
-            for px, py in corners:
-                pt = _face_local_to_site(section, px, py)
-                if pt is not None:
-                    pts.append(pt)
-    return pts
-
-
 def _facet_center_lines(points: list[Point]) -> list[EE4TraceLine]:
     if len(points) < 3:
         return []
@@ -177,6 +176,146 @@ def _trace_symbols_from_obstructions(
                 y_ft=_clean_number(pt[1]),
             ))
     return symbols
+
+
+def _fire_pathway_candidates(outline_pts: list[Point]) -> list[EE4TracePolygon]:
+    """Create non-overlapping perimeter strip candidates for trace review.
+
+    Earlier skeletons wrapped the module field in one large bbox, which
+    was useful as a visual reminder but made any accepted draft fail the
+    R7 module-vs-fire-pathway constraint. These candidates stay along
+    the roof perimeter, matching how the final permit hatch is reviewed.
+    """
+    if len(outline_pts) < 3:
+        return []
+    x0, y0, x1, y1 = _padded_bbox(outline_pts, pad_ft=0.0)
+    width = min(1.0, max((x1 - x0) / 6.0, 0.1), max((y1 - y0) / 6.0, 0.1))
+    if x1 - x0 <= width * 2 or y1 - y0 <= width * 2:
+        return []
+    candidates = [
+        EE4TracePolygon(
+            name="North roof-edge fire pathway candidate",
+            vertices=_bbox_polygon((x0, y1 - width, x1, y1)),
+        ),
+        EE4TracePolygon(
+            name="East roof-edge fire pathway candidate",
+            vertices=_bbox_polygon((x1 - width, y0, x1, y1)),
+        ),
+    ]
+    if all(
+        _all_vertices_inside(poly.vertices, outline_pts)
+        for poly in candidates
+    ):
+        return candidates
+    fallback = _interior_fire_pathway_candidates(outline_pts, width)
+    return fallback or candidates
+
+
+def _interior_fire_pathway_candidates(
+    outline_pts: list[Point],
+    width: float,
+) -> list[EE4TracePolygon]:
+    x0, y0, x1, y1 = _padded_bbox(outline_pts, pad_ft=0.0)
+    bw = max(x1 - x0, 0.0)
+    bh = max(y1 - y0, 0.0)
+    if bw <= width * 2 or bh <= width * 2:
+        return []
+
+    north = _find_inside_rect(
+        outline_pts,
+        rect_w=min(max(bw * 0.36, width * 4), bw * 0.72),
+        rect_h=width,
+        prefer="north",
+    )
+    east = _find_inside_rect(
+        outline_pts,
+        rect_w=width,
+        rect_h=min(max(bh * 0.36, width * 4), bh * 0.72),
+        prefer="east",
+    )
+    result: list[EE4TracePolygon] = []
+    if north is not None:
+        result.append(EE4TracePolygon(
+            name="North interior fire pathway candidate",
+            vertices=_bbox_polygon(north),
+        ))
+    if east is not None and east != north:
+        result.append(EE4TracePolygon(
+            name="East interior fire pathway candidate",
+            vertices=_bbox_polygon(east),
+        ))
+    return result
+
+
+def _find_inside_rect(
+    outline_pts: list[Point],
+    *,
+    rect_w: float,
+    rect_h: float,
+    prefer: str,
+) -> tuple[float, float, float, float] | None:
+    x0, y0, x1, y1 = _padded_bbox(outline_pts, pad_ft=0.0)
+    step = max(min(rect_w, rect_h) / 2.0, 0.25)
+    x_values = _scan_values(x0, x1 - rect_w, step, reverse=(prefer == "east"))
+    y_values = _scan_values(y0, y1 - rect_h, step, reverse=(prefer == "north"))
+    for y in y_values:
+        for x in x_values:
+            bbox = (x, y, x + rect_w, y + rect_h)
+            if _all_vertices_inside(_bbox_polygon(bbox), outline_pts):
+                return bbox
+    return None
+
+
+def _scan_values(
+    start: float,
+    stop: float,
+    step: float,
+    *,
+    reverse: bool,
+) -> list[float]:
+    if stop < start:
+        return []
+    values: list[float] = []
+    value = start
+    while value <= stop + 1e-9:
+        values.append(round(value, 3))
+        value += step
+    return list(reversed(values)) if reverse else values
+
+
+def _all_vertices_inside(points: list[Point], outline_pts: list[Point]) -> bool:
+    return all(_point_in_or_on_polygon(point, outline_pts) for point in points)
+
+
+def _point_in_or_on_polygon(
+    point: Point,
+    vertices: list[Point],
+    *,
+    tol: float = 1e-6,
+) -> bool:
+    if point_in_polygon(point, vertices):
+        return True
+    return any(
+        _point_on_segment(point, vertices[idx], vertices[(idx + 1) % len(vertices)], tol=tol)
+        for idx in range(len(vertices))
+    )
+
+
+def _point_on_segment(
+    point: Point,
+    a: Point,
+    b: Point,
+    *,
+    tol: float,
+) -> bool:
+    px, py = point
+    ax, ay = a
+    bx, by = b
+    cross = (px - ax) * (by - ay) - (py - ay) * (bx - ax)
+    if abs(cross) > tol:
+        return False
+    dot = (px - ax) * (px - bx) + (py - ay) * (py - by)
+    return dot <= tol
 
 
 def _trace_symbol_kind(kind: str) -> str:

@@ -26,6 +26,8 @@ included in the returned dict.
 
 from __future__ import annotations
 
+import math
+
 from ..schema import RoofSection, Site
 
 
@@ -108,6 +110,13 @@ def auto_anchor_sections(
         Only faces that received an auto-anchor are included; faces
         with explicit yaml anchors are absent.
     """
+    unanchored = [
+        s for s in site.roof_sections
+        if s.site_anchor_x_ft is None or s.site_anchor_y_ft is None
+    ]
+    if len(unanchored) > 8:
+        return _auto_anchor_many_sections(site, unanchored, gap_ft=gap_ft)
+
     x_min, y_min, x_max, y_max = house_bbox(site)
     house_w = x_max - x_min
     house_h = y_max - y_min
@@ -168,6 +177,42 @@ def auto_anchor_sections(
 
         out[section.name] = (ax, ay, az)
 
+    return out
+
+
+def _auto_anchor_many_sections(
+    site: Site,
+    sections: list[RoofSection],
+    *,
+    gap_ft: float,
+) -> dict[str, tuple[float, float, float]]:
+    """Non-overlapping schematic packing for Google Solar multi-face data.
+
+    Google Solar can return 10+ roof segments without relative vertices. The
+    wall-packing heuristic is useful for a handful of hand-entered faces, but
+    with many bounding boxes it can force unrelated faces through the same
+    house corner. For this data state, prefer a deterministic roof-face grid:
+    it is explicitly schematic, but it preserves every face and keeps EE-4
+    visually reviewable until a traced roof or field survey supplies anchors.
+    """
+    x_min, y_min, x_max, y_max = house_bbox(site)
+    house_w = x_max - x_min
+    house_h = y_max - y_min
+    n = len(sections)
+    cols = min(5, max(1, math.ceil(math.sqrt(n))))
+    rows = [sections[idx:idx + cols] for idx in range(0, n, cols)]
+    row_heights = [max(s.height_ft for s in row) for row in rows]
+    total_h = sum(row_heights) + gap_ft * max(0, len(rows) - 1)
+    y_cursor = y_min + (house_h - total_h) / 2
+
+    out: dict[str, tuple[float, float, float]] = {}
+    for row, row_h in zip(rows, row_heights):
+        row_w = sum(s.width_ft for s in row) + gap_ft * max(0, len(row) - 1)
+        x_cursor = x_min + (house_w - row_w) / 2
+        for section in row:
+            out[section.name] = (x_cursor, y_cursor, 0.0)
+            x_cursor += section.width_ft + gap_ft
+        y_cursor += row_h + gap_ft
     return out
 
 

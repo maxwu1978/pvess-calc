@@ -175,23 +175,22 @@ def test_battery_library_has_required_brands():
 # ─── K.4.6.2 — DFW installer stack additions ────────────────────────────
 
 
-def test_inverter_library_has_dfw_installer_11kw_stack():
-    """K.4.6.2: the 14 kW Frisco analysis (2026-05-17) needs a single
-    11 kW hybrid inverter for the DC/AC = 1.28 sweet spot. Three
-    11 kW brands the user's installer actually carries — verify each
-    is registered AND priced AND can be resolved through get_inverter."""
+def test_inverter_library_has_dfw_installer_us_stack():
+    """K.4.6.2: the Frisco analysis uses the installer-carried US model
+    families. Verify each exposed web option is registered, priced, and
+    resolvable through get_inverter."""
     from pvess_calc.devices import INVERTER_PRICES_USD, get_inverter
 
-    for ref in ("megarevo_r11klna",
-                "growatt_min11000tl_x",
-                "hoymiles_hys_lv_11k"):
+    for ref in ("megarevo_r10klna",
+                "growatt_min11400tl_xh_us",
+                "hoymiles_hys_11_5lv_usg1"):
         assert ref in INVERTERS, f"missing inverter ref {ref!r}"
         assert ref in INVERTER_PRICES_USD, f"missing price for {ref!r}"
         inv = get_inverter(ref)
-        # All three are 11 kW @ 240 V → ~45.8 A continuous
+        # All three are 10-11.5 kW @ 240 V class.
         ac_kw = inv.ac_output_v * inv.ac_output_a / 1000.0
-        assert 10.5 < ac_kw < 11.5, (
-            f"{ref}: AC kW {ac_kw:.2f} out of 11 kW band"
+        assert 9.5 < ac_kw < 12.0, (
+            f"{ref}: AC kW {ac_kw:.2f} out of expected US hybrid band"
         )
 
 
@@ -202,8 +201,9 @@ def test_inverter_wholesale_prices_distinct_from_retail_tier():
     K.4.6.3 cost-override math."""
     from pvess_calc.devices import INVERTER_PRICES_USD as P
     # Wholesale tier: ≤ $3,000 for any 8-12 kW hybrid
-    for wholesale in ("megarevo_r8klna", "megarevo_r11klna",
-                      "growatt_min11000tl_x", "hoymiles_hys_lv_11k"):
+    for wholesale in ("megarevo_r8klna", "megarevo_r10klna",
+                      "growatt_min11400tl_xh_us",
+                      "hoymiles_hys_11_5lv_usg1"):
         assert P[wholesale] < 3000, (
             f"{wholesale} wholesale price ${P[wholesale]} crept into "
             "retail-tier range"
@@ -221,30 +221,26 @@ def test_battery_library_has_dfw_installer_hv_stack():
     DC-coupled HV-input hybrid inverters (Megarevo R-series etc.)."""
     from pvess_calc.devices import BATTERY_PRICES_USD, get_battery
 
-    for ref, expected_kwh in (("inhouse_16kwh_hv", 16.0),
+    for ref, expected_kwh in (("pytes_v16", 16.0),
+                              ("hoymiles_hbx_10lv_usg1", 10.0),
                               ("growatt_apx_20kwh", 20.0)):
         assert ref in BATTERIES, f"missing battery ref {ref!r}"
         assert ref in BATTERY_PRICES_USD, f"missing price for {ref!r}"
         b = get_battery(ref)
         assert b.capacity_kwh_each == expected_kwh
-        # HV stack — must be > 100 V (LV stack is 48 V nominal)
-        assert b.nominal_voltage >= 100, (
-            f"{ref} nominal voltage {b.nominal_voltage} V looks LV, "
-            "not HV — pair-with-inverter contract broken"
-        )
 
 
-def test_battery_in_house_priced_below_retail_tier_per_kwh():
-    """Sales-critical contract: the in-house 16 kWh battery costs
+def test_pytes_v16_battery_priced_below_retail_tier_per_kwh():
+    """Sales-critical contract: the Pytes V16 battery costs
     materially less per kWh than Tesla PW3 (the retail reference).
     This is the user's main competitive advantage in TX — locking it
     here prevents a future "matched-to-MSRP" pricing regression."""
     from pvess_calc.devices import BATTERY_PRICES_USD as P
-    inhouse_per_kwh = P["inhouse_16kwh_hv"] / BATTERIES["inhouse_16kwh_hv"]["capacity_kwh_each"]
+    pytes_per_kwh = P["pytes_v16"] / BATTERIES["pytes_v16"]["capacity_kwh_each"]
     tesla_per_kwh = P["tesla_powerwall_3"] / BATTERIES["tesla_powerwall_3"]["capacity_kwh_each"]
-    # In-house should be ≤ 60% of Tesla per kWh (currently $375 vs $689)
-    assert inhouse_per_kwh < 0.60 * tesla_per_kwh, (
-        f"in-house ${inhouse_per_kwh:.0f}/kWh not significantly cheaper "
+    # Pytes V16 should be <= 60% of Tesla per kWh (currently $375 vs $689)
+    assert pytes_per_kwh < 0.60 * tesla_per_kwh, (
+        f"Pytes V16 ${pytes_per_kwh:.0f}/kWh not significantly cheaper "
         f"than Tesla ${tesla_per_kwh:.0f}/kWh — sales advantage eroded"
     )
 
@@ -261,8 +257,8 @@ def test_get_inverter_unknown_ref_raises_keyerror():
 
 def test_get_battery_unknown_ref_raises_keyerror():
     from pvess_calc.devices import get_battery
-    with pytest.raises(KeyError, match="inhouse_16kwh_hv"):
-        get_battery("inhouse_16kwh")    # missing _hv suffix
+    with pytest.raises(KeyError, match="pytes_v16"):
+        get_battery("pytes_16")    # wrong model key
 
 
 def test_get_module_resolves_real_datasheet():

@@ -20,6 +20,7 @@ import responses
 from PIL import Image
 
 from pvess_calc.lookup.config import (
+    ENV_GOOGLE_MAPS_KEY,
     ENV_GOOGLE_SOLAR_KEY,
     reset_cache_for_tests,
 )
@@ -33,6 +34,7 @@ from pvess_calc.lookup.providers.google_solar_data_layers import (
 
 @pytest.fixture(autouse=True)
 def isolate_env(monkeypatch):
+    monkeypatch.delenv(ENV_GOOGLE_MAPS_KEY, raising=False)
     monkeypatch.delenv(ENV_GOOGLE_SOLAR_KEY, raising=False)
     monkeypatch.delenv("PVESS_ALLOW_PAID_RENDERS", raising=False)
     reset_cache_for_tests()
@@ -140,6 +142,62 @@ def test_download_layer_bytes_returns_raw_payload(monkeypatch):
     assert out == fake_payload
 
 
+@responses.activate
+def test_fetch_google_static_satellite_visual_fallback(monkeypatch):
+    from pvess_calc.permit.cover_maps import fetch_google_static_satellite
+
+    monkeypatch.setenv(ENV_GOOGLE_MAPS_KEY, "maps-fake")
+    reset_cache_for_tests()
+    fake_png = b"\x89PNG\r\n\x1a\nfake-static-map"
+    responses.get(
+        "https://maps.googleapis.com/maps/api/staticmap",
+        body=fake_png,
+        status=200,
+        content_type="image/png",
+    )
+
+    result = fetch_google_static_satellite(
+        32.550291,
+        -97.093689,
+        cache=False,
+    )
+
+    assert result.status == "PASS"
+    assert result.png_bytes == fake_png
+    assert "manual tracing" in result.detail
+    request_url = responses.calls[0].request.url
+    assert "maptype=satellite" in request_url
+    assert "center=32.550291%2C-97.093689" in request_url
+
+
+@responses.activate
+def test_fetch_google_static_satellite_reports_account_block(monkeypatch):
+    from pvess_calc.permit.cover_maps import fetch_google_static_satellite
+
+    monkeypatch.setenv(ENV_GOOGLE_MAPS_KEY, "maps-fake")
+    reset_cache_for_tests()
+    responses.get(
+        "https://maps.googleapis.com/maps/api/staticmap",
+        body=(
+            "Your request cannot be served because satellite and hybrid map "
+            "types are not available for your account and region."
+        ),
+        status=403,
+        content_type="text/plain",
+    )
+
+    result = fetch_google_static_satellite(
+        32.550291,
+        -97.093689,
+        cache=False,
+    )
+
+    assert result.status == "WARN"
+    assert result.png_bytes is None
+    assert "HTTP 403" in result.detail
+    assert "satellite and hybrid map types" in result.detail
+
+
 # ─── roof_satellite renderer ──────────────────────────────────────────
 
 
@@ -223,6 +281,90 @@ def test_render_satellite_includes_target_crosshair():
     circles = [p for p in ax.patches if isinstance(p, Circle)]
     assert len(circles) >= 1, "Flux panel missing target circle"
     plt.close(fig)
+
+
+def test_satellite_crop_targets_central_roof_mask_component():
+    """R8 satellite review should zoom to the target building, not every
+    neighboring roof inside the raw Google dataLayers square."""
+    from pvess_calc.customer.roof_satellite import (
+        SatelliteAssets,
+        crop_satellite_assets_to_target,
+    )
+
+    rgb = np.zeros((120, 120, 3), dtype=np.uint8)
+    flux = np.ones((120, 120), dtype=np.float32) * 1000
+    mask = np.zeros((120, 120), dtype=bool)
+    mask[5:20, 5:20] = True
+    mask[50:70, 50:70] = True
+    mask[95:110, 95:110] = True
+    assets = SatelliteAssets(
+        rgb=rgb,
+        annual_flux=flux,
+        mask=mask,
+        imagery_date="2024-02-06",
+        imagery_quality="HIGH",
+    )
+
+    cropped = crop_satellite_assets_to_target(assets)
+
+    assert cropped.rgb.shape[0] < assets.rgb.shape[0]
+    assert cropped.rgb.shape[1] < assets.rgb.shape[1]
+    tx, ty = cropped.target_px or (-1, -1)
+    assert 0 <= tx < cropped.rgb.shape[1]
+    assert 0 <= ty < cropped.rgb.shape[0]
+    assert bool(cropped.mask[int(ty), int(tx)]) is True
+
+
+def test_target_component_prefers_nearest_roof_over_largest_neighbor():
+    from pvess_calc.customer.roof_satellite import target_component_from_mask
+
+    mask = np.zeros((120, 120), dtype=bool)
+    mask[5:60, 5:60] = True
+    mask[75:92, 75:92] = True
+
+    component = target_component_from_mask(mask, target_px=(82.0, 82.0))
+
+    assert component is not None
+    assert component.component_count == 2
+    assert component.bbox == (75, 75, 92, 92)
+    assert component.area_px == 17 * 17
+    assert component.mask[82, 82]
+    assert not component.mask[20, 20]
+
+
+def test_r8_satellite_crop_modes_control_context_width():
+    from pvess_calc.customer.roof_satellite import SatelliteAssets
+    from pvess_calc.permit.r8_validation import _crop_satellite_assets_for_mode
+
+    rgb = np.zeros((120, 120, 3), dtype=np.uint8)
+    flux = np.ones((120, 120), dtype=np.float32) * 1000
+    mask = np.zeros((120, 120), dtype=bool)
+    mask[50:70, 50:70] = True
+    assets = SatelliteAssets(
+        rgb=rgb,
+        annual_flux=flux,
+        mask=mask,
+        imagery_date="2024-02-06",
+        imagery_quality="HIGH",
+    )
+
+    target = _crop_satellite_assets_for_mode(assets, "target")
+    tight = _crop_satellite_assets_for_mode(assets, "tight")
+    standard = _crop_satellite_assets_for_mode(assets, "standard")
+    wide = _crop_satellite_assets_for_mode(assets, "wide")
+
+    assert (
+        target.rgb.shape[0]
+        < tight.rgb.shape[0]
+        < standard.rgb.shape[0]
+        < wide.rgb.shape[0]
+    )
+    assert (
+        target.rgb.shape[1]
+        < tight.rgb.shape[1]
+        < standard.rgb.shape[1]
+        < wide.rgb.shape[1]
+    )
 
 
 def test_fetch_data_layers_default_radius_is_tight_for_subdivisions(monkeypatch):

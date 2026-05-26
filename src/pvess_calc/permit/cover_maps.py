@@ -23,6 +23,7 @@ Mapbox / Google billing every time.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 from typing import Optional
@@ -31,6 +32,7 @@ import requests
 
 from ..lookup.config import (
     DEFAULT_HTTP_TIMEOUT_S,
+    get_google_maps_key,
     get_google_solar_key,
     get_mapbox_token,
 )
@@ -38,6 +40,14 @@ from ..lookup.config import (
 
 # Default cache root mirrors the K.3 lookup cache convention.
 _CACHE_ROOT = Path.home() / ".pvess" / "cache" / "cover_maps"
+
+
+@dataclass(frozen=True)
+class StaticMapResult:
+    status: str
+    detail: str
+    png_bytes: Optional[bytes] = None
+    cache_hit: bool = False
 
 
 def _cache_path(prefix: str, lat: float, lng: float, **extras) -> Path:
@@ -59,6 +69,7 @@ def _npz_cache_path(prefix: str, lat: float, lng: float, **extras) -> Path:
 def fetch_satellite_assets_cached(
     lat: float, lng: float, *,
     radius_m: float = 25.0,
+    pixel_size_m: float = 0.25,
     cache: bool = True,
     allow_network: bool = True,
 ):
@@ -72,7 +83,13 @@ def fetch_satellite_assets_cached(
     if not get_google_solar_key():
         return None
 
-    cp = _npz_cache_path("satellite-assets", lat, lng, radius=radius_m)
+    cp = _npz_cache_path(
+        "satellite-assets",
+        lat,
+        lng,
+        radius=radius_m,
+        pixel=pixel_size_m,
+    )
     if cache and cp.exists():
         try:
             import numpy as np
@@ -95,7 +112,12 @@ def fetch_satellite_assets_cached(
 
     try:
         from ..customer.roof_satellite import fetch_satellite_assets
-        assets = fetch_satellite_assets(lat, lng, radius_m=radius_m)
+        assets = fetch_satellite_assets(
+            lat,
+            lng,
+            radius_m=radius_m,
+            pixel_size_m=pixel_size_m,
+        )
     except Exception:
         return None
 
@@ -172,6 +194,123 @@ def fetch_aerial_map_png(
         cp.parent.mkdir(parents=True, exist_ok=True)
         cp.write_bytes(png_bytes)
     return png_bytes
+
+
+# ─── Google Static satellite fallback ──────────────────────────────────
+
+
+_GOOGLE_STATIC_MAP_BASE = "https://maps.googleapis.com/maps/api/staticmap"
+
+
+def fetch_google_static_satellite_png(
+    lat: float, lng: float, *,
+    zoom: int = 20,
+    size_px: int = 640,
+    scale: int = 2,
+    cache: bool = True,
+    allow_network: bool = True,
+) -> Optional[bytes]:
+    """Return Google Static Maps satellite PNG bytes, or None.
+
+    This is a visual-only fallback: it does not include Solar API roof mask,
+    flux, pitch, or DSM data. It is useful when Solar dataLayers has stale or
+    empty mask coverage but a newer Google Maps satellite tile may still help
+    a designer manually trace the roof.
+    """
+    result = fetch_google_static_satellite(
+        lat, lng,
+        zoom=zoom,
+        size_px=size_px,
+        scale=scale,
+        cache=cache,
+        allow_network=allow_network,
+    )
+    return result.png_bytes
+
+
+def fetch_google_static_satellite(
+    lat: float, lng: float, *,
+    zoom: int = 20,
+    size_px: int = 640,
+    scale: int = 2,
+    cache: bool = True,
+    allow_network: bool = True,
+) -> StaticMapResult:
+    key = get_google_maps_key()
+    if not key:
+        return StaticMapResult(
+            status="WARN",
+            detail=(
+                "PVESS_GOOGLE_MAPS_KEY is not set. Configure a Google Maps "
+                "Platform key with Static Maps satellite access to enable "
+                "visual fallback imagery."
+            ),
+        )
+
+    cp = _cache_path(
+        "google-static-satellite",
+        lat,
+        lng,
+        zoom=zoom,
+        size=size_px,
+        scale=scale,
+    )
+    if cache and cp.exists():
+        return StaticMapResult(
+            status="PASS",
+            detail="Google Static satellite fallback loaded from cache.",
+            png_bytes=cp.read_bytes(),
+            cache_hit=True,
+        )
+    if not allow_network:
+        return StaticMapResult(
+            status="WARN",
+            detail="Google Static satellite fallback cache miss; network disabled.",
+        )
+
+    try:
+        resp = requests.get(
+            _GOOGLE_STATIC_MAP_BASE,
+            params={
+                "center": f"{lat:.6f},{lng:.6f}",
+                "zoom": str(int(zoom)),
+                "size": f"{int(size_px)}x{int(size_px)}",
+                "scale": str(int(scale)),
+                "maptype": "satellite",
+                "format": "png",
+                "key": key,
+            },
+            timeout=DEFAULT_HTTP_TIMEOUT_S * 2.0,
+        )
+    except requests.exceptions.RequestException as exc:
+        return StaticMapResult(
+            status="WARN",
+            detail=f"Google Static satellite fallback request failed: {exc}",
+        )
+
+    content_type = resp.headers.get("content-type", "")
+    if resp.status_code >= 400 or "image" not in content_type.lower():
+        body = resp.text.strip().replace("\n", " ")[:220]
+        return StaticMapResult(
+            status="WARN",
+            detail=(
+                f"Google Static satellite fallback unavailable "
+                f"(HTTP {resp.status_code}). {body}"
+            ).strip(),
+        )
+
+    png_bytes = resp.content
+    if cache:
+        cp.parent.mkdir(parents=True, exist_ok=True)
+        cp.write_bytes(png_bytes)
+    return StaticMapResult(
+        status="PASS",
+        detail=(
+            "Google Static satellite fallback generated. Use for visual "
+            "manual tracing only; it does not include roof mask or DSM data."
+        ),
+        png_bytes=png_bytes,
+    )
 
 
 # ─── Vicinity map (Mapbox Static Images) ────────────────────────────────

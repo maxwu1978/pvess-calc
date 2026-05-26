@@ -1,0 +1,569 @@
+project:
+  id: 003-frisco-glasshouse
+  name: 15 kW PV-only Residence (Growatt 11.4 kW + GME 1:1)
+  location: Frisco, TX
+  ahj: City of Frisco Building Inspection
+  nec_edition: '2020'
+  client_name: Glasshouse Walk Residence
+  site_address: 7652 Glasshouse Walk, Frisco TX 75035
+  coordinates: 33.141418, -96.801258
+  apn: 'TODO: Collin CAD lookup (collincad.org)'
+  utility: Oncor Electric Delivery
+  drawn_by: WQX
+  revision: B
+  initial_design_date: '2026-05-17'
+  permit_profile: tx_residential_pv
+  meter_info:
+    number: '153468971'
+    location: 1st floor
+    esid: '10443720007628433'
+  roof_info:
+    stories: 2
+    type: Comp Shingle
+    height_ft: 25
+    construction: Hip
+    condition: good
+    being_replaced: false
+    flashing: IronRidge FlashVue Flashing
+    framing: 2x4 @ 24 in O.C. prefabricated trusses
+    attic_access: accessible
+    decking_thickness_in: 0.5
+    roof_layers: 1
+  site_photos:
+  - kind: front_elevation
+    path: photos/mock-front-elevation.png
+    caption: Front elevation
+  - kind: roof
+    path: photos/mock-roof-array-area.png
+    caption: Roof / proposed array area
+  - kind: meter
+    path: photos/mock-oncor-meter.png
+    caption: Oncor meter
+  - kind: main_panel
+    path: photos/mock-main-service-panel.png
+    caption: Main service panel
+  - kind: sub_panel
+    path: photos/mock-critical-loads-subpanel.png
+    caption: Critical loads sub-panel
+  - kind: equipment_location
+    path: photos/mock-equipment-wall.png
+    caption: Proposed inverter/equipment wall
+  spec_sheets:
+  - equipment: selected_inverter_growatt_min11400tl_xh_us
+    path: cut_sheets/01-growatt-min-11400tl-xh-us-datasheet.pdf
+  installer_cost_overrides:
+    pv_turnkey_usd_per_w: 2.4
+    inverter_ref: growatt_min11400tl_xh_us
+design_engineer:
+  firm: pvess-calc internal review
+  address: TX
+  contact_email: design@example.com
+  contact_phone: (469) 555-0100
+  firm_number: TX-PE-PLACEHOLDER
+installer:
+  company: TBD
+  address: DFW, TX
+pv_array:
+  modules: 36
+  strings: 4
+  modules_per_string: 9
+  module:
+    brand: Talesun
+    model: TP7G54M 415
+    power_w: 415
+    voc_stc: 49.8
+    isc_stc: 10.65
+    voc_temp_coeff_pct_per_c: -0.27
+    isc_temp_coeff_pct_per_c: 0.04
+  ashrae_2pct_min_c: -7.0
+  temp_min_c: -7.0
+  temp_max_c: 38.0
+battery:
+  brand: "\u2014"
+  model: "(no battery \u2014 grid-tied PV-only)"
+  quantity: 0
+  nominal_voltage: 400.0
+  capacity_kwh_each: 0.0
+  install_location: unknown
+inverter:
+  brand: Growatt
+  model: MIN 11400TL-XH-US
+  ac_output_v: 240
+  ac_output_a: 48.0
+  quantity: 1
+  per_unit: false
+optimizer:
+  ref: tigo_ts4_a_o
+service:
+  main_panel_a: 200
+  busbar_a: 200
+  busbar_source: nameplate
+  voltage: 120/240 split-phase
+  interconnection_methods:
+  - 120%_rule
+  - supply_side_tap
+  msp_available_slots: 30
+  msp_used_slots: 26
+  existing_solar_breaker_a_msp: 0
+  sub_panels:
+  - name: Critical Loads Sub
+    role: critical_loads
+    rating_a: 125
+    busbar_a: 125
+    location: Garage (downstream of PW3 backup gateway)
+    backfeed_breaker_a: 100
+    available_slots: 24
+    used_slots: 12
+    service_rated: false
+    enclosure_rating: NEMA 1
+    distance_to_msp_ft: 12.0
+  grounding_electrode_system:
+    rods:
+    - length_ft: 8
+      diameter_in: 0.625
+      material: copper_clad_steel
+      location: SE corner near MSP
+    - length_ft: 8
+      location: '6 ft NW of rod #1'
+    ufer:
+      length_ft: 20
+      conductor: rebar
+      conductor_size: 1/2 in rebar
+      location: south foundation
+    gec_main_size_awg: '4'
+    bonded_to_neutral_at_service: 'yes'
+loads:
+  critical_subpanel_a: 100
+  whole_home_backup: false
+  monthly_kwh:
+  - 1100
+  - 1000
+  - 950
+  - 1050
+  - 1400
+  - 1850
+  - 2100
+  - 2150
+  - 1900
+  - 1300
+  - 1000
+  - 1050
+  hvac_type: heat_pump
+  has_ev: false
+  planned_ev: true
+  planned_electrification: false
+  export_tariff_model: tx_green_mountain
+  self_consumption_fraction: 0.3
+  rep_plan_name: Green Mountain Renewable Rewards (1:1 retail, SMT NEM)
+  backup_options:
+  - name: + 16 kWh in-house battery
+    battery_ref: inhouse_16kwh_hv
+    quantity: 1
+  - name: + 20 kWh Growatt HV stack
+    battery_ref: growatt_apx_20kwh
+    quantity: 1
+  use_value_weighted_distribution: true
+site:
+  urban_density: suburban
+  roof_pitch_deg: 35
+  array_azimuth_deg: 180
+  lot_width_ft: 90
+  lot_depth_ft: 125
+  house_width_ft: 60
+  house_depth_ft: 42
+  property_context:
+    lot_outline:
+    - - -7.0
+      - 28.0
+    - - 106.0
+      - 28.0
+    - - 106.0
+      - 94.0
+    - - -7.0
+      - 94.0
+    driveway_polygon:
+    - - 91.0
+      - 28.0
+    - - 106.0
+      - 28.0
+    - - 106.0
+      - 94.0
+    - - 91.0
+      - 94.0
+    fence_lines:
+    - label: FENCE
+      kind: fence
+      points:
+      - - 91.0
+        - 94.0
+      - - 106.0
+        - 94.0
+    property_dimensions:
+    - start:
+      - -7.0
+      - 94.0
+      end:
+      - 106.0
+      - 94.0
+      offset_ft: 8.0
+    - start:
+      - 106.0
+      - 28.0
+      end:
+      - 106.0
+      - 94.0
+      offset_ft: -3.0
+  satellite_alignment:
+    mode: fit_house_bbox
+    contour_simplify_ft: 2.0
+    contour_max_vertices: 32
+  ee4_trace:
+    enabled: true
+    roof_outline:
+      name: CAD reviewed roof outline
+      vertices:
+      - - 96.3
+        - 30.0
+      - - 98.5
+        - 38.5
+      - - 98.5
+        - 54.5
+      - - 98.0
+        - 58.0
+      - - 88.0
+        - 75.0
+      - - 76.0
+        - 83.0
+      - - 0.0
+        - 83.0
+      - - 0.0
+        - 48.0
+      - - 15.0
+        - 35.0
+      - - 84.0
+        - 30.0
+    roof_facets:
+    - name: Non-PV Roof Context
+      vertices:
+      - - 55.0
+        - 32.1
+      - - 55.0
+        - 50.3
+      - - 34.0
+        - 50.3
+      - - 34.0
+        - 70.0
+      - - 55.0
+        - 70.0
+      - - 55.0
+        - 60.5
+      - - 96.53
+        - 60.5
+      - - 88.0
+        - 75.0
+      - - 76.0
+        - 83.0
+      - - 0.0
+        - 83.0
+      - - 0.0
+        - 48.0
+      - - 15.0
+        - 35.0
+    - name: West PV Area
+      vertices:
+      - - 55.0
+        - 50.3
+      - - 55.0
+        - 70.0
+      - - 34.0
+        - 70.0
+      - - 34.0
+        - 50.3
+    - name: South PV Area
+      vertices:
+      - - 98.5
+        - 38.5
+      - - 98.5
+        - 54.5
+      - - 98.0
+        - 58.0
+      - - 96.53
+        - 60.5
+      - - 55.0
+        - 60.5
+      - - 55.0
+        - 32.1
+      - - 84.0
+        - 30.0
+      - - 96.3
+        - 30.0
+    roof_lines:
+    - kind: hip
+      points:
+      - - 27.0
+        - 83.0
+      - - 38.0
+        - 75.0
+      - - 38.0
+        - 48.0
+      - - 15.0
+        - 35.0
+    - kind: hip
+      points:
+      - - 38.0
+        - 75.0
+      - - 50.0
+        - 75.0
+      - - 60.0
+        - 83.0
+    - kind: hip
+      points:
+      - - 76.0
+        - 83.0
+      - - 76.0
+        - 75.0
+      - - 88.0
+        - 75.0
+    - kind: valley
+      points:
+      - - 88.0
+        - 75.0
+      - - 88.0
+        - 64.0
+      - - 98.0
+        - 58.0
+    - kind: ridge
+      points:
+      - - 38.0
+        - 48.0
+      - - 52.0
+        - 54.0
+      - - 66.0
+        - 54.0
+      - - 76.0
+        - 64.0
+    - kind: hip
+      points:
+      - - 15.0
+        - 48.0
+      - - 38.0
+        - 48.0
+    - kind: hip
+      points:
+      - - 76.0
+        - 64.0
+      - - 88.0
+        - 64.0
+    - kind: edge
+      points:
+      - - 18.0
+        - 63.0
+      - - 18.0
+        - 73.0
+    - kind: edge
+      points:
+      - - 18.0
+        - 51.0
+      - - 18.0
+        - 61.0
+    - kind: edge
+      points:
+      - - 18.0
+        - 39.0
+      - - 18.0
+        - 49.0
+    - kind: edge
+      points:
+      - - 6.0
+        - 63.0
+      - - 18.0
+        - 63.0
+      - - 25.0
+        - 68.0
+      - - 18.0
+        - 73.0
+      - - 6.0
+        - 73.0
+      - - 6.0
+        - 63.0
+    - kind: edge
+      points:
+      - - 6.0
+        - 51.0
+      - - 18.0
+        - 51.0
+      - - 25.0
+        - 56.0
+      - - 18.0
+        - 61.0
+      - - 6.0
+        - 61.0
+      - - 6.0
+        - 51.0
+    fire_pathways:
+    - name: CAD fire pathway - array access
+      vertices:
+      - - 55.0
+        - 59.3
+      - - 96.2
+        - 59.3
+      - - 96.55
+        - 58.0
+      - - 96.55
+        - 39.0
+      - - 98.0
+        - 39.0
+      - - 98.0
+        - 54.0
+      - - 97.6
+        - 57.6
+      - - 96.4
+        - 60.3
+      - - 55.0
+        - 60.3
+    - name: CAD fire pathway - left roof access
+      vertices:
+      - - 3.0
+        - 79.0
+      - - 25.0
+        - 79.0
+      - - 25.0
+        - 82.0
+      - - 3.0
+        - 82.0
+    symbols:
+    - kind: roof_vent
+      x_ft: 30.0
+      y_ft: 72.0
+    - kind: roof_vent
+      x_ft: 54.0
+      y_ft: 69.5
+    - kind: roof_vent
+      x_ft: 64.0
+      y_ft: 67.5
+    - kind: roof_vent
+      x_ft: 84.0
+      y_ft: 66.0
+    - kind: plumbing
+      x_ft: 41.0
+      y_ft: 52.5
+    - kind: plumbing
+      x_ft: 55.0
+      y_ft: 55.0
+    - kind: chimney
+      x_ft: 44.0
+      y_ft: 63.5
+  roof_sections:
+  - name: West PV Area
+    roof_type: Comp Shingle
+    pitch_deg: 33.0
+    azimuth_deg: 268.1
+    module_count: 8
+    width_ft: 21.0
+    height_ft: 19.7
+    attachment_count: 0
+    shading_factor: 1.0
+    shape: polygon
+    apex_x_ratio: 0.5
+    vertices:
+    - - 21.0
+      - 0.0
+    - - 21.0
+      - 19.7
+    - - 0.0
+      - 19.7
+    - - 0.0
+      - 0.0
+    obstructions:
+    - kind: chimney
+      x_ft: 8.0
+      y_ft: 11.2
+      width_ft: 4.0
+      height_ft: 4.0
+      setback_ft: 1.5
+      note: No-panel area from reviewed roof obstruction.
+    edge_setbacks: []
+    default_setback_ft: 1.5
+    obstructions_note: ''
+    site_anchor_x_ft: 34.0
+    site_anchor_y_ft: 50.3
+    site_anchor_azimuth_deg: 0.0
+  - name: South PV Area
+    roof_type: Comp Shingle
+    pitch_deg: 35.0
+    azimuth_deg: 180.0
+    module_count: 28
+    width_ft: 43.5
+    height_ft: 30.5
+    attachment_count: 0
+    shading_factor: 1.0
+    shape: polygon
+    apex_x_ratio: 0.5
+    vertices:
+    - - 43.5
+      - 8.5
+    - - 43.5
+      - 24.5
+    - - 43.0
+      - 28.0
+    - - 41.53
+      - 30.5
+    - - 0.0
+      - 30.5
+    - - 0.0
+      - 2.1
+    - - 29.0
+      - 0.0
+    - - 41.3
+      - 0.0
+    obstructions:
+    - kind: vent_pipe
+      x_ft: 0.0
+      y_ft: 24.0
+      width_ft: 2.0
+      height_ft: 2.0
+      setback_ft: 1.5
+      note: No-panel area from reviewed roof obstruction.
+    edge_setbacks: []
+    default_setback_ft: 1.5
+    obstructions_note: ''
+    site_anchor_x_ft: 55.0
+    site_anchor_y_ft: 30.0
+    site_anchor_azimuth_deg: 0.0
+  equipment_locations:
+    msp:
+      label: MSP
+      x_ft: 94.0
+      y_ft: 45.0
+    ac_disconnect:
+      label: AC DISCONNECT
+      x_ft: 94.0
+      y_ft: 50.0
+    inverters:
+    - label: INV-1 - GROWATT MIN 11400TL-XH-US
+      x_ft: 94.0
+      y_ft: 55.0
+    attic_drop_x_ft: 88.0
+    attic_drop_y_ft: 60.0
+    attic_to_eq_height_ft: 9.0
+  mounting:
+    rail_system: IronRidge XR100
+    flashing: IronRidge FlashVue Flashing
+    max_x_spacing_in: 48
+    max_y_spacing_in: 32
+    max_cantilever_in: 18
+    fastener: (1) 5/16" x 4-1/4" lag screw
+    lag_screw_length_in: 4.25
+    min_embedment_in: 2.5
+    max_roof_surface_gap_in: 6
+wire_lengths:
+  pv_string_one_way_ft: 70
+  pv_to_combiner_ft: 20
+  combiner_to_inverter_ft: 25
+  inverter_to_ac_disc_ft: 8
+  ac_disc_to_msp_ft: 15
+  ess_to_inverter_ft: 5
+routing:
+  ambient_temp_c: 50
+  pv_conduit_fill_count: 8
+  ac_conduit_fill_count: 4

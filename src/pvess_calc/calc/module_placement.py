@@ -22,8 +22,8 @@ Algorithm (K.9.1-v1):
   2. For each candidate orientation in {portrait, landscape}:
        a. Compute module footprint in roof-local units (ft).
        b. Lay an evenly-spaced grid covering the bounding box.
-       c. Filter cells whose center is INSIDE the usable polygon
-          AND whose footprint is OUTSIDE every obstruction halo.
+       c. Filter cells whose full footprint is INSIDE the usable polygon
+          AND OUTSIDE every obstruction halo.
   3. Pick the orientation that fits the MORE modules (tie-break:
      prefer landscape — fewer rows, cleaner aesthetics).
   4. Sort centers top-down (ridge to eave) then left-to-right within
@@ -48,7 +48,14 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from ..schema import RoofSection
-from .polygon import bounding_box, offset_polygon, point_in_polygon
+from .geometry import (
+    obstruction_halo_vertices,
+    polygon_bounds,
+    polygon_covers_polygon,
+    polygons_overlap_area,
+    rectangle_vertices,
+    usable_inset_polygon,
+)
 
 
 # ─── Public dataclass ──────────────────────────────────────────────────
@@ -153,6 +160,43 @@ def place_modules(
     return best[:target_count]
 
 
+def place_module_candidates(
+    section: RoofSection,
+    *,
+    module_length_in: float = 67.80,
+    module_width_in: float = 44.65,
+    inter_module_gap_in: float = 0.5,
+    inter_row_gap_in: float = 0.5,
+) -> list[ModuleInstance]:
+    """Return every legal candidate from both module orientations.
+
+    `place_modules()` intentionally picks one global orientation for stable,
+    regular arrays.  Complex CAD-reviewed polygon faces sometimes need a few
+    portrait modules to use a wedge/triangle area.  The engine consumes this
+    broader candidate set only for large polygon faces, then still enforces
+    non-overlap and project-level QA constraints.
+    """
+    long_ft = module_length_in / 12.0
+    short_ft = module_width_in / 12.0
+    gap_ft = inter_module_gap_in / 12.0
+    row_gap_ft = inter_row_gap_in / 12.0
+
+    usable = _usable_polygon(section)
+    if not usable:
+        return []
+
+    out: list[ModuleInstance] = []
+    for orient_name, w_ft, h_ft in [
+        ("landscape", long_ft, short_ft),
+        ("portrait", short_ft, long_ft),
+    ]:
+        out.extend(_grid_place(
+            section, usable, w_ft, h_ft,
+            gap_ft, row_gap_ft, orient_name,
+        ))
+    return out
+
+
 # ─── Helpers ───────────────────────────────────────────────────────────
 
 
@@ -171,7 +215,7 @@ def _usable_polygon(section: RoofSection) -> list[tuple[float, float]]:
     meaningfully).
 
     Polygon: pull `vertices` directly from schema, apply uniform
-    inset via `offset_polygon`.
+    inset via Shapely negative buffer when available.
     """
     if section.shape == "rect":
         eave = _setback_for(section, "eave")
@@ -186,12 +230,12 @@ def _usable_polygon(section: RoofSection) -> list[tuple[float, float]]:
     if section.shape == "tri":
         apex_x = section.width_ft * section.apex_x_ratio
         verts = [(0.0, 0.0), (section.width_ft, 0.0), (apex_x, section.height_ft)]
-        return offset_polygon(verts, section.default_setback_ft)
+        return usable_inset_polygon(verts, section.default_setback_ft)
 
     if section.shape == "polygon":
         if not section.vertices:
             return []
-        return offset_polygon(
+        return usable_inset_polygon(
             [(v[0], v[1]) for v in section.vertices],
             section.default_setback_ft,
         )
@@ -216,21 +260,17 @@ def _grid_place(
     orient_name: str,
 ) -> list[ModuleInstance]:
     """Lay an axis-aligned grid over the usable polygon's bounding box
-    and emit ModuleInstance for every cell whose CENTER falls inside
-    the polygon AND whose FOOTPRINT is outside every obstruction halo.
+    and emit ModuleInstance for every cell whose full footprint stays
+    inside the polygon AND outside every obstruction halo.
     """
     if mod_w_ft <= 0 or mod_h_ft <= 0:
         return []
-    xmin, ymin, xmax, ymax = bounding_box(usable)
+    xmin, ymin, xmax, ymax = polygon_bounds(usable)
     usable_w = xmax - xmin
     usable_h = ymax - ymin
     if mod_w_ft > usable_w or mod_h_ft > usable_h:
         return []
 
-    # Center the grid in the usable box. If we put the first module at
-    # xmin + mod_w/2, we'd hug the rake setback. Adding a small
-    # margin (gap/2) gives visible breathing room at both edges and
-    # reads cleaner on the PV-4 drawing.
     step_x = mod_w_ft + gap_w_ft
     step_y = mod_h_ft + gap_h_ft
     n_cols = int((usable_w + gap_w_ft) / step_x)
@@ -238,54 +278,118 @@ def _grid_place(
     if n_cols < 1 or n_rows < 1:
         return []
 
-    # Inset so the grid sits centered in any leftover width.
+    # Start with the old centered grid for visual continuity, then test
+    # alternate offsets. Strict full-footprint containment can make a
+    # single centered grid underfill triangular/concave faces.
     block_w = n_cols * step_x - gap_w_ft
     block_h = n_rows * step_y - gap_h_ft
-    x_origin = xmin + (usable_w - block_w) / 2
-    y_origin = ymin + (usable_h - block_h) / 2
+    centered_x = xmin + (usable_w - block_w) / 2
+    centered_y = ymin + (usable_h - block_h) / 2
+    x_starts = _axis_starts(
+        xmin, xmax, mod_w_ft, step_x,
+        preferred=centered_x,
+    )
+    y_starts = _axis_starts(
+        ymin, ymax, mod_h_ft, step_y,
+        preferred=centered_y,
+    )
 
     rotation_deg = 0.0 if orient_name == "portrait" else 90.0
+    best: list[ModuleInstance] = []
+    for y_origin in y_starts:
+        for x_origin in x_starts:
+            instances = _instances_for_grid_origin(
+                section, usable,
+                x_origin, y_origin,
+                mod_w_ft, mod_h_ft,
+                step_x, step_y,
+                xmax, ymax,
+                rotation_deg,
+            )
+            if len(instances) > len(best):
+                best = instances
+    return best
+
+
+def _axis_starts(
+    min_v: float,
+    max_v: float,
+    cell_v: float,
+    step_v: float,
+    *,
+    preferred: float,
+    samples: int = 8,
+) -> list[float]:
+    max_start = max_v - cell_v
+    if max_start < min_v:
+        return []
+
+    span = min(step_v, max_start - min_v)
+    starts = [min(max(preferred, min_v), max_start)]
+    if samples <= 1 or span <= 1e-9:
+        starts.extend([min_v, max_start])
+    else:
+        for i in range(samples):
+            starts.append(min_v + span * i / (samples - 1))
+        starts.append(max_start)
+
+    deduped: list[float] = []
+    seen: set[float] = set()
+    for value in starts:
+        key = round(value, 6)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(value)
+    return deduped
+
+
+def _instances_for_grid_origin(
+    section: RoofSection,
+    usable: list[tuple[float, float]],
+    x_origin: float,
+    y_origin: float,
+    mod_w_ft: float,
+    mod_h_ft: float,
+    step_x: float,
+    step_y: float,
+    xmax: float,
+    ymax: float,
+    rotation_deg: float,
+) -> list[ModuleInstance]:
     instances: list[ModuleInstance] = []
-    # Sort top-down: ridge-side rows first → the K.8.1 LRM "best
-    # spots first" convention. Useful for truncation to target_count.
-    for row in range(n_rows - 1, -1, -1):     # iterate ridge → eave
-        y_center = y_origin + mod_h_ft / 2 + row * step_y
-        for col in range(n_cols):
-            x_center = x_origin + mod_w_ft / 2 + col * step_x
-            if not point_in_polygon((x_center, y_center), usable):
-                continue
-            if _hits_obstruction(
-                x_center, y_center, mod_w_ft, mod_h_ft, section.obstructions,
+    y = y_origin
+    while y <= ymax - mod_h_ft + 1e-9:
+        x = x_origin
+        while x <= xmax - mod_w_ft + 1e-9:
+            module_poly = rectangle_vertices(x, y, mod_w_ft, mod_h_ft)
+            if (
+                polygon_covers_polygon(usable, module_poly)
+                and not _hits_obstruction(module_poly, section.obstructions)
             ):
-                continue
-            instances.append(ModuleInstance(
-                face_name=section.name,
-                x_ft=x_center - mod_w_ft / 2,
-                y_ft=y_center - mod_h_ft / 2,
-                width_ft=mod_w_ft,
-                height_ft=mod_h_ft,
-                rotation_deg=rotation_deg,
-            ))
+                instances.append(ModuleInstance(
+                    face_name=section.name,
+                    x_ft=x,
+                    y_ft=y,
+                    width_ft=mod_w_ft,
+                    height_ft=mod_h_ft,
+                    rotation_deg=rotation_deg,
+                ))
+            x += step_x
+        y += step_y
+
+    instances.sort(key=lambda m: (-m.y_ft, m.x_ft))
     return instances
 
 
 def _hits_obstruction(
-    cx: float, cy: float, mod_w_ft: float, mod_h_ft: float,
+    module_polygon: list[tuple[float, float]],
     obstructions: Iterable,
 ) -> bool:
     """True iff the module's bounding box intersects any obstruction
     halo (obstruction expanded uniformly by `obs.setback_ft` on each
-    side). Axis-aligned overlap test."""
-    m_x0 = cx - mod_w_ft / 2
-    m_y0 = cy - mod_h_ft / 2
-    m_x1 = cx + mod_w_ft / 2
-    m_y1 = cy + mod_h_ft / 2
+    side)."""
     for obs in obstructions:
-        h_x0 = obs.x_ft - obs.setback_ft
-        h_y0 = obs.y_ft - obs.setback_ft
-        h_x1 = obs.x_ft + obs.width_ft + obs.setback_ft
-        h_y1 = obs.y_ft + obs.height_ft + obs.setback_ft
-        # Overlapping rectangles: any axis where they DON'T overlap → no overlap
-        if m_x1 > h_x0 and m_x0 < h_x1 and m_y1 > h_y0 and m_y0 < h_y1:
+        if polygons_overlap_area(module_polygon, obstruction_halo_vertices(obs)):
             return True
     return False

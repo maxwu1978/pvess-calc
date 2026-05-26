@@ -190,6 +190,44 @@ def test_mixed_orientations_no_collision():
     assert all(a[0] == 15.0 for a in w_anchors)   # west wall x
 
 
+def test_many_google_solar_faces_pack_as_non_overlapping_grid():
+    """10+ unanchored lookup faces should be schematic but non-overlapping.
+
+    Google Solar supplies per-face bounding boxes without relative vertices.
+    A grid is safer than wall-packing because reviewers need a readable roof
+    plan more than a false implied geometry.
+    """
+    sections = [
+        RoofSection(
+            name=f"Face {idx + 1}",
+            azimuth_deg=(idx * 37) % 360,
+            width_ft=10 + (idx % 4) * 2,
+            height_ft=9 + (idx % 3) * 2,
+        )
+        for idx in range(13)
+    ]
+    site = Site(
+        lot_width_ft=90,
+        lot_depth_ft=125,
+        house_width_ft=60,
+        house_depth_ft=42,
+        roof_sections=sections,
+    )
+
+    anchors = auto_anchor_sections(site)
+    rects = []
+    for section in sections:
+        x, y, az = anchors[section.name]
+        assert az == 0.0
+        rects.append((x, y, x + section.width_ft, y + section.height_ft))
+
+    for idx, a in enumerate(rects):
+        for b in rects[idx + 1:]:
+            overlap_w = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+            overlap_h = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+            assert overlap_w * overlap_h == 0.0
+
+
 # ─── auto_anchor_sections — explicit anchors pass-through ────────────────
 
 

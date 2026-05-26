@@ -31,6 +31,7 @@ from reportlab.pdfgen import canvas
 from ..calc.engine import CalculationResult
 from ..calc.roof_layout import _evaluate_section
 from ._textfit import fit
+from .roof_cad_library import draw_keepout_area, draw_pv_module, draw_roof_symbol
 
 
 # Colors used for string-block highlighting on the roof plan.
@@ -149,6 +150,20 @@ def _display_attachment_count(section, placed_count: int) -> int:
     return _estimate_attachments(target, None)
 
 
+def _display_module_count(section, layout, placed_count: int) -> int:
+    """PV-4 module count for display.
+
+    Google Solar init data carries `section.module_count = 0`; after engine
+    auto-distribution the authoritative drawing count is the placement count.
+    Designer-pinned counts still win when there are no placements.
+    """
+    if placed_count > 0:
+        return placed_count
+    if section.module_count > 0:
+        return section.module_count
+    return max(0, getattr(layout, "module_count", 0))
+
+
 # --- PV-4 Attachment Plan ---------------------------------------------------
 
 def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
@@ -159,6 +174,7 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
     pairs = _sections_with_layout(result)
     sections = [p[0] for p in pairs]
     mounting = i.site.mounting
+    compact_many_faces = len(pairs) > 8
 
     c.setLineWidth(1.0)
     c.rect(0.4 * inch, 0.4 * inch, W - 0.8 * inch, H - 0.8 * inch)
@@ -191,7 +207,11 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
         ("GROSS",         4.30),
         ("USABLE",        4.85),
     ]
-    c.setFont("Helvetica-Bold", 9)
+    body_font = 7.4 if compact_many_faces else 9
+    header_font = 8 if compact_many_faces else 9
+    row_step = (0.135 if compact_many_faces else 0.18) * inch
+    max_table_rows = 8 if compact_many_faces else len(pairs)
+    c.setFont("Helvetica-Bold", header_font)
     hdr_y = table_y - 0.22 * inch
     for label, dx in cols:
         c.drawString(table_x + dx * inch, hdr_y, label)
@@ -199,14 +219,17 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
     c.line(table_x, hdr_y - 0.05 * inch,
            table_x + 5.25 * inch, hdr_y - 0.05 * inch)
 
-    c.setFont("Helvetica", 9)
+    c.setFont("Helvetica", body_font)
     yy = hdr_y - 0.22 * inch
     total_attach = 0
+    total_modules = 0
     total_gross = 0.0
     total_usable = 0.0
     over_packed_rows: list[str] = []
-    for s, layout in pairs:
+    hidden_rows = 0
+    for idx, (s, layout) in enumerate(pairs):
         placed_count = len(result.module_placements.get(s.name, []))
+        module_count = _display_module_count(s, layout, placed_count)
         attach_count = _display_attachment_count(s, placed_count)
         # SHAPE column: small chip indicating rect or tri
         shape_label = {
@@ -218,10 +241,10 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
         row = [
             s.name,
             shape_label,
-            fit(s.roof_type, "Helvetica", 9, 0.85 * inch),
+            fit(s.roof_type, "Helvetica", body_font, 0.85 * inch),
             f"{s.pitch_deg:.0f}°",
             f"{s.azimuth_deg:.0f}°",
-            str(s.module_count),
+            str(module_count),
             str(attach_count),
             f"{layout.gross_area_sqft:.0f}",
             f"{layout.usable_area_sqft:.0f}",
@@ -229,30 +252,37 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
         # USABLE column dx (kept as a constant so the over-packed red-flag
         # branch tracks any future layout change).
         usable_dx = 4.85
-        for (_, dx), val in zip(cols, row):
-            # Color USABLE red when the row over-packs — avoids any
-            # warning text spilling into the MOUNTING SYSTEM table.
-            if not layout.fits and dx == usable_dx:
-                c.setFillColorRGB(0.78, 0.10, 0.10)
-                c.setFont("Helvetica-Bold", 9)
-                c.drawString(table_x + dx * inch, yy, f"✗ {val}")
-                c.setFillColor(colors.black)
-                c.setFont("Helvetica", 9)
-            else:
-                c.drawString(table_x + dx * inch, yy, val)
+        if idx < max_table_rows:
+            for (_, dx), val in zip(cols, row):
+                # Color USABLE red when the row over-packs — avoids any
+                # warning text spilling into the MOUNTING SYSTEM table.
+                if not layout.fits and dx == usable_dx:
+                    c.setFillColorRGB(0.78, 0.10, 0.10)
+                    c.setFont("Helvetica-Bold", body_font)
+                    c.drawString(table_x + dx * inch, yy, f"✗ {val}")
+                    c.setFillColor(colors.black)
+                    c.setFont("Helvetica", body_font)
+                else:
+                    c.drawString(table_x + dx * inch, yy, val)
+            yy -= row_step
+        else:
+            hidden_rows += 1
         if not layout.fits:
             over_packed_rows.append(s.name)
-        yy -= 0.18 * inch
         total_attach += attach_count
+        total_modules += module_count
         total_gross += layout.gross_area_sqft
         total_usable += layout.usable_area_sqft
+    if hidden_rows:
+        c.setFont("Helvetica-Oblique", body_font)
+        c.drawString(table_x, yy, f"+ {hidden_rows} additional roof face(s) included in TOTAL and plan below")
+        yy -= row_step
     # Totals — column dx values must match `cols` exactly.
     c.setLineWidth(0.4)
     c.line(table_x, yy + 0.07 * inch, table_x + 5.25 * inch, yy + 0.07 * inch)
-    c.setFont("Helvetica-Bold", 9)
+    c.setFont("Helvetica-Bold", body_font)
     c.drawString(table_x, yy - 0.05 * inch, "TOTAL")
-    c.drawString(table_x + 3.45 * inch, yy - 0.05 * inch,
-                 str(sum(s.module_count for s in sections)))
+    c.drawString(table_x + 3.45 * inch, yy - 0.05 * inch, str(total_modules))
     c.drawString(table_x + 3.85 * inch, yy - 0.05 * inch, str(total_attach))
     c.drawString(table_x + 4.30 * inch, yy - 0.05 * inch, f"{total_gross:.0f}")
     c.drawString(table_x + 4.85 * inch, yy - 0.05 * inch, f"{total_usable:.0f}")
@@ -286,6 +316,31 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
         c.drawString(mb_x, yy, label)
         c.drawString(mb_x + 1.4 * inch, yy, val)
         yy -= 0.20 * inch
+    from .site_plan import _ee4_face_allocation_caption
+
+    caption = _ee4_face_allocation_caption(result)
+    if caption:
+        c.setFont("Helvetica-Bold", 7.0)
+        c.drawString(
+            mb_x,
+            yy - 0.02 * inch,
+            fit(caption, "Helvetica-Bold", 7.0, 3.45 * inch),
+        )
+        yy -= 0.16 * inch
+    from .trace_module_layout_status import assess_trace_module_layout_status
+
+    qa_status = assess_trace_module_layout_status(result)
+    qa_label = (
+        f"PANEL QA: {qa_status.get('status', 'UNKNOWN')} "
+        f"{qa_status.get('placed_modules', 0)}/"
+        f"{qa_status.get('target_modules', 0)} CHECKED"
+    )
+    c.setFont("Helvetica-Bold", 7.0)
+    c.drawString(
+        mb_x,
+        yy - 0.02 * inch,
+        fit(qa_label, "Helvetica-Bold", 7.0, 3.45 * inch),
+    )
 
     # K.2.6c roof-plan drawings (bottom half). Stage 9.7 uses the same
     # traced whole-roof geometry as EE-4 when available, which matches the
@@ -293,7 +348,7 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
     plot_x = 0.6 * inch
     plot_y = 0.78 * inch
     plot_w = W - 1.2 * inch
-    plot_h = 4.58 * inch
+    plot_h = (3.48 if compact_many_faces else 4.58) * inch
     c.setLineWidth(0.8)
     c.rect(plot_x, plot_y, plot_w, plot_h)
     c.setFont("Helvetica-Bold", 10)
@@ -310,17 +365,26 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
         )
     else:
         n_sec = max(1, len(pairs))
-        sub_w = (plot_w - 0.4 * inch) / n_sec
+        if compact_many_faces:
+            cols_n = min(5, n_sec)
+            rows_n = math.ceil(n_sec / cols_n)
+        else:
+            cols_n = n_sec
+            rows_n = 1
+        sub_w = (plot_w - 0.4 * inch) / cols_n
         sub_y = plot_y + 0.30 * inch
-        sub_h = plot_h - 0.70 * inch
+        sub_h = (plot_h - 0.70 * inch) / rows_n
         for idx, (section, layout) in enumerate(pairs):
-            sub_x = plot_x + 0.20 * inch + idx * sub_w
+            col_i = idx % cols_n
+            row_i = idx // cols_n
+            sub_x = plot_x + 0.20 * inch + col_i * sub_w
+            sub_y_i = sub_y + (rows_n - row_i - 1) * sub_h
             # K.9.3: pass through this face's per-module placements (from
             # K.9.2 engine integration). Empty list when the project is
             # legacy / single-orientation — falls back to the K.2.8 heuristic
             # grid inside `_draw_section_plan`.
             placements = result.module_placements.get(section.name, [])
-            _draw_section_plan(c, sub_x, sub_y, sub_w - 0.15 * inch, sub_h,
+            _draw_section_plan(c, sub_x, sub_y_i, sub_w - 0.15 * inch, sub_h,
                                section, layout, placements=placements)
 
     # NOTE: pre-K.11.7e had a "X spacing / Y spacing / Cantilever"
@@ -340,7 +404,7 @@ def render_attachment_plan(result: CalculationResult, out_path: Path) -> None:
         module=i.pv_array.module,
     )
 
-    if not _can_draw_traced_attachment_plan(result):
+    if not _can_draw_traced_attachment_plan(result) and not compact_many_faces:
         # K.10.3: string legend in the bottom-LEFT corner for the legacy
         # per-face plot. The traced attachment plan intentionally omits MPPT
         # colors so PV-4 reads as a structural sheet, not a stringing sheet.
@@ -510,6 +574,9 @@ def _draw_traced_attachment_plan(
     """
     from ..calc.wire_routing import _face_local_to_site
     from .site_plan import (
+        _draw_ee4_face_allocation_overlay,
+        _draw_ee4_obstruction_halos,
+        _draw_ee4_trace_facet_identifiers,
         _draw_ee4_trace_fire_pathways,
         _draw_ee4_trace_roof,
         _draw_ee4_trace_symbols,
@@ -542,8 +609,22 @@ def _draw_traced_attachment_plan(
 
     trace = result.inputs.site.ee4_trace
     _draw_ee4_trace_roof(c, trace, to_pt, fill_outline=True)
+    _draw_ee4_face_allocation_overlay(
+        c, result, to_pt,
+        draw_fill=False,
+        draw_labels=False,
+        line_width=0.80,
+    )
     _draw_ee4_trace_fire_pathways(c, trace, to_pt)
     _draw_ee4_trace_roof(c, trace, to_pt, fill_outline=False)
+    _draw_ee4_face_allocation_overlay(
+        c, result, to_pt,
+        draw_fill=False,
+        draw_labels=False,
+        line_width=1.05,
+        label_size=5.8,
+    )
+    _draw_ee4_obstruction_halos(c, result, to_pt)
 
     # Modules: pale fill + blue outlines, matching EE-4 but slightly lighter
     # so the red attachment points remain the highest-salience layer.
@@ -580,6 +661,11 @@ def _draw_traced_attachment_plan(
             _draw_module_attachment_points(c, section, m, to_pt)
 
     _draw_ee4_trace_symbols(c, trace, to_pt)
+    _draw_ee4_trace_facet_identifiers(
+        c, result, to_pt,
+        draw_labels=True,
+        line_width=0.82,
+    )
     _draw_attachment_plan_callouts(c, x=x, y=y, w=w, h=h)
 
 
@@ -588,15 +674,7 @@ def _draw_module_polygon(
 ) -> None:
     if len(pts) < 4:
         return
-    c.setStrokeColor(colors.HexColor("#155EEF"))
-    c.setFillColor(colors.HexColor("#F7FAFF"))
-    c.setLineWidth(0.45)
-    path = c.beginPath()
-    path.moveTo(*pts[0])
-    for p in pts[1:]:
-        path.lineTo(*p)
-    path.close()
-    c.drawPath(path, stroke=1, fill=1)
+    draw_pv_module(c, pts, width=0.45)
     c.setStrokeColor(colors.black)
     c.setFillColor(colors.black)
 
@@ -656,10 +734,14 @@ def _draw_attachment_plan_callouts(
     c.drawCentredString(fx, y24 - 0.17 * inch,
                         '24" FRAMING SPACING')
 
-    # Legend note for red points.
+    # Legend notes for plan overlays.
     c.setFont("Helvetica", 6.6)
     c.drawRightString(x + w - 0.06 * inch, y + h - 0.18 * inch,
                  "RED SQUARES = ATTACHMENT POINTS; GRAY LINES = FRAMING GUIDES")
+    c.setFillColor(colors.HexColor("#7C2D12"))
+    c.drawRightString(x + w - 0.06 * inch, y + h - 0.32 * inch,
+                      "ORANGE HATCH = FIRE / NO-PV CLEARANCE")
+    c.setFillColor(colors.black)
     c.setStrokeColor(colors.black)
 
 
@@ -685,10 +767,12 @@ def _draw_section_plan(
         5. Labels
     """
     placements = placements or []
+    compact = w < 1.55 * inch or h < 1.05 * inch
     # Compute scale: fit section's bounding box into (w, h) with margin
-    pad = 0.30 * inch
+    pad = (0.08 if compact else 0.30) * inch
     avail_w = max(w - 2 * pad, 0.5 * inch)
-    avail_h = max(h - 0.5 * inch, 0.5 * inch)
+    title_h = (0.24 if compact else 0.50) * inch
+    avail_h = max(h - title_h, 0.5 * inch)
     sec_w = section.width_ft
     sec_h = section.height_ft
     if sec_w <= 0 or sec_h <= 0:
@@ -700,20 +784,35 @@ def _draw_section_plan(
         return x + pad + local_x * scale
 
     def py(local_y: float) -> float:
-        return y + 0.10 * inch + local_y * scale
+        return y + (0.05 if compact else 0.10) * inch + local_y * scale
 
     # Title strip
-    c.setFont("Helvetica-Bold", 9)
+    title_font = 5.3 if compact else 9
+    meta_font = 4.7 if compact else 7.5
+    display_modules = _display_module_count(section, layout, len(placements))
+    c.setFont("Helvetica-Bold", title_font)
     title = f"{section.name}   ({section.pitch_deg:.0f}° / {section.azimuth_deg:.0f}°az)"
-    c.drawString(x + pad, y + h - 0.10 * inch, title)
-    c.setFont("Helvetica", 7.5)
-    c.drawString(x + pad, y + h - 0.22 * inch,
-                 f"Gross {layout.gross_area_sqft:.0f} ft² · "
-                 f"Usable {layout.usable_area_sqft:.0f} ft² · "
-                 f"{layout.module_count} mods")
+    c.drawString(
+        x + pad,
+        y + h - (0.07 if compact else 0.10) * inch,
+        fit(title, "Helvetica-Bold", title_font, w - 2 * pad),
+    )
+    c.setFont("Helvetica", meta_font)
+    meta = (
+        f"{display_modules} mods"
+        if compact
+        else f"Gross {layout.gross_area_sqft:.0f} ft² · "
+             f"Usable {layout.usable_area_sqft:.0f} ft² · "
+             f"{display_modules} mods"
+    )
+    c.drawString(
+        x + pad,
+        y + h - (0.16 if compact else 0.22) * inch,
+        fit(meta, "Helvetica", meta_font, w - 2 * pad),
+    )
 
     # 1. Section outline
-    c.setLineWidth(1.2)
+    c.setLineWidth(0.55 if compact else 1.2)
     c.setStrokeColor(colors.black)
     if section.shape == "rect":
         c.rect(px(0), py(0), sec_w * scale, sec_h * scale)
@@ -736,7 +835,7 @@ def _draw_section_plan(
 
     # 2. Setback inset (dashed). For rect we redraw the inset rectangle;
     # for tri we use the inradius-shrunken triangle.
-    c.setLineWidth(0.5)
+    c.setLineWidth(0.25 if compact else 0.5)
     c.setStrokeColor(colors.HexColor("#888888"))
     c.setDash(3, 2)
     if section.shape == "rect":
@@ -810,7 +909,7 @@ def _draw_section_plan(
         # fill + saturated stroke so the bands read at a glance without
         # over-saturating the page. Modules with string_index=None (e.g.,
         # n_strings=0 degenerate yaml) fall back to the legacy blue.
-        c.setLineWidth(0.4)
+        c.setLineWidth(0.25 if compact else 0.4)
         for m in placements:
             mx0 = px(m.x_ft)
             my0 = py(m.y_ft)
@@ -835,7 +934,7 @@ def _draw_section_plan(
         )
         c.setStrokeColor(colors.HexColor("#1F5BD7"))
         c.setFillColor(colors.HexColor("#E8F0FF"))
-        c.setLineWidth(0.3)
+        c.setLineWidth(0.2 if compact else 0.3)
         cell_pt = cell_ft * scale
         for cx_m, cy_m in centers:
             c.rect(
@@ -860,7 +959,7 @@ def _draw_section_plan(
             cell = min(cell_w, cell_h)
             c.setStrokeColor(colors.HexColor("#1F5BD7"))
             c.setFillColor(colors.HexColor("#E8F0FF"))
-            c.setLineWidth(0.3)
+            c.setLineWidth(0.2 if compact else 0.3)
             placed = 0
             for r_i in range(rows_n):
                 for col_i in range(cols_n):
@@ -874,29 +973,42 @@ def _draw_section_plan(
             c.setStrokeColor(colors.black)
 
     # 4. Obstructions w/ halo
-    c.setFont("Helvetica", 6.5)
+    c.setFont("Helvetica", 4.5 if compact else 6.5)
     for obs in section.obstructions:
         halo_x = obs.x_ft - obs.setback_ft
         halo_y = obs.y_ft - obs.setback_ft
         halo_w_ft = obs.width_ft + 2 * obs.setback_ft
         halo_h_ft = obs.height_ft + 2 * obs.setback_ft
-        # Halo (light fill)
-        c.setFillColor(colors.HexColor("#FFE4B5"))
-        c.setStrokeColor(colors.HexColor("#D97706"))
-        c.setLineWidth(0.4)
-        c.rect(px(halo_x), py(halo_y),
-               halo_w_ft * scale, halo_h_ft * scale,
-               fill=1, stroke=1)
-        # Inner obstruction (hatched / cross-hatched look via diagonal lines)
-        c.setFillColor(colors.HexColor("#D97706"))
-        c.rect(px(obs.x_ft), py(obs.y_ft),
-               obs.width_ft * scale, obs.height_ft * scale,
-               fill=1, stroke=1)
+        halo_pts = [
+            (px(halo_x), py(halo_y)),
+            (px(halo_x + halo_w_ft), py(halo_y)),
+            (px(halo_x + halo_w_ft), py(halo_y + halo_h_ft)),
+            (px(halo_x), py(halo_y + halo_h_ft)),
+        ]
+        draw_keepout_area(c, halo_pts)
+        # Inner obstruction uses the same local CAD symbol palette as PV-2.
+        sx = px(obs.x_ft + obs.width_ft / 2)
+        sy = py(obs.y_ft + obs.height_ft / 2)
+        symbol_kind = {
+            "vent_pipe": "plumbing",
+            "fan_vent": "roof_vent",
+            "hvac_unit": "ac",
+            "satellite_dish": "satellite",
+            "access_hatch": "roof_vent",
+        }.get(obs.kind, obs.kind)
+        draw_roof_symbol(
+            c,
+            sx,
+            sy,
+            symbol_kind,
+            size=max(5.0, min(obs.width_ft, obs.height_ft) * scale),
+        )
         c.setFillColor(colors.black)
         # Label
         label_x = px(obs.x_ft + obs.width_ft / 2)
         label_y = py(obs.y_ft + obs.height_ft + 0.05) + 1
-        c.drawCentredString(label_x, label_y, obs.kind.upper())
+        if not compact:
+            c.drawCentredString(label_x, label_y, obs.kind.upper())
     c.setStrokeColor(colors.black)
 
 
@@ -1606,6 +1718,10 @@ class PV6StringCallout:
     label_bbox: tuple[float, float, float, float]
 
 
+PV6_CALLOUT_FONT = "Helvetica-Bold"
+PV6_CALLOUT_SIZE = 9.0
+
+
 def _pv6_trace_layout(
     result: CalculationResult, *, W: float | None = None, H: float | None = None,
 ) -> PV6TraceLayout | None:
@@ -1654,6 +1770,9 @@ def _draw_traced_string_plan_page(
     """Stage 9.10 — reference-style PV-6 string layout."""
     from .site_plan import (
         _draw_ee4_equipment_summary,
+        _draw_ee4_face_allocation_overlay,
+        _draw_ee4_obstruction_halos,
+        _draw_ee4_trace_facet_identifiers,
         _draw_ee4_trace_roof,
         _draw_ee4_trace_symbols,
     )
@@ -1686,8 +1805,21 @@ def _draw_traced_string_plan_page(
     trace = result.inputs.site.ee4_trace
     _draw_ee4_trace_roof(c, trace, layout.to_pt, fill_outline=True)
     _draw_ee4_trace_roof(c, trace, layout.to_pt, fill_outline=False)
+    _draw_ee4_face_allocation_overlay(
+        c, result, layout.to_pt,
+        draw_fill=False,
+        draw_labels=False,
+        line_width=1.10,
+        label_size=5.8,
+    )
+    _draw_ee4_obstruction_halos(c, result, layout.to_pt)
     _draw_pv6_string_modules(c, result, layout.to_pt)
     _draw_ee4_trace_symbols(c, trace, layout.to_pt)
+    _draw_ee4_trace_facet_identifiers(
+        c, result, layout.to_pt,
+        draw_labels=False,
+        line_width=0.90,
+    )
     _draw_pv6_string_callouts(c, _pv6_string_callouts(result, layout))
 
     c.setFillColor(colors.black)
@@ -1761,8 +1893,49 @@ def _draw_pv6_left_summary_and_legend(
         c.rect(sw_x, yy - 0.02 * inch, 0.25 * inch, 0.13 * inch,
                fill=1, stroke=1)
         yy -= 0.22 * inch
+
+    yy += 0.08 * inch
+    c.setFont("Helvetica", 7.0)
+    c.setFillColor(colors.black)
+    c.drawString(x, yy, "NO-PV AREA")
+    sw_x = x + 1.05 * inch
+    sw_y = yy - 0.02 * inch
+    c.setFillColor(colors.HexColor("#FFE4B5"))
+    c.setStrokeColor(colors.HexColor("#B45309"))
+    c.setLineWidth(0.45)
+    c.rect(sw_x, sw_y, 0.25 * inch, 0.13 * inch, fill=1, stroke=1)
+    c.setStrokeColor(colors.HexColor("#D97706"))
+    for off in range(-3, 18, 4):
+        c.line(sw_x + off, sw_y - 1.0, sw_x + off + 8.0,
+               sw_y + 0.13 * inch + 1.0)
     c.setFillColor(colors.black)
     c.setStrokeColor(colors.black)
+
+    from .site_plan import _ee4_face_allocation_rows
+
+    rows = _ee4_face_allocation_rows(result)
+    if rows:
+        yy -= 0.24 * inch
+        c.setFont("Helvetica-Bold", 7.0)
+        c.drawString(x, yy, "FACE ALLOCATION")
+        yy -= 0.16 * inch
+        c.setFont("Helvetica", 6.6)
+        for row in rows[:3]:
+            label = (
+                f"P{row.priority} {row.direction}: "
+                f"{row.modules} MOD @ AZ {row.azimuth_deg:.0f}"
+            )
+            c.setFillColor(colors.HexColor(row.fill_hex))
+            c.setStrokeColor(colors.HexColor(row.stroke_hex))
+            c.rect(x, yy - 0.02 * inch, 0.15 * inch, 0.09 * inch,
+                   fill=1, stroke=1)
+            c.setFillColor(colors.black)
+            c.setStrokeColor(colors.black)
+            c.drawString(
+                x + 0.20 * inch, yy - 0.005 * inch,
+                fit(label, "Helvetica", 6.6, 1.78 * inch),
+            )
+            yy -= 0.14 * inch
 
 
 def _pv6_string_rollup(result: CalculationResult) -> dict[int, int]:
@@ -1855,7 +2028,14 @@ def _pv6_string_callouts(
             items.sort(key=lambda e: -(float(e["y0"]) + float(e["y1"])) / 2)
         for slot, entry in enumerate(items):
             callouts.append(
-                _pv6_position_callout(entry, side, slot, len(items), layout.plot)
+                _pv6_position_callout(
+                    entry,
+                    side,
+                    slot,
+                    len(items),
+                    layout.plot,
+                    roof_bbox=roof_bbox,
+                )
             )
     return sorted(callouts, key=lambda c: c.string_index)
 
@@ -1887,31 +2067,31 @@ def _pv6_preferred_callout_side(
     dx = cx - rcx
     dy = cy - rcy
     roof_w = max(rx1 - rx0, 1.0)
+    roof_h = max(ry1 - ry0, 1.0)
     near_left_edge = x0 <= rx0 + roof_w * 0.12
     near_right_edge = x1 >= rx1 - roof_w * 0.12
+    middle_band = ry0 + roof_h * 0.30 <= cy <= ry1 - roof_h * 0.30
     room = {
-        "top": py1 - y1,
-        "right": px1 - x1,
-        "bottom": y0 - py0,
-        "left": x0 - px0,
+        "top": py1 - ry1,
+        "right": px1 - rx1,
+        "bottom": ry0 - py0,
+        "left": rx0 - px0,
     }
 
-    if (
-        dx > abs(dy) * 0.75
-        and near_right_edge
-        and room["right"] > 1.18 * inch
-    ):
-        return "right"
-    if (
-        -dx > abs(dy) * 0.75
-        and near_left_edge
-        and room["left"] > 1.18 * inch
-    ):
+    if near_left_edge and room["left"] > 0.62 * inch:
         return "left"
     if dy >= 0 and room["top"] > 0.28 * inch:
         return "top"
+    if (
+        near_right_edge
+        and middle_band
+        and room["right"] > 0.62 * inch
+    ):
+        return "right"
     if dy < 0 and room["bottom"] > 0.28 * inch:
         return "bottom"
+    if dx > abs(dy) * 0.75 and near_right_edge and room["right"] > 0.62 * inch:
+        return "right"
     return max(room, key=room.get)
 
 
@@ -1921,6 +2101,8 @@ def _pv6_position_callout(
     slot: int,
     total: int,
     plot: tuple[float, float, float, float],
+    *,
+    roof_bbox: tuple[float, float, float, float] | None = None,
 ) -> PV6StringCallout:
     px0, py0, px1, py1 = plot
     x0 = float(entry["x0"])
@@ -1930,38 +2112,45 @@ def _pv6_position_callout(
     cx = (x0 + x1) / 2
     cy = (y0 + y1) / 2
     text = str(entry["text"])
-    font = "Helvetica-Bold"
-    size = 13.0
+    font = PV6_CALLOUT_FONT
+    size = PV6_CALLOUT_SIZE
     text_w = pdfmetrics.stringWidth(text, font, size)
     margin = 0.10 * inch
     slot_w = (px1 - px0 - 2 * margin) / max(total, 1)
     slot_h = (py1 - py0 - 2 * margin) / max(total, 1)
+    label_rx0, label_ry0, label_rx1, label_ry1 = roof_bbox or (x0, y0, x1, y1)
 
     if side == "top":
-        slot_cx = px0 + margin + slot_w * (slot + 0.5)
+        slot_cx = (
+            cx if total == 1
+            else px0 + margin + slot_w * (slot + 0.5)
+        )
         label_x = _clamp(slot_cx - text_w / 2, px0 + margin, px1 - margin - text_w)
-        label_y = min(py1 - 0.23 * inch, y1 + 0.48 * inch)
+        label_y = min(py1 - 0.23 * inch, label_ry1 + 0.48 * inch)
         target = (cx, y1)
         knee = (cx, label_y - 0.08 * inch)
         anchor = (label_x + text_w / 2, label_y - 0.04 * inch)
     elif side == "bottom":
-        slot_cx = px0 + margin + slot_w * (slot + 0.5)
+        slot_cx = (
+            cx if total == 1
+            else px0 + margin + slot_w * (slot + 0.5)
+        )
         label_x = _clamp(slot_cx - text_w / 2, px0 + margin, px1 - margin - text_w)
-        label_y = max(py0 + 0.13 * inch, y0 - 0.52 * inch)
+        label_y = max(py0 + 0.13 * inch, label_ry0 - 0.52 * inch)
         target = (cx, y0)
         knee = (cx, label_y + size + 0.08 * inch)
         anchor = (label_x + text_w / 2, label_y + size + 0.02 * inch)
     elif side == "right":
         slot_cy = py1 - margin - slot_h * (slot + 0.5)
         label_y = _clamp(slot_cy - size / 2, py0 + margin, py1 - margin - size)
-        label_x = min(px1 - margin - text_w, x1 + 0.38 * inch)
+        label_x = min(px1 - margin - text_w, label_rx1 + 0.38 * inch)
         target = (x1, cy)
         knee = (label_x - 0.10 * inch, cy)
         anchor = (label_x - 0.04 * inch, label_y + size / 2)
     else:
         slot_cy = py1 - margin - slot_h * (slot + 0.5)
         label_y = _clamp(slot_cy - size / 2, py0 + margin, py1 - margin - size)
-        label_x = max(px0 + margin, x0 - text_w - 0.38 * inch)
+        label_x = max(px0 + margin, label_rx0 - text_w - 0.38 * inch)
         target = (x0, cy)
         knee = (label_x + text_w + 0.10 * inch, cy)
         anchor = (label_x + text_w + 0.04 * inch, label_y + size / 2)
@@ -1995,8 +2184,8 @@ def _draw_pv6_string_callouts(
     if not callouts:
         return
     c.saveState()
-    c.setStrokeColor(colors.black)
-    c.setLineWidth(0.55)
+    c.setStrokeColor(colors.HexColor("#475569"))
+    c.setLineWidth(0.38)
     for callout in callouts:
         c.line(*callout.target, *callout.knee)
         c.line(*callout.knee, *callout.label_anchor)
@@ -2005,7 +2194,7 @@ def _draw_pv6_string_callouts(
         c.setFillColor(colors.white)
         c.rect(x0, y0, x1 - x0, y1 - y0, fill=1, stroke=0)
         c.setFillColor(colors.black)
-        c.setFont("Helvetica-Bold", 13)
+        c.setFont(PV6_CALLOUT_FONT, PV6_CALLOUT_SIZE)
         c.drawString(callout.label_bbox[0] + 0.04 * inch,
                      callout.label_bbox[1] + 0.03 * inch,
                      callout.text)

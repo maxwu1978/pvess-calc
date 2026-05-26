@@ -42,6 +42,10 @@ def test_stage910_frisco_pv6_uses_traced_whole_roof_layout(tmp_path: Path):
     assert "STRING 2: (9) MODULES" in text
     assert "STRING 3: (9) MODULES" in text
     assert "STRING 4: (9) MODULES" in text
+    assert "NO-PV AREA" in text
+    assert "FACE ALLOCATION" in text
+    assert "P1 SOUTH" in text
+    assert "P2 WEST" in text
     assert text.count("STRING 1") >= 2
     assert "PER-STRING DETAILS" not in text
 
@@ -59,6 +63,12 @@ def test_stage9104_pv6_emits_one_external_callout_per_string():
         "STRING 3",
         "STRING 4",
     ]
+    assert {c.string_index: c.side for c in callouts} == {
+        0: "top",
+        1: "right",
+        2: "bottom",
+        3: "left",
+    }
     assert all(c.target != c.label_anchor for c in callouts)
     assert {c.side for c in callouts} <= {"top", "right", "bottom", "left"}
 
@@ -67,6 +77,7 @@ def test_stage9104_pv6_emits_one_external_callout_per_string():
         x0, y0, x1, y1 = callout.label_bbox
         assert frame[0] <= x0 < x1 <= frame[2]
         assert frame[1] <= y0 < y1 <= frame[3]
+        assert y1 - y0 <= 0.20 * 72
     for idx, a in enumerate(callouts):
         for b in callouts[idx + 1:]:
             assert _bbox_intersection_area(a.label_bbox, b.label_bbox) == 0

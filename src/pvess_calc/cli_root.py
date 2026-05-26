@@ -10,6 +10,7 @@ Subcommand layout mirrors the natural customer workflow phases:
   Phase 1 — INTAKE        pvess init        new project + wizard
                           pvess survey      site-checklist PDF
                           pvess lookup      verify address lookup
+                          pvess roof-review CAD roof trace package
 
   Phase 2 — DESIGN        pvess calc        NEC math + report.md
                           pvess customer    customer-summary PDF
@@ -22,9 +23,13 @@ Subcommand layout mirrors the natural customer workflow phases:
                           pvess render      QET single-line diagram
                           pvess ee4-trace   EE-4 trace skeleton YAML
                           pvess ee4-preview EE-4 PDF/PNG preview
+                          pvess roof-import import reviewed roof DXF
 
   Phase 4 — VERIFY        pvess doctor      structural self-checks
                           pvess readiness   source-data readiness report
+                          pvess roof-qa     reviewed roof DXF QA
+                          pvess visual-benchmark compare roof-plan visuals
+                          pvess visual-iterate bounded visual benchmark loop
                           pvess web-smoke   production Web smoke check
                           pvess symbols     symbols preview
 
@@ -53,9 +58,14 @@ from .cli import (
     permit_cmd,
     readiness_cmd,
     render_cmd,
+    roof_import_cmd,
+    roof_qa_cmd,
+    roof_review_cmd,
     roof_vis_cmd,
     site_checklist_cmd,
     symbols_preview_cmd,
+    visual_benchmark_cmd,
+    visual_iterate_cmd,
 )
 from .doctor import doctor_cmd
 from .web.server import serve_cmd
@@ -70,12 +80,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
     help=(
         "PV + ESS permit-package toolchain.\n\n"
         "Workflow phases (run in order for a new project):\n\n"
-        "  1. INTAKE   :  `pvess init`, `pvess survey`, `pvess lookup`, `pvess roof-vis`\n"
+        "  1. INTAKE   :  `pvess init`, `pvess survey`, `pvess lookup`, "
+        "`pvess roof-vis`, `pvess roof-review`\n"
         "  2. DESIGN   :  `pvess calc`, `pvess customer`, `pvess compare`\n"
         "                `pvess serve` for the browser-based estimator\n"
         "  3. SUBMIT   :  `pvess permit`, `pvess dxf`, `pvess labels`, "
-        "`pvess render`, `pvess ee4-trace`, `pvess ee4-preview`\n"
-        "  4. VERIFY   :  `pvess doctor`, `pvess readiness`, `pvess symbols`\n"
+        "`pvess render`, `pvess ee4-trace`, `pvess ee4-preview`, "
+        "`pvess roof-import`\n"
+        "  4. VERIFY   :  `pvess doctor`, `pvess readiness`, "
+        "`pvess roof-qa`, `pvess visual-benchmark`, "
+        "`pvess visual-iterate`, `pvess symbols`\n"
         "                `pvess web-smoke` for production Web health checks\n\n"
         "Or skip the choreography and use a pipeline:\n"
         "  `pvess pipeline customer projects/<id>/`   "
@@ -97,6 +111,7 @@ pvess.add_command(init_cmd, name="init")
 pvess.add_command(site_checklist_cmd, name="survey")
 pvess.add_command(lookup_check_cmd, name="lookup")
 pvess.add_command(roof_vis_cmd, name="roof-vis")
+pvess.add_command(roof_review_cmd, name="roof-review")
 
 
 # ─── Phase 2: DESIGN ────────────────────────────────────────────────
@@ -117,6 +132,7 @@ pvess.add_command(labels_cmd, name="labels")
 pvess.add_command(render_cmd, name="render")
 pvess.add_command(ee4_trace_cmd, name="ee4-trace")
 pvess.add_command(ee4_preview_cmd, name="ee4-preview")
+pvess.add_command(roof_import_cmd, name="roof-import")
 
 
 # ─── Phase 4: VERIFY ────────────────────────────────────────────────
@@ -124,6 +140,9 @@ pvess.add_command(ee4_preview_cmd, name="ee4-preview")
 
 pvess.add_command(doctor_cmd, name="doctor")
 pvess.add_command(readiness_cmd, name="readiness")
+pvess.add_command(roof_qa_cmd, name="roof-qa")
+pvess.add_command(visual_benchmark_cmd, name="visual-benchmark")
+pvess.add_command(visual_iterate_cmd, name="visual-iterate")
 pvess.add_command(smoke_cmd, name="web-smoke")
 pvess.add_command(symbols_preview_cmd, name="symbols")
 

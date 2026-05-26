@@ -18,7 +18,7 @@ from ..schema import Battery, Inputs
 
 WEB_QUOTE_TIERS: tuple[tuple[str, str | None, int], ...] = (
     ("PV-only", None, 0),
-    ("Base backup", "inhouse_16kwh_hv", 1),
+    ("Base backup", "pytes_v16", 1),
     ("Large backup", "growatt_apx_20kwh", 1),
 )
 

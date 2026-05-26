@@ -984,7 +984,11 @@ def _check_nec_edition_artifacts_consistent(
     if report_md.exists():
         artifacts_checked += 1
         text = report_md.read_text(encoding="utf-8")
-        if f"NEC 版本 | {declared}" not in text and f"NEC {declared}" not in text:
+        if (
+            f"NEC 版本 | {declared}" not in text
+            and f"NEC Edition | NEC {declared}" not in text
+            and f"NEC {declared}" not in text
+        ):
             problems.append(f"report.md missing NEC {declared}")
     permit_pdfs = list(permit_dir.glob("permit-package-*.pdf"))
     if permit_pdfs:
@@ -2226,6 +2230,15 @@ def _check_ee4_trace_ready_for_review(
     name = "ee4_trace_ready_for_review"
     trace = calc_result.inputs.site.ee4_trace
     if not trace.enabled:
+        from .permit.site_plan import _ee4_untraced_roof_segment_schematic
+        if _ee4_untraced_roof_segment_schematic(calc_result.inputs.site):
+            return [CheckResult(
+                name, "WARN",
+                "trace disabled; EE-4 is using schematic Google Solar "
+                "roof-segment boxes, not an actual traced roof outline. "
+                "Add site.ee4_trace or accept a satellite/mask trace before "
+                "AHJ-ready review.",
+            )]
         return [CheckResult(
             name, "PASS",
             "trace disabled; EE-4 uses generated site geometry",
@@ -2273,6 +2286,50 @@ def _check_ee4_preview_visual_lint(
     detail = "; ".join(f"{r.name}: {r.detail}" for r in issues[:4])
     status = "FAIL" if any(r.status == "FAIL" for r in issues) else "WARN"
     return [CheckResult(name, status, detail)]
+
+
+def _check_panel_placement_qa_ready(
+    calc_result: CalculationResult,
+) -> list[CheckResult]:
+    """R9.4 — formal panel-placement QA gate for traced roof plans."""
+    name = "panel_placement_qa_ready"
+    try:
+        from .permit.panel_placement_qa import assess_panel_placement_qa
+    except ImportError as exc:
+        return [CheckResult(name, "FAIL", f"import failed: {exc}")]
+
+    report = assess_panel_placement_qa(calc_result)
+    if not report.get("qa_constraints_pass"):
+        blockers = report.get("blocking_checks") or []
+        detail = "; ".join(
+            f"{item.get('name')}: {item.get('detail')}"
+            for item in blockers[:4]
+        )
+        return [CheckResult(name, "FAIL", detail)]
+
+    facet_check = next(
+        (
+            item for item in report.get("checks", [])
+            if item.get("name") == "roof_facets_complete_enough_for_ahj"
+        ),
+        None,
+    )
+    if facet_check and facet_check.get("status") != "PASS":
+        return [CheckResult(
+            name,
+            "WARN",
+            str(facet_check.get("detail", "")),
+        )]
+
+    return [CheckResult(
+        name,
+        "PASS",
+        (
+            f"{report.get('placed_modules', 0)}/"
+            f"{report.get('target_modules', 0)} modules pass "
+            "panel-placement QA"
+        ),
+    )]
 
 
 def _check_pv6_string_layout_visual_lint(
@@ -2931,6 +2988,8 @@ def run_doctor(project_dir: Path) -> list[CheckResult]:
     results.extend(_check_ee4_trace_ready_for_review(calc_result))
     # Stage 9.4 — geometry/text-placement lints for the EE-4 preview
     results.extend(_check_ee4_preview_visual_lint(calc_result))
+    # R9.4 — panel placement QA report gate
+    results.extend(_check_panel_placement_qa_ready(calc_result))
     # Stage 9.9 — EE-4A data-driven property context guard
     results.extend(_check_ee4a_property_context_data_driven(calc_result))
     # Stage 9.10.5 — PV-6 string plan callout / label visual lint

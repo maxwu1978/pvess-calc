@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 import shutil
 
 import pypdf
@@ -14,8 +15,22 @@ from pvess_calc.cli_root import pvess
 from pvess_calc.permit.ee4_lint import lint_ee4_preview
 from pvess_calc.permit.ee4_review import render_ee4_review
 from pvess_calc.permit.ee4_trace import build_ee4_trace_skeleton, ee4_trace_yaml
-from pvess_calc.permit.site_plan import _ee4_drawing_bounds, render_site_plan
-from pvess_calc.schema import EE4Trace, EE4TracePolygon, Inputs
+from pvess_calc.permit.roof_trace_status import (
+    assess_roof_trace_status,
+    write_roof_trace_artifacts,
+)
+from pvess_calc.permit.site_plan import (
+    _ee4_drawing_bounds,
+    _ee4_face_allocation_rows,
+    _ee4_trace_facet_displays,
+    render_site_plan,
+)
+from pvess_calc.permit.trace_module_layout_status import (
+    assess_trace_module_layout_status,
+    write_trace_module_layout_artifacts,
+)
+from pvess_calc.schema import EE4Trace, EE4TracePolygon, Inputs, RoofSection
+from tests.conftest import make_inputs
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -83,6 +98,63 @@ def test_stage91_frisco_reference_like_array_and_equipment_positions():
     assert result.inputs.site.equipment_locations.msp.x_ft >= 90.0
 
 
+def test_stage91b_frisco_face_allocation_ranks_active_orientations():
+    """R7: face allocation overlay must expose direction + module split."""
+    rows = _ee4_face_allocation_rows(run(Inputs.from_yaml(FRISCO)))
+
+    assert [(r.priority, r.direction, r.modules) for r in rows] == [
+        (1, "SOUTH", 28),
+        (2, "WEST", 8),
+    ]
+    assert rows[0].azimuth_deg == pytest.approx(180, abs=1.0)
+    assert rows[1].azimuth_deg == pytest.approx(268, abs=1.0)
+
+
+def test_stage91c_trace_facets_get_f_tags_and_panel_metadata():
+    """R8: reviewed roof facets need explicit F# tags tied to PV faces."""
+    inputs = make_inputs(modules=4, strings=1)
+    inputs.site.roof_sections = [
+        RoofSection(
+            name="South Face",
+            roof_type="Comp Shingle",
+            pitch_deg=24,
+            azimuth_deg=180,
+            module_count=4,
+            width_ft=20,
+            height_ft=20,
+            shape="polygon",
+            vertices=[(0, 0), (20, 0), (20, 20), (0, 20)],
+            site_anchor_x_ft=0,
+            site_anchor_y_ft=0,
+            site_anchor_azimuth_deg=0,
+        )
+    ]
+    inputs.site.ee4_trace = EE4Trace(
+        enabled=True,
+        roof_outline=EE4TracePolygon(
+            name="reviewed outline",
+            vertices=[(0, 0), (25, 0), (25, 20), (0, 20)],
+        ),
+        roof_facets=[
+            EE4TracePolygon(
+                name="South Face",
+                vertices=[(0, 0), (20, 0), (20, 20), (0, 20)],
+            ),
+            EE4TracePolygon(
+                name="Non-PV Context",
+                vertices=[(21, 0), (25, 0), (25, 4), (21, 4)],
+            ),
+        ],
+    )
+    result = run(inputs)
+    displays = _ee4_trace_facet_displays(result)
+
+    assert [(d.tag, d.direction, d.modules, d.priority) for d in displays] == [
+        ("F1", "SOUTH", 4, 1),
+        ("F2", "NO PV", 0, None),
+    ]
+
+
 def test_stage9_default_render_is_pure_vector_not_satellite(
     monkeypatch, tmp_path: Path,
 ):
@@ -117,6 +189,81 @@ def test_stage92_trace_skeleton_generation_outputs_paste_ready_yaml():
     parsed = EE4Trace.model_validate(payload["site"]["ee4_trace"])
     assert parsed.enabled is True
     assert parsed.roof_outline is not None
+
+
+def test_stage92_trace_skeleton_fire_pathways_stay_on_perimeter():
+    inputs = Inputs.from_yaml(FRISCO)
+    inputs.site.ee4_trace = build_ee4_trace_skeleton(run(inputs))
+
+    status = assess_trace_module_layout_status(run(inputs))
+
+    assert status["status"] in {"PASS", "WARN"}
+    assert status["can_ahj_ready"] is True
+    assert not status["blocking_lints"]
+
+
+def test_roof_trace_status_passes_for_verified_trace():
+    status = assess_roof_trace_status(run(Inputs.from_yaml(FRISCO)))
+
+    assert status["status"] == "PASS"
+    assert status["mode"] == "traced"
+    assert status["can_ahj_ready"] is True
+
+
+def test_trace_module_layout_status_passes_for_verified_trace():
+    status = assess_trace_module_layout_status(run(Inputs.from_yaml(FRISCO)))
+
+    assert status["mode"] == "traced_layout"
+    assert status["can_ahj_ready"] is True
+    assert status["placed_modules"] == status["target_modules"]
+    assert status["blocking_lints"] == []
+    assert "assigned roof faces" in status["detail"]
+
+
+def test_trace_module_layout_status_blocks_modules_outside_trace(tmp_path: Path):
+    inputs = Inputs.from_yaml(FRISCO)
+    inputs.site.ee4_trace.roof_outline = EE4TracePolygon(
+        name="Too small reviewed roof outline",
+        vertices=[(0, 0), (5, 0), (5, 5), (0, 5)],
+    )
+    result = run(inputs)
+
+    status = assess_trace_module_layout_status(result)
+    assert status["status"] == "FAIL"
+    assert status["can_ahj_ready"] is False
+    assert {
+        item["name"] for item in status["blocking_lints"]
+    } >= {"ee4_modules_inside_trace_roof"}
+
+    artifacts = write_trace_module_layout_artifacts(result, tmp_path)
+    assert artifacts["status_json"].exists()
+    assert artifacts["status_markdown"].exists()
+
+
+def test_roof_trace_status_warns_for_many_untraced_lookup_segments(tmp_path: Path):
+    inputs = make_inputs(modules=32, strings=4)
+    inputs.site.roof_sections = [
+        RoofSection(
+            name=f"Lookup Segment {idx + 1}",
+            width_ft=10 + idx % 4,
+            height_ft=10 + idx % 3,
+            azimuth_deg=(idx * 31) % 360,
+        )
+        for idx in range(13)
+    ]
+    result = run(inputs)
+
+    status = assess_roof_trace_status(result)
+    assert status["status"] == "WARN"
+    assert status["mode"] == "schematic_segments"
+    assert status["can_ahj_ready"] is False
+
+    artifacts = write_roof_trace_artifacts(result, tmp_path)
+    assert artifacts["status_json"].exists()
+    assert artifacts["status_markdown"].exists()
+    assert artifacts["draft_yaml"].exists()
+    draft = yaml.safe_load(artifacts["draft_yaml"].read_text(encoding="utf-8"))
+    assert EE4Trace.model_validate(draft["site"]["ee4_trace"]).enabled
 
 
 def test_stage92_cli_writes_trace_skeleton(tmp_path: Path):
@@ -189,6 +336,23 @@ def test_stage94_visual_lint_passes_for_frisco_trace():
     results = lint_ee4_preview(run(Inputs.from_yaml(FRISCO)))
     assert results
     assert all(r.status == "PASS" for r in results), results
+    by_name = {r.name: r for r in results}
+    assert by_name["ee4_module_count_matches_face_allocation"].status == "PASS"
+    assert by_name["ee4_module_rectangles_inside_assigned_faces"].status == "PASS"
+
+
+def test_stage94_visual_lint_warns_when_module_leaves_assigned_face():
+    result = run(Inputs.from_yaml(FRISCO))
+    first = result.module_placements["South Roof"][0]
+    result.module_placements["South Roof"][0] = replace(first, x_ft=999.0)
+
+    results = lint_ee4_preview(result)
+    by_name = {r.name: r for r in results}
+
+    assert by_name["ee4_module_rectangles_inside_assigned_faces"].status == "WARN"
+    assert "South Roof#1" in by_name[
+        "ee4_module_rectangles_inside_assigned_faces"
+    ].detail
 
 
 def test_stage94_visual_lint_warns_when_modules_leave_roof_outline():
@@ -218,11 +382,11 @@ def test_stage96_visual_lint_warns_when_module_corner_leaves_roof_outline():
 
 
 def test_stage96_visual_lint_warns_on_module_rectangle_overlap():
-    inputs = Inputs.from_yaml(FRISCO)
-    for section in inputs.site.roof_sections:
-        if section.name == "South Roof #2":
-            section.site_anchor_x_ft = 67.0
-    results = lint_ee4_preview(run(inputs))
+    result = run(Inputs.from_yaml(FRISCO))
+    result.module_placements["South Roof"].append(
+        result.module_placements["South Roof"][0]
+    )
+    results = lint_ee4_preview(result)
     by_name = {r.name: r for r in results}
     assert by_name["ee4_module_rectangles_no_overlap"].status == "WARN"
 

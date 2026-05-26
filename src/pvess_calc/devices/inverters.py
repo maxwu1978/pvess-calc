@@ -22,7 +22,7 @@ INVERTERS: dict[str, dict] = {
         dc_afci="integrated",
         ul1699b_listed=True,
     ),
-    # ─── Megarevo hybrid series (Chinese OEM, DFW installer staple) ───
+    # ─── Megarevo hybrid series (DFW installer staple) ────────────────
     "megarevo_r8klna": dict(
         brand="Megarevo",
         model="R8KLNA",
@@ -31,6 +31,15 @@ INVERTERS: dict[str, dict] = {
         dc_afci="integrated",
         ul1699b_listed=True,
     ),
+    "megarevo_r10klna": dict(
+        brand="Megarevo",
+        model="R10KLNA",
+        ac_output_v=240.0,
+        ac_output_a=41.7,            # 10 kW / 240 V
+        dc_afci="integrated",
+        ul1699b_listed=True,
+    ),
+    # Back-compat only. Official 2026 web intake uses R10KLNA.
     "megarevo_r11klna": dict(
         brand="Megarevo",
         model="R11KLNA",
@@ -103,6 +112,7 @@ INVERTERS: dict[str, dict] = {
 INVERTER_PRICES_USD: dict[str, float] = {
     "sol_ark_12k": 5500,
     "megarevo_r8klna": 1600,    # wholesale (2026-05-17 DFW installer)
+    "megarevo_r10klna": 1900,   # wholesale estimate for official R10KLNA family
     "megarevo_r11klna": 2000,   # wholesale (~25% premium for +3 kW vs R8)
     "growatt_min11400tl_xh_us": 2500,
     "growatt_min11000tl_x": 2500,

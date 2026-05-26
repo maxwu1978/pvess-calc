@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TGE Solar Project Generator</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260520-step3-equipment" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260523-step5-evidence" />
   </head>
   <body>
     <header class="topbar">
@@ -21,7 +21,7 @@
 
     <nav class="workflow-rail" aria-label="Project workflow">
       <a href="#project-basics" data-wizard-step="project-basics"><strong>01</strong><span>Project</span></a>
-      <a href="#site-field-data" data-wizard-step="site-field-data"><strong>02</strong><span>Usage</span></a>
+      <a href="#site-field-data" data-wizard-step="site-field-data"><strong>02</strong><span>Roof</span></a>
       <a href="#system-equipment" data-wizard-step="system-equipment"><strong>03</strong><span>Equipment</span></a>
       <a href="#service-costs" data-wizard-step="service-costs"><strong>04</strong><span>Electrical</span></a>
       <a href="#source-materials" data-wizard-step="source-materials"><strong>05</strong><span>Evidence</span></a>
@@ -157,6 +157,7 @@
           <input type="hidden" name="coordinates" value="" />
           <input type="hidden" name="permit_profile" value="wyssling_like" />
           <input type="hidden" id="lookup-mode" value="online" />
+          <input type="hidden" name="allow_paid_satellite" value="true" />
           <input type="hidden" name="site_address" value="7652 Glasshouse Walk, Frisco, TX 75035" />
           <input type="hidden" name="location" value="Frisco, TX" />
           <select id="address-sample" hidden aria-hidden="true">
@@ -168,10 +169,43 @@
           <div id="lookup-panel" class="lookup-panel hidden"></div>
         </section>
 
-        <section id="site-field-data" class="panel flow-section" data-step="02" data-wizard-title="Usage & Goals">
+        <section id="site-field-data" class="panel flow-section" data-step="02" data-wizard-title="Roof & Usage">
           <div class="section-head">
-            <h2>Usage and site basics</h2>
+            <h2>Roof and usage</h2>
           </div>
+          <div class="intake-block roof-confirmation-block">
+            <div class="block-heading">
+              <h3>Roof confirmation</h3>
+              <p>Build the satellite roof preview now, before choosing equipment or generating the package. The app uses cached Google Solar imagery when available and fetches dataLayers when the API key is configured.</p>
+            </div>
+            <div class="grid two">
+              <label>
+                Satellite crop range
+                <select name="satellite_crop_mode">
+                  <option value="target">Target roof only — tightest review crop</option>
+                  <option value="tight" selected>Tight — target roof focus</option>
+                  <option value="standard">Standard — target with nearby context</option>
+                  <option value="wide">Wide — full Google Solar context</option>
+                </select>
+              </label>
+              <label>
+                Recent roof / satellite image
+                <input name="roof_satellite_image" type="file" accept="image/*" />
+                <span class="field-note">Use this when Google Solar imagery is stale or the roof mask is empty. You can trace from the uploaded image in this step.</span>
+              </label>
+              <div class="roof-preview-command">
+                <span>Use Step 1 address and current roof assumptions.</span>
+                <button id="roof-preview-generate" type="button" class="secondary-button">Build roof preview</button>
+              </div>
+            </div>
+            <div id="roof-preview-panel" class="roof-preview-panel" aria-live="polite">
+              <div class="roof-preview-empty">
+                <strong>No roof preview generated yet.</strong>
+                <span>Check the address in Step 1, then build the satellite and roof-outline preview here.</span>
+              </div>
+            </div>
+          </div>
+
           <div class="intake-block">
             <div class="block-heading">
               <h3>Energy use</h3>
@@ -344,22 +378,25 @@
                 <label>Inverter brand
                   <select name="inverter_choice" id="inverter-choice">
                     <option
-                      value="megarova"
+                      value="megarevo"
                       data-brand="Megarevo"
-                      data-model="R11KLNA"
-                      data-amps="45.8"
-                    >Megarova / Megarevo</option>
+                      data-model="R10KLNA"
+                      data-amps="41.7"
+                      data-paired-battery="pytes_v16"
+                    >Megarevo</option>
                     <option
-                      value="hoymile"
+                      value="hoymiles"
                       data-brand="Hoymiles"
                       data-model="HYS-11.5LV-USG1"
                       data-amps="48"
-                    >Hoymile / Hoymiles</option>
+                      data-paired-battery="hoymiles_hbx_10lv_usg1"
+                    >Hoymiles</option>
                     <option
                       value="growatt"
                       data-brand="Growatt"
                       data-model="MIN 11400TL-XH-US"
                       data-amps="48"
+                      data-paired-battery="growatt_apx_20kwh"
                       selected
                     >Growatt</option>
                   </select>
@@ -379,7 +416,7 @@
             <div class="intake-block">
               <div class="block-heading">
                 <h3>Battery</h3>
-                <p>Select a battery package, or choose no battery for a PV-only estimate.</p>
+                <p>Battery package follows the inverter brand. Choose no battery only for a PV-only estimate.</p>
               </div>
               <div class="grid four">
                 <label>Battery
@@ -391,52 +428,34 @@
                       data-kwh="0"
                     >No battery</option>
                     <option
-                      value="inhouse_16kwh_hv"
-                      data-brand="InHouse"
-                      data-model="HV-16"
+                      value="pytes_v16"
+                      data-brand="Pytes"
+                      data-model="V16"
                       data-kwh="16"
-                      selected
-                    >InHouse HV-16</option>
+                    >Pytes V16</option>
+                    <option
+                      value="hoymiles_hbx_10lv_usg1"
+                      data-brand="Hoymiles"
+                      data-model="HBX-10LV-USG1"
+                      data-kwh="10"
+                    >Hoymiles HBX-10LV-USG1</option>
                     <option
                       value="growatt_apx_20kwh"
                       data-brand="Growatt"
                       data-model="APX HV 20K"
                       data-kwh="20"
+                      selected
                     >Growatt APX HV 20K</option>
-                    <option
-                      value="tesla_powerwall_3"
-                      data-brand="Tesla"
-                      data-model="Powerwall 3"
-                      data-kwh="13.5"
-                    >Tesla Powerwall 3</option>
-                    <option
-                      value="eg4_lifepower4_v2"
-                      data-brand="EG4"
-                      data-model="LifePower4 V2"
-                      data-kwh="5.12"
-                    >EG4 LifePower4 V2</option>
-                    <option
-                      value="franklinwh_apower"
-                      data-brand="FranklinWH"
-                      data-model="aPower"
-                      data-kwh="13.6"
-                    >FranklinWH aPower</option>
-                    <option
-                      value="enphase_iq_battery_5p"
-                      data-brand="Enphase"
-                      data-model="IQ Battery 5P"
-                      data-kwh="5"
-                    >Enphase IQ Battery 5P</option>
                   </select>
                 </label>
                 <label>Battery qty
                   <input name="battery_quantity" type="number" min="0" value="1" />
                 </label>
                 <label>Battery kWh each
-                  <input id="battery-kwh-display" value="16" readonly />
+                  <input id="battery-kwh-display" value="20" readonly />
                 </label>
                 <label>Battery model
-                  <input id="battery-model-display" value="HV-16" readonly />
+                  <input id="battery-model-display" value="APX HV 20K" readonly />
                 </label>
               </div>
             </div>
@@ -445,59 +464,125 @@
 
         <section id="service-costs" class="panel flow-section" data-step="04" data-wizard-title="Electrical & Roof Costs">
           <div class="section-head">
-            <h2>Service, roof, and cost assumptions</h2>
+            <h2>Electrical and cost assumptions</h2>
           </div>
-          <div class="grid four">
-            <label>Main breaker A
-              <input name="main_panel_a" type="number" min="1" value="200" />
-            </label>
-            <label>Busbar A
-              <input name="busbar_a" type="number" min="1" value="200" />
-            </label>
-            <label>Interconnection
-              <select name="interconnection_method">
-                <option value="supply_side_tap" selected>Supply-side tap</option>
-                <option value="120%_rule">120% rule</option>
-                <option value="sum_rule">Sum rule</option>
-                <option value="center_fed">Center-fed</option>
-              </select>
-            </label>
-            <label>Export tariff
-              <select name="export_tariff_model">
-                <option value="tx_default_oncor" selected>TX Oncor default</option>
-                <option value="tx_txu_buyback">TXU buyback</option>
-                <option value="tx_green_mountain">Green Mountain</option>
-                <option value="tx_reliant_sun">Reliant Sun</option>
-                <option value="tx_rhythm_pure">Rhythm Pure</option>
-                <option value="1to1_nem">1:1 NEM</option>
-                <option value="ca_nem3">CA NEM 3.0</option>
-                <option value="hi_self_consumption">HI self-consumption</option>
-              </select>
-            </label>
-            <label>Self-consumption
-              <input name="self_consumption_fraction" type="number" min="0" max="1" step="0.01" value="0.55" />
-            </label>
-            <label>PV turnkey $/W
-              <input name="pv_turnkey_usd_per_w" type="number" min="0.01" max="10" step="0.01" value="2.40" />
-            </label>
-            <label>Inverter cost total
-              <input name="inverter_cost_usd_total" type="number" min="0" step="1" placeholder="optional" />
-            </label>
-            <label>Battery cost total
-              <input name="battery_cost_usd_total" type="number" min="0" step="1" placeholder="optional" />
-            </label>
-            <label>Roof pitch deg
-              <input name="roof_pitch_deg" type="number" min="0" max="60" step="0.1" value="22" />
-            </label>
-            <label>Roof azimuth deg
-              <input name="roof_azimuth_deg" type="number" min="0" max="360" step="1" value="180" />
-            </label>
-            <label>Roof width ft
-              <input name="roof_width_ft" type="number" min="1" step="0.1" value="54" />
-            </label>
-            <label>Roof height ft
-              <input name="roof_height_ft" type="number" min="1" step="0.1" value="24" />
-            </label>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Electrical service</h3>
+              <p>Use nameplate values from the main panel when available. Engineering will confirm against panel photos before AHJ-ready output.</p>
+            </div>
+            <div class="grid four">
+              <label>Main breaker A
+                <select name="main_panel_a">
+                  <option value="100">100 A</option>
+                  <option value="125">125 A</option>
+                  <option value="150">150 A</option>
+                  <option value="175">175 A</option>
+                  <option value="200" selected>200 A</option>
+                  <option value="225">225 A</option>
+                  <option value="400">400 A</option>
+                </select>
+              </label>
+              <label>Busbar A
+                <select name="busbar_a">
+                  <option value="100">100 A</option>
+                  <option value="125">125 A</option>
+                  <option value="150">150 A</option>
+                  <option value="175">175 A</option>
+                  <option value="200" selected>200 A</option>
+                  <option value="225">225 A</option>
+                  <option value="400">400 A</option>
+                </select>
+              </label>
+              <label>Existing solar
+                <select name="existing_solar_status">
+                  <option value="none" selected>No existing solar</option>
+                  <option value="present">Existing solar present</option>
+                  <option value="not_sure">Not sure</option>
+                </select>
+              </label>
+              <label>Interconnection preference
+                <select name="interconnection_method">
+                  <option value="supply_side_tap" selected>Let engineering choose</option>
+                  <option value="120%_rule">Backfed breaker / 120% rule</option>
+                  <option value="sum_rule">Backfed breaker / sum rule</option>
+                  <option value="center_fed">Center-fed panel review</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Utility and savings</h3>
+              <p>Use the local utility plan and a usage behavior preset. Detailed bills can still be uploaded in Evidence.</p>
+            </div>
+            <div class="grid three">
+              <label>Export tariff
+                <select name="export_tariff_model">
+                  <option value="tx_default_oncor" selected>TX Oncor default</option>
+                  <option value="tx_txu_buyback">TXU buyback</option>
+                  <option value="tx_green_mountain">Green Mountain</option>
+                  <option value="tx_reliant_sun">Reliant Sun</option>
+                  <option value="tx_rhythm_pure">Rhythm Pure</option>
+                  <option value="1to1_nem">1:1 NEM</option>
+                  <option value="ca_nem3">CA NEM 3.0</option>
+                  <option value="hi_self_consumption">HI self-consumption</option>
+                </select>
+              </label>
+              <label>Usage behavior
+                <select id="self-consumption-profile" name="self_consumption_profile">
+                  <option value="pv_ess_typical" data-fraction="0.55" selected>Typical solar + battery</option>
+                  <option value="pv_only_typical" data-fraction="0.40">Solar only</option>
+                  <option value="high_daytime" data-fraction="0.65">High daytime usage</option>
+                  <option value="backup_focused" data-fraction="0.50">Backup-focused</option>
+                </select>
+              </label>
+              <label>PV turnkey $/W
+                <input name="pv_turnkey_usd_per_w" type="number" min="0.01" max="10" step="0.01" value="2.40" />
+              </label>
+            </div>
+            <input id="self-consumption-fraction" name="self_consumption_fraction" type="hidden" value="0.55" />
+            <p id="self-consumption-note" class="field-note">Self-consumption assumption: 55% of PV production used onsite or shifted by battery.</p>
+          </div>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Roof assumptions</h3>
+              <p id="roof-assumption-summary">Using fallback roof geometry: 22 deg pitch, 180 deg azimuth, 54 ft x 24 ft. Address lookup or roof photos can replace this later.</p>
+            </div>
+            <details class="advanced-intake">
+              <summary>Advanced roof geometry</summary>
+              <div class="grid four">
+                <label>Roof pitch deg
+                  <input name="roof_pitch_deg" type="number" min="0" max="60" step="0.1" value="22" />
+                </label>
+                <label>Roof azimuth deg
+                  <input name="roof_azimuth_deg" type="number" min="0" max="360" step="1" value="180" />
+                </label>
+                <label>Roof width ft
+                  <input name="roof_width_ft" type="number" min="1" step="0.1" value="54" />
+                </label>
+                <label>Roof height ft
+                  <input name="roof_height_ft" type="number" min="1" step="0.1" value="24" />
+                </label>
+              </div>
+            </details>
+          </div>
+
+          <div class="intake-block">
+            <details class="advanced-intake">
+              <summary>Advanced cost overrides</summary>
+              <div class="grid two">
+                <label>Inverter cost total
+                  <input name="inverter_cost_usd_total" type="number" min="0" step="1" placeholder="optional" />
+                </label>
+                <label>Battery cost total
+                  <input name="battery_cost_usd_total" type="number" min="0" step="1" placeholder="optional" />
+                </label>
+              </div>
+            </details>
           </div>
         </section>
 
@@ -505,78 +590,150 @@
           <div class="section-head">
             <h2>Source materials and evidence</h2>
           </div>
-          <div class="grid two">
-            <label>Site data source
-              <select name="site_data_source">
-                <option value="simulated" selected>Simulated source materials</option>
-                <option value="real">Field-uploaded source materials</option>
-              </select>
-            </label>
-            <label>Utility bill / Smart Meter usage
-              <input name="utility_bill" type="file" accept=".pdf,.csv,image/*" />
-            </label>
-            <label>Structural letter
-              <input name="structural_letter" type="file" accept=".pdf" />
-            </label>
-            <label>Module spec sheet
-              <input name="spec_module" type="file" accept=".pdf" />
-            </label>
-            <label>Inverter spec sheet
-              <input name="spec_inverter" type="file" accept=".pdf" />
-            </label>
-            <label>Battery spec sheet
-              <input name="spec_battery" type="file" accept=".pdf" />
-            </label>
-            <label>Racking spec sheet
-              <input name="spec_racking" type="file" accept=".pdf" />
-            </label>
-            <label>Optimizer spec sheet
-              <input name="spec_optimizer" type="file" accept=".pdf" />
-            </label>
-            <label>Drop any spec sheets
-              <input name="spec_sheets_auto" type="file" accept=".pdf" multiple />
-            </label>
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Evidence level</h3>
+              <p>Choose whether this run is a fast estimate or an internal-review package with field evidence.</p>
+            </div>
+            <div class="grid two">
+              <label>Evidence mode
+                <select name="site_data_source">
+                  <option value="simulated" selected>Quick estimate - use simulated evidence</option>
+                  <option value="real">Use uploaded field evidence</option>
+                </select>
+              </label>
+              <label>Utility bill or Smart Meter export
+                <input name="utility_bill" type="file" accept=".pdf,.csv,image/*" />
+              </label>
+            </div>
+            <p class="field-note">If Step 2 already has 12-month usage, the utility bill is optional for estimate output. AHJ-ready review still needs a real bill or Smart Meter export.</p>
           </div>
-          <div class="photo-grid" aria-label="PV-7 required site photos">
-            <label>Front elevation
-              <input name="front_elevation" type="file" accept="image/*" />
-            </label>
-            <label>Roof and array area
-              <input name="roof" type="file" accept="image/*" />
-            </label>
-            <label>Utility meter
-              <input name="meter" type="file" accept="image/*" />
-            </label>
-            <label>Main service panel
-              <input name="main_panel" type="file" accept="image/*" />
-            </label>
-            <label>Sub-panel / load center
-              <input name="sub_panel" type="file" accept="image/*" />
-            </label>
-            <label>Attic / framing
-              <input name="attic" type="file" accept="image/*" />
-            </label>
-            <label>Equipment location
-              <input name="equipment_location" type="file" accept="image/*" />
-            </label>
-            <label>Drop any site photos
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Site photos</h3>
+              <p>Upload all available site photos together. The system classifies them into PV-7 photo categories after generation.</p>
+            </div>
+            <label>Upload site photos
               <input name="site_photos_auto" type="file" accept="image/*" multiple />
             </label>
+            <ul class="evidence-checklist" aria-label="PV-7 photo targets">
+              <li>Front elevation</li>
+              <li>Roof / array area</li>
+              <li>Utility meter</li>
+              <li>Main service panel</li>
+              <li>Sub-panel / load center</li>
+              <li>Proposed equipment location</li>
+            </ul>
+          </div>
+
+          <div class="intake-block">
+            <details class="advanced-intake">
+              <summary>Engineering and manufacturer documents</summary>
+              <div class="grid two">
+                <label>Signed structural letter
+                  <input name="structural_letter" type="file" accept=".pdf" />
+                </label>
+                <label>Upload missing manufacturer documents
+                  <input name="spec_sheets_auto" type="file" accept=".pdf" multiple />
+                </label>
+              </div>
+              <p class="field-note">System-selected equipment uses the internal library first. Upload documents here only when a signed structural packet, custom equipment, or missing manufacturer cut sheet is needed.</p>
+            </details>
           </div>
         </section>
 
-        <section id="package-outputs" class="panel output-options run-panel flow-section" data-step="06" data-wizard-title="Review & Generate">
+        <section id="package-outputs" class="panel run-panel flow-section" data-step="06" data-wizard-title="Review & Generate">
           <div class="section-head">
             <div>
-              <h2>Package outputs</h2>
-              <p>Select the files this run should produce before generating the estimate package.</p>
+              <h2>Review and generate</h2>
+              <p>Confirm the package level, review missing evidence, then generate the selected deliverables.</p>
             </div>
           </div>
-          <label><input type="checkbox" name="out_customer" checked /> Customer PDF</label>
-          <label><input type="checkbox" name="out_permit" checked /> Permit package</label>
-          <label><input type="checkbox" name="out_dxf" checked /> DXF + PNG previews</label>
-          <label><input type="checkbox" name="out_labels" checked /> NEC labels</label>
-          <label><input type="checkbox" name="out_qet" checked /> QET file</label>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Final project summary</h3>
+              <p>Check the key scope before creating files.</p>
+            </div>
+            <dl id="review-summary" class="review-summary"></dl>
+          </div>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Package type</h3>
+              <p>Choose the level of review this run is intended to support.</p>
+            </div>
+            <div class="package-presets" role="radiogroup" aria-label="Package type">
+              <label>
+                <input type="radio" name="package_level" value="estimate" checked />
+                <strong>Customer estimate</strong>
+                <span>Fast proposal with customer PDF, BOM, and calculation report.</span>
+              </label>
+              <label>
+                <input type="radio" name="package_level" value="engineering_review" />
+                <strong>Engineering review</strong>
+                <span>Draft permit, DXF previews, labels, and readiness materials.</span>
+              </label>
+              <label>
+                <input type="radio" name="package_level" value="ahj_ready" />
+                <strong>AHJ-ready candidate</strong>
+                <span>Requires real evidence, QA, and internal artifact approval before handoff.</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="intake-block">
+            <div class="block-heading">
+              <h3>Selected deliverables</h3>
+              <p>Preset outputs are adjusted by package type. Advanced internal files are optional.</p>
+            </div>
+            <div class="output-options">
+              <label><input type="checkbox" name="out_customer" checked /> Customer PDF</label>
+              <label><input type="checkbox" name="out_permit" /> Permit package</label>
+              <label><input type="checkbox" name="out_dxf" /> DXF + PNG previews</label>
+              <label><input type="checkbox" name="out_labels" /> NEC labels</label>
+            </div>
+            <details class="advanced-intake">
+              <summary>Advanced files</summary>
+              <label class="inline-check"><input type="checkbox" name="out_qet" /> QET file</label>
+            </details>
+          </div>
+
+          <div id="artifact-review-workbench" class="artifact-review-workbench hidden">
+            <div id="review-focus-bar" class="review-focus-bar hidden" aria-live="polite"></div>
+            <div id="review-status-drawer" class="review-status-drawer hidden" aria-hidden="true">
+              <div class="review-status-drawer-backdrop" data-review-status-close></div>
+              <aside class="review-status-drawer-panel" aria-label="Review status details">
+                <div class="review-status-drawer-head">
+                  <div>
+                    <h3>Status details</h3>
+                    <p>Readiness, warnings, Package QA, and required approvals.</p>
+                  </div>
+                  <button type="button" class="secondary-button" data-review-status-close>Close</button>
+                </div>
+                <div id="review-status-drawer-body" class="review-status-drawer-body"></div>
+              </aside>
+            </div>
+            <div class="section-head">
+              <div>
+                <h3>Package review workspace</h3>
+                <p>Generated files are reviewed one page at a time before handoff.</p>
+              </div>
+              <span id="artifact-review-counter" class="review-counter">No package generated</span>
+            </div>
+            <div class="review-workspace">
+              <nav id="artifact-review-tabs" class="review-page-nav" aria-label="Generated package review pages"></nav>
+              <section class="review-page-shell" aria-live="polite">
+                <div class="review-page-toolbar">
+                  <button id="artifact-review-prev" type="button" class="secondary-button">Previous</button>
+                  <span id="artifact-review-position">Page 0 of 0</span>
+                  <button id="artifact-review-next" type="button" class="secondary-button">Next</button>
+                </div>
+                <div id="artifact-review-page" class="review-page-body"></div>
+              </section>
+            </div>
+          </div>
         </section>
 
         <div class="actions">
@@ -584,7 +741,7 @@
           <button id="save-draft" type="button" class="secondary-button">Save draft</button>
           <button id="wizard-continue" type="button">Continue</button>
           <button id="preflight" type="button" class="secondary-button">Check readiness</button>
-          <button id="generate" type="submit">Generate estimate package</button>
+          <button id="generate" type="button">Generate package</button>
           <span id="status" role="status"></span>
         </div>
         <div id="validation-panel" class="validation-panel hidden"></div>
@@ -618,7 +775,7 @@
           <div><strong>-</strong><span>ITC cost</span></div>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section active-job-section">
           <div class="section-head">
             <h2>Readiness check</h2>
           </div>
@@ -626,7 +783,7 @@
           <div id="preflight-panel" class="preflight-panel hidden"></div>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section active-job-section">
           <div class="section-head">
             <h2>Generation progress</h2>
           </div>
@@ -636,7 +793,7 @@
           <div id="progress-message" class="empty">No active job.</div>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section post-generation-section">
           <div class="section-head">
             <h2>Delivery ZIP</h2>
           </div>
@@ -644,7 +801,7 @@
           <div id="delivery-package" class="delivery-package hidden"></div>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section post-generation-section">
           <div class="section-head">
             <h2>Handoff readiness</h2>
           </div>
@@ -652,7 +809,7 @@
           <div id="readiness-panel" class="readiness-panel hidden"></div>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section post-generation-section">
           <div class="section-head">
             <h2>Review preview</h2>
           </div>
@@ -660,7 +817,7 @@
           <div id="preview-panel" class="preview-panel hidden"></div>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section post-generation-section">
           <div class="section-head">
             <h2>What needs attention</h2>
           </div>
@@ -668,7 +825,7 @@
           <pre id="error-panel" class="error-panel hidden"></pre>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section post-generation-section">
           <div class="section-head">
             <h2>BOM and quote estimate</h2>
           </div>
@@ -689,7 +846,7 @@
           <dl id="cost-totals" class="totals hidden"></dl>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section post-generation-section">
           <div class="section-head">
             <h2>Generated deliverables</h2>
           </div>
@@ -714,7 +871,7 @@
           <ul id="file-list" class="file-list"></ul>
         </section>
 
-        <section class="panel run-console-section">
+        <section class="panel run-console-section post-generation-section">
           <div class="section-head">
             <h2>Source material status</h2>
           </div>
@@ -804,6 +961,6 @@
       </aside>
     </main>
 
-    <script src="/assets/app.js"></script>
+    <script src="/assets/app.js?v=20260523-step5-evidence"></script>
   </body>
 </html>

@@ -14,6 +14,12 @@ from __future__ import annotations
 
 import pytest
 
+from pvess_calc.calc.geometry import (
+    polygon_covers_polygon,
+    polygons_overlap_area,
+    rectangle_vertices,
+    usable_inset_polygon,
+)
 from pvess_calc.calc.module_placement import ModuleInstance, place_modules
 from pvess_calc.schema import EdgeSetback, RoofObstruction, RoofSection
 
@@ -175,6 +181,67 @@ def test_place_modules_avoids_obstruction_halo():
             )
 
 
+def test_place_modules_full_footprint_stays_inside_l_polygon():
+    """OSR1: polygon placement must validate the entire module rectangle,
+    not only the center point. This catches modules that visually hang over
+    the L-shaped concave cut-out."""
+    l_shape = [(0, 0), (10, 0), (10, 10), (20, 10), (20, 20), (0, 20)]
+    s = RoofSection(
+        name="L Roof",
+        shape="polygon",
+        vertices=l_shape,
+        width_ft=20,
+        height_ft=20,
+        default_setback_ft=1.0,
+        module_count=30,
+    )
+    placed = place_modules(
+        s,
+        module_length_in=48.0,
+        module_width_in=30.0,
+        target_count=30,
+    )
+    assert placed
+    usable = usable_inset_polygon(l_shape, 1.0)
+    cutout = [(10, 0), (20, 0), (20, 10), (10, 10)]
+    for module in placed:
+        footprint = rectangle_vertices(
+            module.x_ft,
+            module.y_ft,
+            module.width_ft,
+            module.height_ft,
+        )
+        assert polygon_covers_polygon(usable, footprint)
+        assert not polygons_overlap_area(footprint, cutout)
+
+
+def test_place_modules_full_footprints_do_not_overlap_each_other():
+    """Grid offsets may change during optimization, but the emitted module
+    rectangles must remain collision-free."""
+    s = RoofSection(
+        name="Dense Rect",
+        shape="rect",
+        width_ft=32,
+        height_ft=24,
+        default_setback_ft=1.0,
+        module_count=40,
+    )
+    placed = place_modules(
+        s,
+        module_length_in=48.0,
+        module_width_in=30.0,
+        target_count=40,
+    )
+    assert len(placed) > 10
+    footprints = [
+        rectangle_vertices(m.x_ft, m.y_ft, m.width_ft, m.height_ft)
+        for m in placed
+    ]
+    for i, a in enumerate(footprints):
+        for b in footprints[i + 1:]:
+            assert not polygons_overlap_area(a, b)
+
+
 def test_place_modules_falls_back_when_obstruction_covers_face():
     """If an obstruction halo covers the entire usable area, no modules
     can be placed → empty list (not a crash)."""
@@ -315,9 +382,59 @@ def test_engine_run_uses_face_distribution_for_k3c_init_state():
     # K.9.2 must have populated placements via the LRM auto-distribute
     total_placed = sum(len(m) for m in result.module_placements.values())
     assert total_placed > 0
-    # Σ placed should be close to pv_array.modules (some shortfall is
-    # geometrically OK — small faces can't fit their LRM quota)
-    assert total_placed >= inputs.pv_array.modules - 5, (
-        f"placed {total_placed} of {inputs.pv_array.modules}; "
-        "more than 5-module shortfall suggests a bug, not geometry"
-    )
+    # Capacity-aware placement recycles modules that LRM assigned to tiny
+    # faces into larger faces with spare capacity, so the drawing should hit
+    # the declared module target whenever total roof capacity allows it.
+    assert total_placed == inputs.pv_array.modules
+
+
+def test_engine_module_selection_prioritizes_good_faces_and_avoids_overlap():
+    """R4: if CAD facets overlap, the module selector must not draw two
+    panels into the same physical roof area. Shortfall should be recycled
+    into higher-value faces before using a north-facing face."""
+    from pvess_calc.calc.engine import run
+    from pvess_calc.calc.wire_routing import _face_local_to_site
+    from tests.conftest import make_inputs
+
+    inputs = make_inputs(modules=6, strings=1)
+    inputs.site.roof_sections = [
+        RoofSection(
+            name="SW Face",
+            shape="rect",
+            width_ft=32,
+            height_ft=20,
+            azimuth_deg=225,
+            module_count=3,
+            site_anchor_x_ft=0,
+            site_anchor_y_ft=0,
+        ),
+        RoofSection(
+            name="North Face",
+            shape="rect",
+            width_ft=32,
+            height_ft=20,
+            azimuth_deg=0,
+            module_count=3,
+            site_anchor_x_ft=0,
+            site_anchor_y_ft=0,
+        ),
+    ]
+
+    result = run(inputs)
+
+    assert len(result.module_placements.get("SW Face", [])) == 6
+    assert result.module_placements.get("North Face", []) in (None, [])
+    footprints = []
+    for section in result.inputs.site.roof_sections:
+        for module in result.module_placements.get(section.name, []):
+            local = [
+                (module.x_ft, module.y_ft),
+                (module.x_ft + module.width_ft, module.y_ft),
+                (module.x_ft + module.width_ft, module.y_ft + module.height_ft),
+                (module.x_ft, module.y_ft + module.height_ft),
+            ]
+            site = [_face_local_to_site(section, x, y) for x, y in local]
+            footprint = [pt for pt in site if pt is not None]
+            for existing in footprints:
+                assert not polygons_overlap_area(footprint, existing)
+            footprints.append(footprint)

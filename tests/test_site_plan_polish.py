@@ -25,6 +25,7 @@ from pvess_calc.schema import (
     Inputs,
     RoofSection,
 )
+from tests.conftest import make_inputs
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +69,47 @@ def test_no_warning_strip_when_fully_routed(tmp_path: Path):
     assert "PV array geometry omitted" not in text
 
 
+def test_many_untraced_google_segments_show_schematic_warning(tmp_path: Path):
+    """Google Solar buildingInsights can supply many square face boxes
+    without a real roof outline. EE-4 must mark that drawing as schematic
+    instead of implying the roof shape is AHJ-ready."""
+    inputs = make_inputs(modules=32, strings=4)
+    inputs.project.site_address = "7652 Glasshouse Walk, Frisco, TX 75035"
+    inputs.site.roof_sections = [
+        RoofSection(
+            name=f"Solar Segment {idx + 1}",
+            azimuth_deg=(idx * 29) % 360,
+            width_ft=10 + idx % 5,
+            height_ft=10 + idx % 4,
+        )
+        for idx in range(13)
+    ]
+    text = _ee4_text(tmp_path, inputs)
+    assert "DRAFT ROOF GEOMETRY" in text
+    assert "SCHEMATIC ROOF SEGMENTS" in text
+    assert "SCHEMATIC ROOF GEOMETRY" in text
+
+
+def test_doctor_warns_many_untraced_google_segments():
+    """The self-check should keep this out of AHJ-ready review until
+    a traced roof outline or reviewed satellite mask is supplied."""
+    from pvess_calc.doctor import _check_ee4_trace_ready_for_review
+
+    inputs = make_inputs(modules=32, strings=4)
+    inputs.site.roof_sections = [
+        RoofSection(
+            name=f"Solar Segment {idx + 1}",
+            azimuth_deg=(idx * 29) % 360,
+            width_ft=10 + idx % 5,
+            height_ft=10 + idx % 4,
+        )
+        for idx in range(13)
+    ]
+    [check] = _check_ee4_trace_ready_for_review(run(inputs))
+    assert check.status == "WARN"
+    assert "not an actual traced roof outline" in check.detail
+
+
 # ─── #3 property-line label position ────────────────────────────────────
 
 
@@ -75,6 +117,17 @@ def test_property_line_label_still_present(tmp_path: Path):
     """Label text unchanged; only its position moved."""
     text = _ee4_text(tmp_path, Inputs.from_yaml(FRISCO))
     assert "PROPERTY LINE" in text
+
+
+def test_face_allocation_summary_marks_direction_and_module_count(tmp_path: Path):
+    """R7: traced roof plans must state which roof faces carry modules."""
+    text = _ee4_text(tmp_path, Inputs.from_yaml(FRISCO))
+
+    assert "FACE ALLOCATION" in text
+    assert "P1 SOUTH" in text
+    assert "28 MOD" in text
+    assert "P2 WEST" in text
+    assert "8 MOD" in text
 
 
 # ─── #4 array caption no longer overlaps lot bottom ─────────────────────

@@ -16,6 +16,8 @@ import json
 import os
 import re
 import shutil
+import subprocess
+import sys
 import threading
 import zipfile
 from datetime import datetime, timezone
@@ -53,16 +55,25 @@ from ..lookup.providers import (
     static_utility_rate,
 )
 from ..permit.builder import _should_emit_one_line, build_permit_package
+from ..permit.ee4_trace import complete_ee4_trace_for_review
 from ..permit.readiness import (
     assess_reference_profile_readiness,
     format_real_data_checklist_markdown,
     format_reference_readiness_markdown,
 )
+from ..permit.roof_trace_status import write_roof_trace_artifacts
+from ..permit.r8_validation import (
+    format_r8_validation_markdown,
+    write_r8_validation_artifacts,
+)
+from ..permit.trace_module_layout_status import (
+    write_trace_module_layout_artifacts,
+)
 from ..permit.site_photos import REQUIRED_PHOTOS
 from ..qet.inject import inject_from_result
 from ..report.json_dump import write_json
 from ..report.markdown import write_markdown
-from ..schema import Inputs
+from ..schema import EE4Trace, Inputs
 from .. import __version__
 from .intake import (
     SPEC_EQUIPMENT,
@@ -108,13 +119,13 @@ WEB_MODULE_OPTIONS: dict[str, dict[str, str]] = {
 }
 
 WEB_INVERTER_OPTIONS: dict[str, dict[str, str]] = {
-    "megarova": {
-        "ref": "megarevo_r11klna",
-        "label": "Megarova / Megarevo R11KLNA (US 11 kW)",
+    "megarevo": {
+        "ref": "megarevo_r10klna",
+        "label": "Megarevo R10KLNA (US 10 kW)",
     },
-    "hoymile": {
+    "hoymiles": {
         "ref": "hoymiles_hys_11_5lv_usg1",
-        "label": "Hoymile / Hoymiles HYS-11.5LV-USG1 (US 11.5 kW)",
+        "label": "Hoymiles HYS-11.5LV-USG1 (US 11.5 kW)",
     },
     "growatt": {
         "ref": "growatt_min11400tl_xh_us",
@@ -122,35 +133,45 @@ WEB_INVERTER_OPTIONS: dict[str, dict[str, str]] = {
     },
 }
 
+WEB_LEGACY_INVERTER_REFS: dict[str, str] = {
+    "megarova": "megarevo_r10klna",
+    "hoymile": "hoymiles_hys_11_5lv_usg1",
+}
+
 WEB_BATTERY_OPTIONS: dict[str, dict[str, str]] = {
     "none": {
         "ref": "",
         "label": "No battery (PV-only)",
     },
-    "inhouse_16kwh_hv": {
-        "ref": "inhouse_16kwh_hv",
-        "label": "InHouse HV-16 (16 kWh)",
+    "pytes_v16": {
+        "ref": "pytes_v16",
+        "label": "Pytes V16 (16 kWh)",
+    },
+    "hoymiles_hbx_10lv_usg1": {
+        "ref": "hoymiles_hbx_10lv_usg1",
+        "label": "Hoymiles HBX-10LV-USG1 (10 kWh)",
     },
     "growatt_apx_20kwh": {
         "ref": "growatt_apx_20kwh",
         "label": "Growatt APX HV 20K (20 kWh)",
     },
-    "tesla_powerwall_3": {
-        "ref": "tesla_powerwall_3",
-        "label": "Tesla Powerwall 3 (13.5 kWh)",
-    },
-    "eg4_lifepower4_v2": {
-        "ref": "eg4_lifepower4_v2",
-        "label": "EG4 LifePower4 V2 (5.12 kWh)",
-    },
-    "franklinwh_apower": {
-        "ref": "franklinwh_apower",
-        "label": "FranklinWH aPower (13.6 kWh)",
-    },
-    "enphase_iq_battery_5p": {
-        "ref": "enphase_iq_battery_5p",
-        "label": "Enphase IQ Battery 5P (5 kWh)",
-    },
+}
+
+WEB_LEGACY_BATTERY_REFS: dict[str, str] = {
+    "inhouse_16kwh_hv": "pytes_v16",
+    "paizhi_16kwh_lfp": "pytes_v16",
+    "tesla_powerwall_3": "tesla_powerwall_3",
+    "eg4_lifepower4_v2": "eg4_lifepower4_v2",
+    "franklinwh_apower": "franklinwh_apower",
+    "enphase_iq_battery_5p": "enphase_iq_battery_5p",
+}
+
+WEB_INVERTER_BATTERY_PAIRINGS: dict[str, str] = {
+    "megarevo": "pytes_v16",
+    "megarova": "pytes_v16",
+    "hoymiles": "hoymiles_hbx_10lv_usg1",
+    "hoymile": "hoymiles_hbx_10lv_usg1",
+    "growatt": "growatt_apx_20kwh",
 }
 
 SITE_PHOTO_LABELS: dict[str, str] = dict(REQUIRED_PHOTOS)
@@ -162,6 +183,11 @@ WEB_OFFLINE_LOOKUP_PROVIDERS = (
     static_ahj,
     static_climate,
     static_nec,
+)
+PDFTOPPM_CANDIDATES = (
+    Path("/opt/homebrew/bin/pdftoppm"),
+    Path("/usr/local/bin/pdftoppm"),
+    Path("/usr/bin/pdftoppm"),
 )
 
 
@@ -205,6 +231,33 @@ class OutputOptions(BaseModel):
     dxf: bool = True
     labels: bool = True
     qet: bool = True
+
+
+class WebRoofSectionRequest(BaseModel):
+    name: str = "Roof Section"
+    roof_type: str = "Comp Shingle"
+    pitch_deg: float = Field(default=22.0, ge=0, le=60)
+    azimuth_deg: float = Field(default=180.0, ge=0, le=360)
+    width_ft: float = Field(default=0.0, gt=0, le=300)
+    height_ft: float = Field(default=0.0, gt=0, le=300)
+    module_count: int = Field(default=0, ge=0, le=400)
+    shape: Literal["rect", "tri", "polygon"] = "rect"
+
+
+class WebRoofTraceAcceptRequest(BaseModel):
+    source: Literal["draft_yaml", "satellite_candidate", "manual"] = "draft_yaml"
+    trace: dict[str, Any] | None = None
+    rerun: bool = True
+
+
+class WebSatelliteReviewRangeRequest(BaseModel):
+    satellite_crop_mode: Literal["target", "tight", "standard", "wide"] = "tight"
+    rerun: bool = True
+
+
+class WebRoofTopologyProposalRequest(BaseModel):
+    mode: Literal["deterministic", "openai"] = "deterministic"
+    strict: bool = False
 
 
 class WebProjectRequest(BaseModel):
@@ -253,22 +306,26 @@ class WebProjectRequest(BaseModel):
     optimizer_brand: str = "Tigo"
     optimizer_model: str = "TS4-A-O"
 
-    inverter_choice: Literal["megarova", "hoymile", "growatt"] = "growatt"
+    inverter_choice: Literal[
+        "megarevo", "megarova", "hoymiles", "hoymile", "growatt",
+    ] = "growatt"
     inverter_brand: str = "Growatt"
     inverter_model: str = "MIN 11400TL-XH-US"
     inverter_quantity: int = Field(default=1, ge=1, le=12)
     inverter_ac_output_a: float = Field(default=48.0, gt=0, le=250)
     inverter_ac_output_v: float = Field(default=240.0, gt=0, le=600)
 
-    battery_brand: str = "In-house"
-    battery_model: str = "16 kWh HV"
+    battery_brand: str = "Growatt"
+    battery_model: str = "APX HV 20K"
     battery_choice: Literal[
-        "none", "inhouse_16kwh_hv", "growatt_apx_20kwh",
+        "none", "pytes_v16", "paizhi_16kwh_lfp",
+        "hoymiles_hbx_10lv_usg1",
+        "inhouse_16kwh_hv", "growatt_apx_20kwh",
         "tesla_powerwall_3", "eg4_lifepower4_v2",
         "franklinwh_apower", "enphase_iq_battery_5p",
-    ] = "inhouse_16kwh_hv"
+    ] = "growatt_apx_20kwh"
     battery_quantity: int = Field(default=1, ge=0, le=12)
-    battery_capacity_kwh_each: float = Field(default=16.0, ge=0, le=100)
+    battery_capacity_kwh_each: float = Field(default=20.0, ge=0, le=100)
     battery_nominal_voltage: float = Field(default=400.0, gt=0, le=1000)
     battery_install_location: Literal[
         "indoor", "garage", "outdoor", "outdoor_protected", "unknown",
@@ -300,6 +357,11 @@ class WebProjectRequest(BaseModel):
     roof_azimuth_deg: float = Field(default=180.0, ge=0, le=360)
     roof_width_ft: float = Field(default=54.0, gt=0, le=200)
     roof_height_ft: float = Field(default=24.0, gt=0, le=200)
+    roof_sections: list[WebRoofSectionRequest] = Field(default_factory=list)
+    ee4_trace: EE4Trace | None = None
+    ee4_trace_reviewed: bool = False
+    satellite_crop_mode: Literal["target", "tight", "standard", "wide"] = "tight"
+    allow_paid_satellite: bool = True
     roof_info_type: str = "Comp Shingle"
     roof_info_height_ft: float = Field(default=0.0, ge=0, le=120)
     roof_construction: str = ""
@@ -325,6 +387,7 @@ class WebProjectRequest(BaseModel):
 
     site_data_source: Literal["simulated", "real"] = "simulated"
     site_photo_refs: list[WebSitePhotoRef] = Field(default_factory=list)
+    roof_satellite_image_path: str = ""
     utility_bill_path: str = ""
     monthly_kwh_source: Literal["none", "form", "utility_file"] = "none"
     utility_bill_parse: dict[str, Any] = Field(default_factory=dict)
@@ -348,6 +411,16 @@ class WebProjectRequest(BaseModel):
             raise ValueError(
                 "battery_quantity must be 0 when battery_choice is 'none'"
             )
+        expected_battery = WEB_INVERTER_BATTERY_PAIRINGS.get(self.inverter_choice)
+        if (
+            expected_battery
+            and self.battery_choice != "none"
+            and self.battery_quantity > 0
+            and _battery_ref(self.battery_choice) != _battery_ref(expected_battery)
+        ):
+            raise ValueError(
+                "battery_choice must match the selected inverter family"
+            )
         if self.battery_quantity == 0 and self.battery_capacity_kwh_each != 0:
             # Keep the yaml explicit and avoid confusing cost output.
             self.battery_capacity_kwh_each = 0.0
@@ -361,7 +434,7 @@ class GeneratedFile(BaseModel):
     bytes: int
     category: Literal[
         "Input", "Engineering", "Permit", "CAD", "Cost", "Readiness",
-        "Manifest", "Archive", "QA", "Other",
+        "Verification", "Manifest", "Archive", "QA", "Other",
     ] = "Other"
     kind: str = "other"
 
@@ -637,11 +710,17 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(
+            STATIC_DIR / "index.html",
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
 
     @app.get("/lead", include_in_schema=False)
     def lead_page() -> FileResponse:
-        return FileResponse(STATIC_DIR / "lead.html")
+        return FileResponse(
+            STATIC_DIR / "lead.html",
+            headers={"Cache-Control": "no-store, max-age=0"},
+        )
 
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> Response:
@@ -1006,6 +1085,7 @@ def create_app(
         sub_panel: UploadFile | None = File(None),
         attic: UploadFile | None = File(None),
         equipment_location: UploadFile | None = File(None),
+        roof_satellite_image: UploadFile | None = File(None),
         site_photos_auto: list[UploadFile] | None = File(None),
         utility_bill: UploadFile | None = File(None),
         structural_letter: UploadFile | None = File(None),
@@ -1032,6 +1112,7 @@ def create_app(
                 if (material := await _read_upload(upload)) is not None
             }
             auto_photos = await _read_uploads(site_photos_auto)
+            roof_satellite = await _read_upload(roof_satellite_image)
             utility = await _read_upload(utility_bill)
             structural = await _read_upload(structural_letter)
             spec_uploads = {
@@ -1052,6 +1133,7 @@ def create_app(
                 owner_id=_require_auth_context(http_request).operator_id,
                 site_uploads=site_uploads,
                 auto_photo_uploads=auto_photos,
+                roof_satellite_upload=roof_satellite,
                 utility_bill_upload=utility,
                 structural_upload=structural,
                 spec_uploads=spec_uploads,
@@ -1173,12 +1255,77 @@ def create_app(
             "gate": refresh_job_gate(app, job_id, project_dir, reviews),
         }
 
+    @app.post("/api/jobs/{job_id}/roof-trace/accept-draft", response_model=WebJobResponse)
+    def accept_roof_trace_draft(
+        request: Request,
+        job_id: str,
+        payload: WebRoofTraceAcceptRequest = WebRoofTraceAcceptRequest(),
+    ) -> WebJobResponse:
+        context = _require_auth_context(request)
+        project_dir = _job_project_dir(app, job_id, context=context)
+        return accept_roof_trace_for_job(
+            app,
+            job_id,
+            project_dir,
+            payload,
+            context=context,
+        )
+
+    @app.post("/api/jobs/{job_id}/satellite-review-range", response_model=WebJobResponse)
+    def update_satellite_review_range(
+        request: Request,
+        job_id: str,
+        payload: WebSatelliteReviewRangeRequest = (
+            WebSatelliteReviewRangeRequest()
+        ),
+    ) -> WebJobResponse:
+        context = _require_auth_context(request)
+        project_dir = _job_project_dir(app, job_id, context=context)
+        return update_satellite_review_range_for_job(
+            app,
+            job_id,
+            project_dir,
+            payload,
+            context=context,
+        )
+
+    @app.post("/api/jobs/{job_id}/roof-topology/proposal")
+    def generate_roof_topology_proposal_endpoint(
+        request: Request,
+        job_id: str,
+        payload: WebRoofTopologyProposalRequest = WebRoofTopologyProposalRequest(),
+    ) -> dict[str, Any]:
+        context = _require_auth_context(request)
+        project_dir = _job_project_dir(app, job_id, context=context)
+        return generate_roof_topology_proposal_for_job(
+            app,
+            job_id,
+            project_dir,
+            payload,
+            context=context,
+        )
+
     @app.post("/api/jobs/{job_id}/qa")
     def run_package_qa_endpoint(request: Request, job_id: str) -> dict[str, Any]:
         project_dir = _job_project_dir(
             app, job_id, context=_require_auth_context(request),
         )
         return run_package_qa_for_job(app, job_id, project_dir)
+
+    @app.get("/api/jobs/{job_id}/permit-preview/{page_number}")
+    def permit_page_preview(
+        request: Request,
+        job_id: str,
+        page_number: int,
+        path: str = Query(..., min_length=1, max_length=240),
+    ) -> FileResponse:
+        context = _require_auth_context(request)
+        project_dir = _job_project_dir(app, job_id, context=context)
+        pdf_path = resolve_job_file(app.state.jobs_dir, job_id, path)
+        if pdf_path.suffix.lower() != ".pdf":
+            raise HTTPException(status_code=400, detail="preview source must be a PDF")
+        preview_path = render_pdf_page_preview(project_dir, pdf_path, page_number)
+        return FileResponse(preview_path, media_type="image/png")
 
     @app.post("/api/jobs/{job_id}/rerun", response_model=WebJobState)
     def rerun_job(request: Request, job_id: str) -> WebJobState:
@@ -1322,26 +1469,34 @@ def _clean_draft_id(value: str) -> str:
 
 
 def _has_valid_basic_auth(app: FastAPI, request: Request) -> bool:
+    if not app.state.basic_auth_credentials:
+        return True
+    return _basic_auth_user(app, request) is not None
+
+
+def _basic_auth_user(app: FastAPI, request: Request) -> str | None:
     expected = app.state.basic_auth_credentials
     if not expected:
-        return True
+        return None
     raw = request.headers.get("Authorization", "").strip()
     if not raw.lower().startswith("basic "):
-        return False
+        return None
     try:
         decoded = base64.b64decode(raw.split(" ", 1)[1], validate=True).decode(
             "utf-8"
         )
     except Exception:
-        return False
+        return None
     if ":" not in decoded:
-        return False
+        return None
     user, password = decoded.split(":", 1)
     expected_user, expected_password = expected
-    return hmac.compare_digest(user, expected_user) and hmac.compare_digest(
+    if hmac.compare_digest(user, expected_user) and hmac.compare_digest(
         password,
         expected_password,
-    )
+    ):
+        return expected_user
+    return None
 
 
 def _auth_context(app: FastAPI, request: Request) -> WebAuthContext | None:
@@ -1368,6 +1523,13 @@ def _auth_context(app: FastAPI, request: Request) -> WebAuthContext | None:
                 role="operator",
                 display_name=operator["display_name"],
             )
+
+    if _basic_auth_user(app, request) is not None:
+        return WebAuthContext(
+            operator_id="local",
+            role="admin",
+            display_name="Local operator",
+        )
     return None
 
 
@@ -1421,6 +1583,7 @@ def enqueue_project(
     owner_id: str = "local",
     site_uploads: dict[str, UploadedMaterial] | None = None,
     auto_photo_uploads: list[UploadedMaterial] | None = None,
+    roof_satellite_upload: UploadedMaterial | None = None,
     utility_bill_upload: UploadedMaterial | None = None,
     structural_upload: UploadedMaterial | None = None,
     spec_uploads: dict[str, UploadedMaterial] | None = None,
@@ -1450,6 +1613,7 @@ def enqueue_project(
         job_id,
         site_uploads or {},
         auto_photo_uploads or [],
+        roof_satellite_upload,
         utility_bill_upload,
         structural_upload,
         spec_uploads or {},
@@ -1503,6 +1667,7 @@ def _run_job(
     job_id: str,
     site_uploads: dict[str, UploadedMaterial] | None = None,
     auto_photo_uploads: list[UploadedMaterial] | None = None,
+    roof_satellite_upload: UploadedMaterial | None = None,
     utility_bill_upload: UploadedMaterial | None = None,
     structural_upload: UploadedMaterial | None = None,
     spec_uploads: dict[str, UploadedMaterial] | None = None,
@@ -1526,6 +1691,7 @@ def _run_job(
             job_id=job_id,
             site_uploads=site_uploads or {},
             auto_photo_uploads=auto_photo_uploads or [],
+            roof_satellite_upload=roof_satellite_upload,
             utility_bill_upload=utility_bill_upload,
             structural_upload=structural_upload,
             spec_uploads=spec_uploads or {},
@@ -1584,6 +1750,7 @@ def generate_project(
     job_id: str | None = None,
     site_uploads: dict[str, UploadedMaterial] | None = None,
     auto_photo_uploads: list[UploadedMaterial] | None = None,
+    roof_satellite_upload: UploadedMaterial | None = None,
     utility_bill_upload: UploadedMaterial | None = None,
     structural_upload: UploadedMaterial | None = None,
     spec_uploads: dict[str, UploadedMaterial] | None = None,
@@ -1603,12 +1770,14 @@ def generate_project(
         project_dir,
         site_uploads or {},
         auto_photo_uploads or [],
+        roof_satellite_upload,
         utility_bill_upload,
         structural_upload,
         spec_uploads or {},
         auto_spec_uploads or [],
         create_mock_photos=payload.outputs.permit,
     )
+    payload = _payload_with_lookup_roof_sections(payload)
     (project_dir / "request.json").write_text(
         payload.model_dump_json(indent=2),
         encoding="utf-8",
@@ -1635,6 +1804,158 @@ def generate_project(
         _file(project_dir, job_id, "Inputs YAML", inputs_path),
         _file(project_dir, job_id, "Calculation JSON", output_dir / "calculation.json"),
         _file(project_dir, job_id, "Engineering Report", output_dir / "report.md"),
+    ])
+    if payload.roof_satellite_image_path:
+        uploaded_satellite = Path(payload.roof_satellite_image_path)
+        if uploaded_satellite.exists():
+            files.append(_file(
+                project_dir,
+                job_id,
+                "Uploaded Roof Satellite Image",
+                uploaded_satellite,
+            ))
+
+    roof_trace_artifacts = write_roof_trace_artifacts(result, output_dir)
+    roof_trace_status = dict(roof_trace_artifacts["status"])
+    trace_module_layout_artifacts = write_trace_module_layout_artifacts(
+        result,
+        output_dir,
+    )
+    trace_module_layout_status = dict(trace_module_layout_artifacts["status"])
+    r8_validation_artifacts = write_r8_validation_artifacts(
+        result,
+        output_dir,
+        satellite_crop_mode=payload.satellite_crop_mode,
+        allow_paid_satellite=payload.allow_paid_satellite,
+    )
+    r8_validation_status = dict(r8_validation_artifacts["status"])
+    if payload.ee4_trace_reviewed:
+        r8_validation_status = _apply_manual_trace_review_to_r8(
+            r8_validation_status
+        )
+        _rewrite_r8_validation_artifacts(
+            r8_validation_artifacts,
+            r8_validation_status,
+        )
+    files.extend([
+        _file(
+            project_dir,
+            job_id,
+            "Roof Trace Status JSON",
+            roof_trace_artifacts["status_json"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "Roof Trace Readiness Report",
+            roof_trace_artifacts["status_markdown"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "EE-4 Trace Draft YAML",
+            roof_trace_artifacts["draft_yaml"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "Trace Module Layout Status JSON",
+            trace_module_layout_artifacts["status_json"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "Trace Module Layout Readiness Report",
+            trace_module_layout_artifacts["status_markdown"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "R8 Step 1 Address Confirmation",
+            r8_validation_artifacts["status_markdown"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "R8 Validation Status JSON",
+            r8_validation_artifacts["status_json"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "R8 Step 2 Satellite Review PNG",
+            r8_validation_artifacts["satellite_png"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "Satellite Data Chain Audit JSON",
+            r8_validation_artifacts["satellite_audit_json"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "Satellite Data Chain Audit Report",
+            r8_validation_artifacts["satellite_audit_markdown"],  # type: ignore[arg-type]
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "Satellite Roof Outline Candidate JSON",
+            r8_validation_artifacts["satellite_outline_json"],  # type: ignore[arg-type]
+        ),
+        *([
+            _file(
+                project_dir,
+                job_id,
+                "Satellite EE-4 Trace Candidate YAML",
+                r8_validation_artifacts["satellite_outline_yaml"],
+            )
+        ] if r8_validation_artifacts.get("satellite_outline_yaml") else []),
+        *([
+            _file(
+                project_dir,
+                job_id,
+                "Satellite Roof Outline Candidate PNG",
+                r8_validation_artifacts["satellite_outline_png"],
+            )
+        ] if r8_validation_artifacts.get("satellite_outline_png") else []),
+        *([
+            _file(
+                project_dir,
+                job_id,
+                "R8 Step 2 Google Static Satellite Fallback PNG",
+                r8_validation_artifacts["google_static_satellite_png"],
+            )
+        ] if r8_validation_artifacts.get("google_static_satellite_png") else []),
+        _file(
+            project_dir,
+            job_id,
+            "R8 Step 3 Roof Trace Layout PDF",
+            r8_validation_artifacts["roof_pdf"],  # type: ignore[arg-type]
+        ),
+        *([
+            _file(
+                project_dir,
+                job_id,
+                "R8 Step 3 Roof Trace Layout PNG",
+                r8_validation_artifacts["roof_png"],
+            )
+        ] if r8_validation_artifacts.get("roof_png") else []),
+        _file(
+            project_dir,
+            job_id,
+            "R8 Step 4 Panel Attachment Layout PDF",
+            r8_validation_artifacts["attachment_pdf"],  # type: ignore[arg-type]
+        ),
+        *([
+            _file(
+                project_dir,
+                job_id,
+                "R8 Step 4 Panel Attachment Layout PNG",
+                r8_validation_artifacts["attachment_png"],
+            )
+        ] if r8_validation_artifacts.get("attachment_png") else []),
     ])
 
     if payload.outputs.customer:
@@ -1712,6 +2033,34 @@ def generate_project(
     if progress:
         progress("readiness", "Writing source-data readiness reports.", 96)
     readiness_payload = write_readiness_artifacts(result, project_dir, output_dir)
+    readiness_payload["roof_trace"] = roof_trace_status
+    readiness_payload["trace_module_layout"] = trace_module_layout_status
+    readiness_payload["r8_validation"] = r8_validation_status
+    readiness_payload["satellite_roof_outline"] = (
+        r8_validation_status.get("satellite_roof_outline") or {}
+    )
+    roof_topology_status = build_roof_topology_status(
+        payload,
+        roof_trace=roof_trace_status,
+        trace_module_layout=trace_module_layout_status,
+        r8_validation=r8_validation_status,
+        satellite_roof_outline=(
+            r8_validation_status.get("satellite_roof_outline") or {}
+        ),
+    )
+    roof_topology_status["editor"] = build_roof_topology_editor_payload(
+        payload,
+        project_dir=project_dir,
+    )
+    readiness_payload["roof_topology"] = roof_topology_status
+    workflow_json, workflow_markdown = write_roof_workflow_validation_artifacts(
+        payload,
+        output_dir,
+        roof_topology_status,
+        r8_validation_status,
+        roof_trace_status,
+        trace_module_layout_status,
+    )
     files.extend([
         _file(
             project_dir,
@@ -1725,10 +2074,31 @@ def generate_project(
             "Real Data Checklist",
             output_dir / "real-data-checklist.md",
         ),
+        _file(
+            project_dir,
+            job_id,
+            "Roof Workflow Validation JSON",
+            workflow_json,
+        ),
+        _file(
+            project_dir,
+            job_id,
+            "Roof Workflow Validation Report",
+            workflow_markdown,
+        ),
     ])
 
     summary = build_summary(result, bom_payload)
-    source_materials = build_source_materials(payload)
+    source_materials = build_source_materials(
+        payload,
+        roof_trace=roof_trace_status,
+        trace_module_layout=trace_module_layout_status,
+        r8_validation=r8_validation_status,
+        satellite_roof_outline=(
+            r8_validation_status.get("satellite_roof_outline") or {}
+        ),
+        roof_topology=roof_topology_status,
+    )
     readiness_payload["gate"] = build_ahj_gate(
         payload=payload,
         source_materials=source_materials,
@@ -1794,6 +2164,7 @@ def generate_project(
 
 
 def build_inputs_data(payload: WebProjectRequest, *, project_id: str) -> dict[str, Any]:
+    payload = _payload_with_lookup_roof_sections(payload)
     module = _selected_module(payload)
     inverter = _selected_inverter(payload)
     battery = _selected_battery(payload)
@@ -1814,6 +2185,19 @@ def build_inputs_data(payload: WebProjectRequest, *, project_id: str) -> dict[st
             interconnection_methods.append(method)
 
     modules_per_string = payload.modules // payload.strings
+    site_payload: dict[str, Any] = {
+        "roof_pitch_deg": payload.roof_pitch_deg,
+        "array_azimuth_deg": payload.roof_azimuth_deg,
+        "roof_sections": _roof_sections_payload(payload),
+        "equipment_locations": _equipment_locations_payload(payload),
+    }
+    if payload.ee4_trace is not None and payload.ee4_trace.has_geometry:
+        trace = complete_ee4_trace_for_review(payload.ee4_trace)
+        site_payload["ee4_trace"] = trace.model_dump(
+            mode="json",
+            exclude_none=True,
+        )
+
     return {
         "project": {
             "id": project_id,
@@ -1934,24 +2318,158 @@ def build_inputs_data(payload: WebProjectRequest, *, project_id: str) -> dict[st
             "export_tariff_model": payload.export_tariff_model,
             "self_consumption_fraction": payload.self_consumption_fraction,
         },
-        "site": {
-            "roof_pitch_deg": payload.roof_pitch_deg,
-            "array_azimuth_deg": payload.roof_azimuth_deg,
-            "roof_sections": [
-                {
-                    "name": "Primary Roof",
-                    "shape": "rect",
-                    "roof_type": payload.roof_info_type or "Comp Shingle",
-                    "pitch_deg": payload.roof_pitch_deg,
-                    "azimuth_deg": payload.roof_azimuth_deg,
-                    "width_ft": payload.roof_width_ft,
-                    "height_ft": payload.roof_height_ft,
-                    "module_count": payload.modules,
-                }
-            ],
-            "equipment_locations": _equipment_locations_payload(payload),
-        },
+        "site": site_payload,
     }
+
+
+def _roof_sections_payload(payload: WebProjectRequest) -> list[dict[str, Any]]:
+    trace_section = _reviewed_trace_roof_section_payload(payload)
+    if trace_section is not None:
+        return [trace_section]
+    if payload.roof_sections:
+        return [
+            {
+                "name": section.name or f"Roof Section {index}",
+                "shape": section.shape,
+                "roof_type": section.roof_type or payload.roof_info_type or "Comp Shingle",
+                "pitch_deg": section.pitch_deg,
+                "azimuth_deg": section.azimuth_deg,
+                "width_ft": section.width_ft,
+                "height_ft": section.height_ft,
+                # Google Solar init state intentionally stays at zero.
+                # The calc engine's LRM distributor assigns modules by face
+                # area/value, and the reviewer can pin counts later.
+                "module_count": section.module_count,
+            }
+            for index, section in enumerate(payload.roof_sections, start=1)
+        ]
+    return [
+        {
+            "name": "Primary Roof",
+            "shape": "rect",
+            "roof_type": payload.roof_info_type or "Comp Shingle",
+            "pitch_deg": payload.roof_pitch_deg,
+            "azimuth_deg": payload.roof_azimuth_deg,
+            "width_ft": payload.roof_width_ft,
+            "height_ft": payload.roof_height_ft,
+            "module_count": payload.modules,
+        }
+    ]
+
+
+def _reviewed_trace_roof_section_payload(
+    payload: WebProjectRequest,
+) -> dict[str, Any] | None:
+    """Make reviewed Step 2 topology the downstream drawing source of truth.
+
+    Google Solar roof sections are useful for early sizing, but once the user
+    accepts or edits a `site.ee4_trace` outline, permit drawings should use the
+    same polygon instead of reverting to provider segment boxes.
+    """
+    trace = payload.ee4_trace
+    if not (payload.ee4_trace_reviewed and trace and trace.roof_outline):
+        return None
+    vertices = list(trace.roof_outline.vertices)
+    if len(vertices) < 3:
+        return None
+    xs = [float(x) for x, _y in vertices]
+    ys = [float(y) for _x, y in vertices]
+    width = max(xs) - min(xs)
+    height = max(ys) - min(ys)
+    if width <= 0 or height <= 0:
+        return None
+    return {
+        "name": trace.roof_outline.name or "Reviewed roof topology",
+        "shape": "polygon",
+        "roof_type": payload.roof_info_type or "Comp Shingle",
+        "pitch_deg": payload.roof_pitch_deg,
+        "azimuth_deg": payload.roof_azimuth_deg,
+        "width_ft": round(width, 3),
+        "height_ft": round(height, 3),
+        "module_count": payload.modules,
+        "vertices": [
+            [round(float(x), 3), round(float(y), 3)]
+            for x, y in vertices
+        ],
+        "site_anchor_x_ft": 0.0,
+        "site_anchor_y_ft": 0.0,
+        "site_anchor_azimuth_deg": 0.0,
+    }
+
+
+def _payload_with_lookup_roof_sections(payload: WebProjectRequest) -> WebProjectRequest:
+    if (
+        payload.roof_sections
+        or not payload.site_address.strip()
+        or not payload.coordinates.strip()
+    ):
+        return payload
+    try:
+        result = _resolve_lookup_for_web(payload.site_address)
+    except Exception:
+        return payload
+
+    sections = _web_roof_sections_from_lookup(result.fields.get("roof_sections"))
+    if not sections:
+        return payload
+
+    updates: dict[str, Any] = {"roof_sections": sections}
+    section = _best_roof_section(result.fields.get("roof_sections") or [])
+    if section:
+        updates.update({
+            "roof_pitch_deg": section["pitch_deg"],
+            "roof_azimuth_deg": section["azimuth_deg"],
+            "roof_width_ft": section["width_ft"],
+            "roof_height_ft": section["height_ft"],
+            "roof_info_type": section.get("roof_type") or payload.roof_info_type,
+        })
+    if not payload.coordinates.strip() and {
+        "latitude", "longitude",
+    }.issubset(result.fields):
+        updates["coordinates"] = (
+            f"{float(result.fields['latitude']):.6f}, "
+            f"{float(result.fields['longitude']):.6f}"
+        )
+    return payload.model_copy(update=updates)
+
+
+def _resolve_lookup_for_web(
+    raw_address: str,
+    *,
+    providers=None,
+):
+    result = resolve_lookup(raw_address, providers=providers)
+    if providers is not None or result.fields.get("roof_sections"):
+        return result
+    try:
+        refreshed = resolve_lookup(raw_address, providers=providers, use_cache=False)
+    except Exception:
+        return result
+    return refreshed if refreshed.fields.get("roof_sections") else result
+
+
+def _web_roof_sections_from_lookup(raw_sections: Any) -> list[WebRoofSectionRequest]:
+    if not isinstance(raw_sections, list):
+        return []
+    sections: list[WebRoofSectionRequest] = []
+    for index, raw in enumerate(raw_sections, start=1):
+        if not isinstance(raw, dict):
+            continue
+        try:
+            section = WebRoofSectionRequest.model_validate({
+                "name": raw.get("name") or f"Roof Section {index}",
+                "roof_type": raw.get("roof_type") or "Comp Shingle",
+                "pitch_deg": raw.get("pitch_deg", 22.0),
+                "azimuth_deg": raw.get("azimuth_deg", 180.0),
+                "width_ft": raw.get("width_ft", 0.0),
+                "height_ft": raw.get("height_ft", 0.0),
+                "module_count": raw.get("module_count", 0),
+                "shape": raw.get("shape", "rect"),
+            })
+        except ValidationError:
+            continue
+        sections.append(section)
+    return sections[:80]
 
 
 def build_preflight_response(payload: WebProjectRequest) -> WebPreflightResponse:
@@ -1992,7 +2510,7 @@ def build_address_lookup_response(
     if not raw:
         raise ValueError("address is required")
     providers = WEB_OFFLINE_LOOKUP_PROVIDERS if mode == "offline" else None
-    result = resolve_lookup(raw, providers=providers)
+    result = _resolve_lookup_for_web(raw, providers=providers)
     suggested = _lookup_suggested_payload(result.fields, result.address)
     roof_sections = result.fields.get("roof_sections") or []
     roof_summary = {
@@ -2186,6 +2704,13 @@ def _preflight_issues(
             "Simulated source materials are fine for preview, but not AHJ-ready.",
             blocks_level="AHJ-ready candidate",
         )
+    if len(payload.roof_sections) > 8:
+        warn(
+            "site.ee4_trace",
+            "Address lookup returned many roof segment boxes. Generate a roof trace draft and verify the actual roof outline before AHJ-ready review.",
+            artifact="Roof trace",
+            blocks_level="AHJ-ready candidate",
+        )
     if not payload.monthly_kwh:
         warn(
             "monthly_kwh",
@@ -2364,6 +2889,7 @@ def _attach_site_materials(
     project_dir: Path,
     site_uploads: dict[str, UploadedMaterial],
     auto_photo_uploads: list[UploadedMaterial],
+    roof_satellite_upload: UploadedMaterial | None,
     utility_bill_upload: UploadedMaterial | None,
     structural_upload: UploadedMaterial | None,
     spec_uploads: dict[str, UploadedMaterial],
@@ -2444,6 +2970,17 @@ def _attach_site_materials(
                 path=str(path.resolve()),
                 caption=f"{label} (simulated)",
             )
+
+    roof_satellite_image_path = payload.roof_satellite_image_path
+    if roof_satellite_upload is not None:
+        roof_dir = project_dir / "source_materials" / "roof"
+        roof_dir.mkdir(parents=True, exist_ok=True)
+        path = _unique_path(roof_dir / _safe_filename(
+            roof_satellite_upload.filename,
+            default="roof-satellite-image.png",
+        ))
+        path.write_bytes(roof_satellite_upload.content)
+        roof_satellite_image_path = str(path.resolve())
 
     utility_path = payload.utility_bill_path
     monthly_kwh = list(payload.monthly_kwh)
@@ -2548,6 +3085,7 @@ def _attach_site_materials(
     )
     updated = payload.model_copy(update={
         "site_photo_refs": updated_refs,
+        "roof_satellite_image_path": roof_satellite_image_path,
         "monthly_kwh": monthly_kwh,
         "monthly_kwh_source": monthly_kwh_source,
         "utility_bill_parse": utility_parse,
@@ -2567,6 +3105,10 @@ def _write_source_pack(project_dir: Path, payload: WebProjectRequest) -> None:
         for ref in payload.site_photo_refs
         if ref.path
     ]
+    roof_satellite_files = (
+        [_project_relative(project_dir, Path(payload.roof_satellite_image_path))]
+        if payload.roof_satellite_image_path else []
+    )
     required_kinds = {kind for kind, _label in REQUIRED_PHOTOS}
     supplied_kinds = {ref.kind for ref in payload.site_photo_refs if ref.path}
     missing_kinds = sorted(required_kinds - supplied_kinds)
@@ -2683,6 +3225,15 @@ def _write_source_pack(project_dir: Path, payload: WebProjectRequest) -> None:
                 "replacement": "field-verified roof type/framing/decking/attic data",
                 "files": [],
             },
+            "site.roof_satellite_image": {
+                "status": "ready" if roof_satellite_files else "missing",
+                "source": (
+                    "web-uploaded roof/satellite reference image"
+                    if roof_satellite_files else "no uploaded roof/satellite reference image"
+                ),
+                "replacement": "recent satellite image, drone capture, EagleView page, or site roof photo",
+                "files": roof_satellite_files,
+            },
             "site.equipment_locations": {
                 "status": equipment_status,
                 "source": "web field-intake site coordinate values",
@@ -2709,7 +3260,15 @@ def _write_source_pack(project_dir: Path, payload: WebProjectRequest) -> None:
     )
 
 
-def build_source_materials(payload: WebProjectRequest) -> dict[str, Any]:
+def build_source_materials(
+    payload: WebProjectRequest,
+    *,
+    roof_trace: dict[str, Any] | None = None,
+    trace_module_layout: dict[str, Any] | None = None,
+    r8_validation: dict[str, Any] | None = None,
+    satellite_roof_outline: dict[str, Any] | None = None,
+    roof_topology: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     required_kinds = {kind for kind, _label in REQUIRED_PHOTOS}
     supplied_kinds = {ref.kind for ref in payload.site_photo_refs if ref.path}
     present_spec_equipment = {
@@ -2743,6 +3302,11 @@ def build_source_materials(payload: WebProjectRequest) -> dict[str, Any]:
             if payload.monthly_kwh_source != "none"
             else ("form" if payload.monthly_kwh else "none")
         ),
+        "roof_satellite_image_uploaded": bool(payload.roof_satellite_image_path),
+        "roof_satellite_image_file": (
+            Path(payload.roof_satellite_image_path).name
+            if payload.roof_satellite_image_path else ""
+        ),
         "equipment_locations_ready": (
             payload.msp_x_ft is not None
             and payload.msp_y_ft is not None
@@ -2764,7 +3328,292 @@ def build_source_materials(payload: WebProjectRequest) -> dict[str, Any]:
         "spec_classifications": [
             item.model_dump(mode="json") for item in payload.spec_classifications
         ],
+        "roof_trace": roof_trace or {},
+        "trace_module_layout": trace_module_layout or {},
+        "r8_validation": r8_validation or {},
+        "satellite_roof_outline": satellite_roof_outline or {},
+        "roof_topology": roof_topology or {},
     }
+
+
+def build_roof_topology_status(
+    payload: WebProjectRequest,
+    *,
+    roof_trace: dict[str, Any] | None = None,
+    trace_module_layout: dict[str, Any] | None = None,
+    r8_validation: dict[str, Any] | None = None,
+    satellite_roof_outline: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return the OSR3-OSR6 roof workflow status used by Step 2 and Step 6."""
+    roof_trace = roof_trace or {}
+    trace_module_layout = trace_module_layout or {}
+    r8_validation = r8_validation or {}
+    satellite_roof_outline = satellite_roof_outline or {}
+    steps_by_number = {
+        int(step.get("step")): step
+        for step in r8_validation.get("steps") or []
+        if isinstance(step, dict) and str(step.get("step", "")).isdigit()
+    }
+    satellite_step = steps_by_number.get(2, {})
+    satellite_status = str(satellite_step.get("status") or "").upper()
+    google_static = r8_validation.get("google_static_satellite") or {}
+    google_static_status = str(google_static.get("status") or "").upper()
+    outline_status = str(
+        satellite_roof_outline.get("status") or ""
+    ).upper()
+    trace_ready = bool(roof_trace.get("can_ahj_ready"))
+    layout_ready = bool(trace_module_layout.get("can_ahj_ready"))
+    target_modules = int(trace_module_layout.get("target_modules") or 0)
+    placed_modules = int(trace_module_layout.get("placed_modules") or 0)
+    reviewed = bool(payload.ee4_trace_reviewed and payload.ee4_trace)
+
+    evidence_ready = (
+        satellite_status == "PASS"
+        or google_static_status == "PASS"
+        or outline_status == "PASS"
+        or reviewed
+        or bool(payload.roof_satellite_image_path)
+        or bool(payload.site_photo_refs)
+    )
+    outline_ready = bool(
+        reviewed
+        or trace_ready
+        or satellite_roof_outline.get("vertex_count")
+        or satellite_roof_outline.get("area_sqft")
+    )
+    topology_ready = trace_ready
+    panel_ready = layout_ready and (
+        target_modules == 0 or placed_modules == target_modules
+    )
+
+    steps = [
+        _roof_topology_step(
+            "OSR3",
+            "Roof evidence",
+            evidence_ready,
+            (
+                satellite_step.get("detail")
+                or google_static.get("detail")
+                or satellite_roof_outline.get("audit_detail")
+                or "Satellite image, field photo, or manually reviewed roof evidence is required."
+            ),
+        ),
+        _roof_topology_step(
+            "OSR4",
+            "Roof outline",
+            outline_ready,
+            (
+                satellite_roof_outline.get("detail")
+                or roof_trace.get("detail")
+                or "Generate or manually enter a roof outline before layout review."
+            ),
+        ),
+        _roof_topology_step(
+            "OSR5",
+            "Topology draft",
+            topology_ready,
+            (
+                roof_trace.get("detail")
+                or roof_trace.get("required_action")
+                or "Accept a topology draft with outline, roof lines/facets, and fire pathways."
+            ),
+        ),
+        _roof_topology_step(
+            "OSR6",
+            "Panel layout preview",
+            panel_ready,
+            (
+                trace_module_layout.get("detail")
+                or trace_module_layout.get("required_action")
+                or "Generate panel layout preview against the confirmed roof topology."
+            ),
+        ),
+    ]
+    if panel_ready:
+        status = "PASS"
+        stage = "panel_layout_confirmed"
+        required_action = ""
+    elif topology_ready:
+        status = "WARN"
+        stage = "topology_confirmed_needs_layout"
+        required_action = "Review the panel layout preview and fix any layout blockers."
+    elif outline_ready:
+        status = "WARN"
+        stage = "outline_ready_needs_topology"
+        required_action = "Accept or complete the roof topology draft in Step 2."
+    elif evidence_ready:
+        status = "WARN"
+        stage = "evidence_ready_needs_outline"
+        required_action = "Generate or accept a roof outline candidate in Step 2."
+    else:
+        status = "WARN"
+        stage = "needs_roof_evidence"
+        required_action = "Confirm the satellite image or upload/manual-enter roof evidence."
+
+    return {
+        "status": status,
+        "stage": stage,
+        "reviewed": reviewed,
+        "can_use_for_estimate": evidence_ready or bool(payload.roof_sections),
+        "can_use_for_internal_layout": bool(topology_ready and panel_ready),
+        "can_ahj_ready": bool(
+            panel_ready
+            and str(r8_validation.get("overall_status") or "").upper() == "PASS"
+        ),
+        "satellite_crop_mode": payload.satellite_crop_mode,
+        "google_static_satellite_status": google_static_status or "",
+        "roof_satellite_image_uploaded": bool(payload.roof_satellite_image_path),
+        "evidence_status": "PASS" if evidence_ready else "WARN",
+        "outline_status": "PASS" if outline_ready else "WARN",
+        "topology_status": "PASS" if topology_ready else "WARN",
+        "panel_layout_status": "PASS" if panel_ready else "WARN",
+        "target_modules": target_modules,
+        "placed_modules": placed_modules,
+        "module_count_matched": (
+            target_modules == 0 or placed_modules == target_modules
+        ),
+        "trace_source": roof_trace.get("source") or "",
+        "outline_vertices": satellite_roof_outline.get("vertex_count") or 0,
+        "outline_area_sqft": satellite_roof_outline.get("area_sqft") or 0,
+        "required_action": required_action,
+        "steps": steps,
+    }
+
+
+def build_roof_topology_editor_payload(
+    payload: WebProjectRequest,
+    *,
+    project_dir: Path | None = None,
+) -> dict[str, Any]:
+    trace: EE4Trace | None = None
+    source = ""
+    if payload.ee4_trace is not None and payload.ee4_trace.has_geometry:
+        trace = complete_ee4_trace_for_review(payload.ee4_trace)
+        source = "accepted_request_trace"
+    if trace is None and project_dir is not None:
+        for filename, candidate_source in (
+            ("satellite-ee4-trace-candidate.yaml", "satellite_candidate"),
+            ("ee4-trace-draft.yaml", "ee4_trace_draft"),
+        ):
+            try:
+                candidate = _roof_trace_from_yaml_file(
+                    project_dir / "output" / filename,
+                    missing_message="",
+                    invalid_message="",
+                )
+            except ValueError:
+                continue
+            trace = complete_ee4_trace_for_review(candidate)
+            source = candidate_source
+            break
+    if trace is None or trace.roof_outline is None:
+        return {
+            "available": False,
+            "source": "",
+            "trace": None,
+            "outline_vertices": [],
+        }
+    if not trace.enabled:
+        trace = trace.model_copy(update={"enabled": True})
+    vertices = [
+        [round(float(x), 3), round(float(y), 3)]
+        for x, y in trace.roof_outline.vertices
+    ]
+    return {
+        "available": True,
+        "source": source,
+        "trace": trace.model_dump(mode="json", exclude_none=True),
+        "outline_vertices": vertices,
+        "vertex_count": len(vertices),
+    }
+
+
+def _roof_topology_step(
+    code: str,
+    label: str,
+    passed: bool,
+    detail: Any,
+) -> dict[str, Any]:
+    return {
+        "code": code,
+        "label": label,
+        "status": "PASS" if passed else "WARN",
+        "detail": str(detail or "").strip(),
+    }
+
+
+def write_roof_workflow_validation_artifacts(
+    payload: WebProjectRequest,
+    output_dir: Path,
+    roof_topology: dict[str, Any],
+    r8_validation: dict[str, Any],
+    roof_trace: dict[str, Any],
+    trace_module_layout: dict[str, Any],
+) -> tuple[Path, Path]:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    steps = [
+        {
+            "code": step.get("code"),
+            "label": step.get("label"),
+            "status": step.get("status"),
+            "detail": step.get("detail"),
+        }
+        for step in roof_topology.get("steps") or []
+        if isinstance(step, dict)
+    ]
+    payload_json = {
+        "address": payload.site_address,
+        "location": payload.location,
+        "coordinates": payload.coordinates,
+        "satellite_crop_mode": payload.satellite_crop_mode,
+        "stage": roof_topology.get("stage", ""),
+        "status": roof_topology.get("status", "WARN"),
+        "required_action": roof_topology.get("required_action", ""),
+        "target_modules": roof_topology.get("target_modules", 0),
+        "placed_modules": roof_topology.get("placed_modules", 0),
+        "module_count_matched": roof_topology.get("module_count_matched", False),
+        "accepted_trace_reviewed": bool(payload.ee4_trace_reviewed),
+        "editor_source": (roof_topology.get("editor") or {}).get("source", ""),
+        "r8_overall_status": r8_validation.get("overall_status", ""),
+        "roof_trace_status": roof_trace.get("status", ""),
+        "trace_module_layout_status": trace_module_layout.get("status", ""),
+        "steps": steps,
+    }
+    json_path = output_dir / "roof-workflow-validation.json"
+    json_path.write_text(
+        json.dumps(payload_json, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    md_lines = [
+        "# Roof Workflow Validation",
+        "",
+        f"- Address: {payload.site_address or '-'}",
+        f"- Coordinates: {payload.coordinates or '-'}",
+        f"- Satellite crop: {payload.satellite_crop_mode}",
+        f"- Stage: {payload_json['stage'] or '-'}",
+        f"- Status: {payload_json['status']}",
+        (
+            f"- Modules: {payload_json['placed_modules']} / "
+            f"{payload_json['target_modules']}"
+        ),
+        f"- Accepted trace reviewed: {'yes' if payload.ee4_trace_reviewed else 'no'}",
+        "",
+        "## Step checks",
+        "",
+    ]
+    for step in steps:
+        md_lines.append(
+            f"- {step.get('code', '-')}: **{step.get('status', '-')}** — "
+            f"{step.get('label', '-')}. {step.get('detail', '')}"
+        )
+    action = str(payload_json.get("required_action") or "").strip()
+    if action:
+        md_lines.extend(["", "## Required action", "", action])
+    md_lines.append("")
+    md_path = output_dir / "roof-workflow-validation.md"
+    md_path.write_text("\n".join(md_lines), encoding="utf-8")
+    return json_path, md_path
 
 
 def write_readiness_artifacts(result, project_dir: Path, output_dir: Path) -> dict[str, Any]:
@@ -2937,6 +3786,81 @@ def build_ahj_gate(
             artifact="Reference readiness",
         )
 
+    roof_trace = (
+        readiness.get("roof_trace")
+        if isinstance(readiness.get("roof_trace"), dict) else None
+    ) or (
+        source_materials.get("roof_trace")
+        if isinstance(source_materials.get("roof_trace"), dict) else None
+    ) or {}
+    if roof_trace:
+        check(
+            "site.ee4_trace",
+            bool(roof_trace.get("can_ahj_ready")),
+            str(
+                roof_trace.get("detail")
+                or "Roof trace status must be reviewed before AHJ-ready handoff."
+            ),
+            field="site.ee4_trace",
+            artifact="Roof trace",
+        )
+
+    trace_module_layout = (
+        readiness.get("trace_module_layout")
+        if isinstance(readiness.get("trace_module_layout"), dict) else None
+    ) or (
+        source_materials.get("trace_module_layout")
+        if isinstance(source_materials.get("trace_module_layout"), dict) else None
+    ) or {}
+    if trace_module_layout:
+        check(
+            "site.trace_module_layout",
+            bool(trace_module_layout.get("can_ahj_ready")),
+            str(
+                trace_module_layout.get("detail")
+                or "Module layout must be verified against traced roof geometry."
+            ),
+            field="site.trace_module_layout",
+            artifact="Trace module layout",
+        )
+
+    roof_topology = (
+        readiness.get("roof_topology")
+        if isinstance(readiness.get("roof_topology"), dict) else None
+    ) or (
+        source_materials.get("roof_topology")
+        if isinstance(source_materials.get("roof_topology"), dict) else None
+    ) or {}
+    if roof_topology:
+        check(
+            "site.roof_topology",
+            bool(roof_topology.get("can_use_for_internal_layout")),
+            str(
+                roof_topology.get("required_action")
+                or roof_topology.get("stage")
+                or "Complete the Step 2 roof evidence, outline, topology, and panel preview workflow."
+            ),
+            field="site.roof_topology",
+            artifact="Roof topology workflow",
+        )
+
+    r8_validation = (
+        readiness.get("r8_validation")
+        if isinstance(readiness.get("r8_validation"), dict) else None
+    ) or (
+        source_materials.get("r8_validation")
+        if isinstance(source_materials.get("r8_validation"), dict) else None
+    ) or {}
+    if r8_validation:
+        r8_status = str(r8_validation.get("overall_status") or "").upper()
+        check(
+            "site.r8_validation",
+            r8_status == "PASS",
+            _r8_gate_detail(r8_validation),
+            field="site.ee4_trace",
+            artifact="R8 validation",
+        )
+
     for field, passed, detail in _gate_field_checks(payload):
         check(field, passed, detail, field=field)
 
@@ -3061,6 +3985,96 @@ def build_ahj_gate(
         "pending_required_artifact_review_count": len(unapproved_review_files),
         "required_artifact_reviews": required_review_rows,
     }
+
+
+def _r8_gate_detail(r8_validation: dict[str, Any]) -> str:
+    status = str(r8_validation.get("overall_status") or "UNKNOWN").upper()
+    steps = [
+        step for step in r8_validation.get("steps") or []
+        if isinstance(step, dict)
+    ]
+    for step in steps:
+        step_status = str(step.get("status") or "").upper()
+        if step_status and step_status != "PASS":
+            title = str(step.get("title") or f"Step {step.get('step', '')}").strip()
+            detail = str(step.get("detail") or "").strip()
+            if detail:
+                return f"R8 validation is {status}: {title} needs review. {detail}"
+            return f"R8 validation is {status}: {title} needs review."
+    return (
+        "R8 validation passed."
+        if status == "PASS"
+        else f"R8 validation is {status}; review address, satellite, roof trace, and panel layout."
+    )
+
+
+def _apply_manual_trace_review_to_r8(status: dict[str, Any]) -> dict[str, Any]:
+    """Clear the Google segment-box warning after a manual trace is accepted.
+
+    Google Solar can still supply useful face data, but a manually reviewed
+    `site.ee4_trace` is the authoritative roof outline for AHJ review.
+    """
+    roof_trace = status.get("roof_trace") if isinstance(status.get("roof_trace"), dict) else {}
+    trace_layout = (
+        status.get("trace_module_layout")
+        if isinstance(status.get("trace_module_layout"), dict) else {}
+    )
+    if not (
+        roof_trace.get("can_ahj_ready")
+        and trace_layout.get("can_ahj_ready")
+        and status.get("roof_segment_warning")
+    ):
+        return status
+
+    updated = dict(status)
+    updated["manual_trace_reviewed"] = True
+    updated["roof_segment_warning"] = ""
+    steps: list[dict[str, Any]] = []
+    for raw_step in status.get("steps") or []:
+        step = dict(raw_step) if isinstance(raw_step, dict) else {}
+        if step.get("step") == 3:
+            step["status"] = "PASS"
+            step["detail"] = (
+                "Manual roof trace was accepted as the reviewed roof outline. "
+                + str(roof_trace.get("detail") or "").strip()
+            ).strip()
+        elif step.get("step") == 5:
+            step["status"] = "PASS"
+            step["detail"] = (
+                "Manual roof trace, panel layout, and attachment layout are "
+                "internally consistent for this review pass."
+            )
+        steps.append(step)
+    updated["steps"] = steps
+    updated["overall_status"] = _overall_status_from_steps(steps)
+    return updated
+
+
+def _rewrite_r8_validation_artifacts(
+    artifacts: dict[str, Any],
+    status: dict[str, Any],
+) -> None:
+    status_json = artifacts.get("status_json")
+    if isinstance(status_json, Path):
+        status_json.write_text(
+            json.dumps(status, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    status_markdown = artifacts.get("status_markdown")
+    if isinstance(status_markdown, Path):
+        status_markdown.write_text(
+            format_r8_validation_markdown(status),
+            encoding="utf-8",
+        )
+
+
+def _overall_status_from_steps(steps: list[dict[str, Any]]) -> str:
+    statuses = {str(step.get("status") or "").upper() for step in steps}
+    if "FAIL" in statuses:
+        return "FAIL"
+    if "WARN" in statuses:
+        return "WARN"
+    return "PASS"
 
 
 def _gate_required_review_files(
@@ -3371,6 +4385,264 @@ def refresh_job_gate(
     return gate
 
 
+def accept_roof_trace_for_job(
+    app: FastAPI,
+    job_id: str,
+    project_dir: Path,
+    request: WebRoofTraceAcceptRequest,
+    *,
+    context: WebAuthContext,
+) -> WebJobResponse:
+    state = load_job_state(app, job_id, context=context)
+    if state.status not in {"done", "failed"}:
+        raise HTTPException(
+            status_code=409,
+            detail="wait for the current job to finish before accepting roof trace",
+        )
+
+    request_path = project_dir / "request.json"
+    if not request_path.exists():
+        raise HTTPException(status_code=404, detail="job payload not found")
+
+    try:
+        base_payload = WebProjectRequest.model_validate_json(
+            request_path.read_text(encoding="utf-8")
+        )
+        trace = _roof_trace_from_accept_request(project_dir, request)
+    except (OSError, ValidationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    updated_payload = base_payload.model_copy(update={
+        "ee4_trace": trace,
+        "ee4_trace_reviewed": request.source in {
+            "draft_yaml",
+            "manual",
+            "satellite_candidate",
+        },
+    })
+    owner_id = (
+        app.state.job_store.job_owner(job_id)
+        if context.is_admin else context.operator_id
+    ) or context.operator_id
+
+    response = generate_project(
+        updated_payload,
+        app.state.jobs_dir,
+        job_id=job_id,
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    updated_state = state.model_copy(update={
+        "status": "done",
+        "progress": 100,
+        "stage": "done",
+        "message": "Roof trace accepted and package regenerated.",
+        "updated_at": now,
+        "result": response.model_dump(mode="json"),
+        "error": None,
+    })
+    _set_job_state(app, updated_state, payload=updated_payload, owner_id=owner_id)
+    return response
+
+
+def update_satellite_review_range_for_job(
+    app: FastAPI,
+    job_id: str,
+    project_dir: Path,
+    request: WebSatelliteReviewRangeRequest,
+    *,
+    context: WebAuthContext,
+) -> WebJobResponse:
+    state = load_job_state(app, job_id, context=context)
+    if state.status not in {"done", "failed"}:
+        raise HTTPException(
+            status_code=409,
+            detail="wait for the current job to finish before changing satellite review range",
+        )
+
+    request_path = project_dir / "request.json"
+    if not request_path.exists():
+        raise HTTPException(status_code=404, detail="job payload not found")
+
+    try:
+        base_payload = WebProjectRequest.model_validate_json(
+            request_path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    updated_payload = base_payload.model_copy(update={
+        "satellite_crop_mode": request.satellite_crop_mode,
+    })
+    owner_id = (
+        app.state.job_store.job_owner(job_id)
+        if context.is_admin else context.operator_id
+    ) or context.operator_id
+
+    response = generate_project(
+        updated_payload,
+        app.state.jobs_dir,
+        job_id=job_id,
+    )
+    now = datetime.now(timezone.utc).isoformat()
+    updated_state = state.model_copy(update={
+        "status": "done",
+        "progress": 100,
+        "stage": "done",
+        "message": "Satellite review range updated and package regenerated.",
+        "updated_at": now,
+        "result": response.model_dump(mode="json"),
+        "error": None,
+    })
+    _set_job_state(app, updated_state, payload=updated_payload, owner_id=owner_id)
+    return response
+
+
+def generate_roof_topology_proposal_for_job(
+    app: FastAPI,
+    job_id: str,
+    project_dir: Path,
+    request: WebRoofTopologyProposalRequest,
+    *,
+    context: WebAuthContext,
+) -> dict[str, Any]:
+    state = load_job_state(app, job_id, context=context)
+    if state.status not in {"done", "failed"}:
+        raise HTTPException(
+            status_code=409,
+            detail="wait for the current job to finish before generating a roof topology proposal",
+        )
+    script = (
+        PROJECT_ROOT
+        / ".agents"
+        / "skills"
+        / "pvess-roof-topology-vision"
+        / "scripts"
+        / "generate_topology_proposal.py"
+    )
+    if not script.exists():
+        raise HTTPException(status_code=404, detail="roof topology vision skill is missing")
+    output_dir = project_dir / "output" / "roof-topology-vision"
+    cmd = [
+        sys.executable,
+        str(script),
+        "--job-dir",
+        str(project_dir),
+        "--output-dir",
+        str(output_dir),
+        "--no-png",
+    ]
+    if request.strict:
+        cmd.append("--strict")
+    if request.mode == "openai":
+        image = project_dir / "output" / "satellite-roof-outline-candidate.png"
+        if not image.exists():
+            image = project_dir / "output" / "r8-step-2-satellite-review.png"
+        if image.exists():
+            cmd.extend(["--openai-image", str(image)])
+
+    proc = subprocess.run(
+        cmd,
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0 and request.strict:
+        raise HTTPException(
+            status_code=422,
+            detail=(proc.stderr or proc.stdout or "roof topology proposal failed"),
+        )
+
+    qa_path = output_dir / "roof-topology-qa.json"
+    if not qa_path.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=(proc.stderr or proc.stdout or "roof topology proposal did not write QA output"),
+        )
+    qa = json.loads(qa_path.read_text(encoding="utf-8"))
+
+    result_data = dict(state.result or {})
+    files = [
+        GeneratedFile.model_validate(file)
+        for file in result_data.get("files") or []
+        if isinstance(file, dict)
+    ]
+    for label, path in (
+        ("Roof Topology Proposal YAML", output_dir / "site-ee4-trace-proposed.yaml"),
+        ("Roof Topology Proposal QA JSON", output_dir / "roof-topology-qa.json"),
+        ("Roof Topology Proposal QA Report", output_dir / "roof-topology-qa.md"),
+        ("Roof Topology Proposal Review PDF", output_dir / "roof-topology-review.pdf"),
+    ):
+        if path.exists():
+            files = _upsert_generated_file(files, _file(project_dir, job_id, label, path))
+    result_data["files"] = [file.model_dump(mode="json") for file in files]
+    result_data["roof_topology_proposal"] = qa
+    updated = state.model_copy(update={
+        "result": result_data,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    _set_job_state(app, updated)
+    return {
+        "job_id": job_id,
+        "status": qa.get("status", "UNKNOWN"),
+        "qa": qa,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+        "files": result_data["files"],
+    }
+
+
+def _roof_trace_from_accept_request(
+    project_dir: Path,
+    request: WebRoofTraceAcceptRequest,
+) -> EE4Trace:
+    if request.source == "manual":
+        if not isinstance(request.trace, dict):
+            raise ValueError("manual roof trace requires a trace object")
+        trace = complete_ee4_trace_for_review(EE4Trace.model_validate(request.trace))
+    elif request.source == "satellite_candidate":
+        trace = _roof_trace_from_yaml_file(
+            project_dir / "output" / "satellite-ee4-trace-candidate.yaml",
+            missing_message=(
+                "Satellite roof outline candidate is missing; regenerate the "
+                "package after satellite review first"
+            ),
+            invalid_message=(
+                "Satellite roof outline candidate does not contain site.ee4_trace"
+            ),
+        )
+        trace = complete_ee4_trace_for_review(trace)
+    else:
+        trace = _roof_trace_from_draft_yaml(project_dir)
+
+    if not trace.enabled:
+        trace = trace.model_copy(update={"enabled": True})
+    return trace
+
+
+def _roof_trace_from_draft_yaml(project_dir: Path) -> EE4Trace:
+    return _roof_trace_from_yaml_file(
+        project_dir / "output" / "ee4-trace-draft.yaml",
+        missing_message="EE-4 trace draft is missing; regenerate the package first",
+        invalid_message="EE-4 trace draft does not contain site.ee4_trace",
+    )
+
+
+def _roof_trace_from_yaml_file(
+    path: Path,
+    *,
+    missing_message: str,
+    invalid_message: str,
+) -> EE4Trace:
+    if not path.exists():
+        raise ValueError(missing_message)
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    try:
+        raw = data["site"]["ee4_trace"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(invalid_message) from exc
+    return EE4Trace.model_validate(raw)
+
+
 def run_package_qa_for_job(
     app: FastAPI,
     job_id: str,
@@ -3614,9 +4886,9 @@ def web_request_from_lead(lead: dict[str, Any]) -> WebProjectRequest:
         utility=str(lead.get("utility") or _default_utility_for_address(site_address)),
         modules=32,
         strings=4,
-        battery_choice="inhouse_16kwh_hv" if wants_battery else "none",
+        battery_choice="growatt_apx_20kwh" if wants_battery else "none",
         battery_quantity=1 if wants_battery else 0,
-        battery_capacity_kwh_each=16.0 if wants_battery else 0.0,
+        battery_capacity_kwh_each=20.0 if wants_battery else 0.0,
         monthly_kwh=monthly if len(monthly) == 12 else [],
         monthly_kwh_source=(
             "utility_file"
@@ -4059,8 +5331,71 @@ def resolve_job_file(jobs_dir: Path, job_id: str, file_path: str) -> Path:
     return path
 
 
+def render_pdf_page_preview(
+    project_dir: Path,
+    pdf_path: Path,
+    page_number: int,
+) -> Path:
+    if page_number < 1 or page_number > 200:
+        raise HTTPException(status_code=400, detail="invalid PDF page number")
+    pdftoppm = find_pdftoppm()
+    if not pdftoppm:
+        raise HTTPException(
+            status_code=503,
+            detail="pdftoppm is required for PDF page previews",
+        )
+    preview_dir = project_dir / "output" / ".web-previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    safe_stem = re.sub(r"[^A-Za-z0-9_.-]+", "-", pdf_path.stem).strip("-")
+    preview_path = preview_dir / f"{safe_stem}-page-{page_number:03d}.png"
+    if preview_path.exists() and preview_path.stat().st_mtime >= pdf_path.stat().st_mtime:
+        return preview_path
+
+    prefix = preview_path.with_suffix("")
+    try:
+        subprocess.run(
+            [
+                pdftoppm,
+                "-png",
+                "-singlefile",
+                "-r",
+                "144",
+                "-f",
+                str(page_number),
+                "-l",
+                str(page_number),
+                str(pdf_path),
+                str(prefix),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "PDF page preview failed").strip()
+        raise HTTPException(status_code=500, detail=detail[:500]) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="PDF page preview timed out") from exc
+    if not preview_path.exists():
+        raise HTTPException(status_code=500, detail="PDF page preview was not created")
+    return preview_path
+
+
+def find_pdftoppm() -> str | None:
+    found = shutil.which("pdftoppm")
+    if found:
+        return found
+    for candidate in PDFTOPPM_CANDIDATES:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def _inverter_ref(choice: str) -> str:
-    return WEB_INVERTER_OPTIONS[choice]["ref"]
+    if choice in WEB_INVERTER_OPTIONS:
+        return WEB_INVERTER_OPTIONS[choice]["ref"]
+    return WEB_LEGACY_INVERTER_REFS[choice]
 
 
 def _module_ref(choice: str) -> str:
@@ -4068,7 +5403,9 @@ def _module_ref(choice: str) -> str:
 
 
 def _battery_ref(choice: str) -> str:
-    return WEB_BATTERY_OPTIONS[choice]["ref"]
+    if choice in WEB_BATTERY_OPTIONS:
+        return WEB_BATTERY_OPTIONS[choice]["ref"]
+    return WEB_LEGACY_BATTERY_REFS[choice]
 
 
 def _selected_module(payload: WebProjectRequest):
@@ -4081,7 +5418,7 @@ def _selected_inverter(payload: WebProjectRequest):
 
 def _selected_battery(payload: WebProjectRequest):
     if payload.battery_choice == "none":
-        return get_battery("inhouse_16kwh_hv").model_copy(update={
+        return get_battery("pytes_v16").model_copy(update={
             "brand": "None",
             "model": "PV-only",
             "capacity_kwh_each": 0.0,
@@ -4158,6 +5495,42 @@ def _file(project_dir: Path, job_id: str, label: str, path: Path) -> GeneratedFi
 def _classify_artifact(label: str, path: Path) -> tuple[str, str]:
     lower = label.lower()
     suffix = path.suffix.lower()
+    if lower.startswith("r8 ") or "r8 validation" in lower:
+        if suffix == ".png":
+            return "Verification", "preview"
+        if suffix == ".pdf":
+            return "Verification", "pdf"
+        if suffix == ".json":
+            return "Verification", "json"
+        return "Verification", "markdown"
+    if "roof workflow validation" in lower or "roof topology proposal" in lower:
+        if suffix == ".png":
+            return "Verification", "preview"
+        if suffix == ".pdf":
+            return "Verification", "pdf"
+        if suffix in {".yaml", ".yml"}:
+            return "Verification", "yaml"
+        if suffix == ".json":
+            return "Verification", "json"
+        return "Verification", "markdown"
+    if "uploaded roof satellite" in lower:
+        return "Verification", "preview" if suffix in {".png", ".jpg", ".jpeg", ".webp"} else suffix.lstrip(".") or "other"
+    if "satellite data chain" in lower or "satellite roof outline" in lower:
+        if suffix == ".png":
+            return "Verification", "preview"
+        if suffix in {".yaml", ".yml"}:
+            return "Verification", "yaml"
+        if suffix == ".json":
+            return "Verification", "json"
+        return "Verification", "markdown"
+    if "satellite ee-4 trace" in lower:
+        return "Verification", "yaml" if suffix in {".yaml", ".yml"} else "markdown"
+    if "trace module layout" in lower:
+        return "Readiness", "json" if suffix == ".json" else "markdown"
+    if "roof trace" in lower or "ee-4 trace" in lower:
+        return "Readiness", "yaml" if suffix in {".yaml", ".yml"} else (
+            "json" if suffix == ".json" else "markdown"
+        )
     if "inputs" in lower or path.name == "request.json":
         return "Input", "yaml" if suffix in {".yaml", ".yml"} else "json"
     if "bom" in lower:

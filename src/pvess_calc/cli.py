@@ -526,6 +526,211 @@ def ee4_preview_cmd(
         raise SystemExit(1)
 
 
+@click.command(name="pvess-roof-review")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option(
+    "--address", "-a",
+    type=str,
+    default=None,
+    help="Optional address for lookup-based roof face candidates.",
+)
+@click.option(
+    "--satellite/--no-satellite",
+    default=False,
+    show_default=True,
+    help=(
+        "Fetch Google Solar dataLayers / Google Static imagery when needed. "
+        "This can incur Google API charges."
+    ),
+)
+@click.option(
+    "--confirm-cost",
+    is_flag=True,
+    help="Acknowledge paid imagery calls for --satellite mode.",
+)
+def roof_review_cmd(
+    project_dir: Path,
+    address: str | None,
+    satellite: bool,
+    confirm_cost: bool,
+) -> None:
+    """Generate the CAD roof-review package for a project.
+
+    The command never mutates inputs.yaml. It writes a review DXF,
+    underlay PNG, roof-mask candidate JSON, and audit Markdown under
+    output/roof-review. If API keys or cached satellite layers are absent,
+    it still emits a blank CAD template with the layer standard.
+    """
+    import os
+    from .roof_review import build_roof_review_package
+
+    if satellite:
+        env_allow = os.environ.get("PVESS_ALLOW_PAID_RENDERS", "").strip()
+        env_confirmed = env_allow in ("1", "true", "yes")
+        if not confirm_cost and not env_confirmed:
+            click.echo(click.style(
+                "warning: --satellite may call paid Google imagery APIs.",
+                fg="yellow",
+            ), err=True)
+            click.echo(
+                "Pass --confirm-cost or set PVESS_ALLOW_PAID_RENDERS=1 "
+                "to proceed.",
+                err=True,
+            )
+            raise SystemExit(4)
+
+    artifacts = build_roof_review_package(
+        project_dir,
+        address=address,
+        allow_paid_satellite=satellite,
+    )
+    for key in (
+        "review_dxf",
+        "review_preview",
+        "underlay",
+        "candidate_json",
+        "line_candidates_json",
+        "design_guidance_json",
+        "audit_markdown",
+    ):
+        click.echo(f"wrote {artifacts[key]}")
+    click.echo(
+        "CAD review: draw/edit ROOF_OUTLINE and ROOF_FACET, save as "
+        "roof-reviewed.dxf, then run `pvess roof-import`."
+    )
+
+
+@click.command(name="pvess-roof-import")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("reviewed_dxf",
+                type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def roof_import_cmd(project_dir: Path, reviewed_dxf: Path) -> None:
+    """Import a CAD-reviewed roof DXF into paste-ready roof YAML."""
+    from .roof_review import write_import_outputs
+    from .roof_review.qa import RoofReviewImportError
+
+    inputs = _load(project_dir)
+    try:
+        artifacts = write_import_outputs(
+            reviewed_dxf,
+            project_dir / "output" / "roof-review",
+            original_inputs_path=project_dir / "inputs.yaml",
+            default_pitch_deg=inputs.site.roof_pitch_deg,
+            default_azimuth_deg=inputs.site.array_azimuth_deg,
+        )
+    except RoofReviewImportError as exc:
+        from .roof_review.qa import write_qa_report
+        report = write_qa_report(
+            exc.qa,
+            project_dir / "output" / "roof-review" / "roof-qa-report.md",
+            dxf_path=reviewed_dxf,
+        )
+        for line in exc.qa.as_lines():
+            click.echo(line, err=True)
+        click.echo(f"wrote {report}", err=True)
+        raise SystemExit(2)
+
+    click.echo(f"wrote {artifacts['yaml']}")
+    click.echo(f"wrote {artifacts['preview']}")
+    click.echo(f"wrote {artifacts['qa_report']}")
+    click.echo(f"wrote {artifacts['merge_preview']}")
+    click.echo(f"wrote {artifacts['merged_inputs']}")
+    click.echo(f"wrote {artifacts['validation']}")
+    click.echo(
+        "Review inputs.roof-merged.yaml. The original inputs.yaml was not modified."
+    )
+
+
+@click.command(name="pvess-roof-qa")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.argument("reviewed_dxf",
+                type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def roof_qa_cmd(project_dir: Path, reviewed_dxf: Path) -> None:
+    """Run CAD roof-review DXF QA without writing import artifacts."""
+    from .roof_review import qa_reviewed_dxf
+    from .roof_review.qa import write_qa_report
+
+    _load(project_dir)  # keep the command scoped to a real project
+    qa = qa_reviewed_dxf(reviewed_dxf)
+    report = write_qa_report(
+        qa,
+        project_dir / "output" / "roof-review" / "roof-qa-report.md",
+        dxf_path=reviewed_dxf,
+    )
+    for line in qa.as_lines():
+        click.echo(line)
+    click.echo(f"wrote {report}")
+    if qa.failures:
+        raise SystemExit(2)
+
+
+@click.command(name="pvess-visual-benchmark")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--target", required=True,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Formal reference roof-plan PNG to compare against.")
+@click.option("--sheet",
+              type=click.Choice(["PV-2", "PV-4", "EE-1"],
+                                case_sensitive=False),
+              default=None,
+              help="Limit comparison to one sheet.")
+def visual_benchmark_cmd(
+    project_dir: Path,
+    target: Path,
+    sheet: str | None,
+) -> None:
+    """Benchmark current roof/PV sheet visuals against a reference image."""
+    from .permit.visual_benchmark import run_visual_benchmark
+
+    try:
+        result = run_visual_benchmark(project_dir, target, sheet=sheet)
+    except ValueError as exc:
+        click.echo(str(exc), err=True)
+        raise SystemExit(2)
+    paths = result["paths"]
+    metrics = result["metrics"]
+    click.echo(f"wrote {paths.permit_pdf}")
+    click.echo(f"wrote {paths.metrics_json}")
+    click.echo(f"wrote {paths.comparison_md}")
+    click.echo(
+        f"overall_score={metrics['overall_score']:.1f} "
+        f"qa_constraints_pass={metrics['qa_constraints_pass']}"
+    )
+
+
+@click.command(name="pvess-visual-iterate")
+@click.argument("project_dir",
+                type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--target", required=True,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Formal reference roof-plan PNG to compare against.")
+@click.option("--max-rounds", default=3, show_default=True,
+              type=click.IntRange(1, 10),
+              help="Maximum benchmark rounds to run.")
+def visual_iterate_cmd(
+    project_dir: Path,
+    target: Path,
+    max_rounds: int,
+) -> None:
+    """Run bounded visual benchmark iterations and write round artifacts."""
+    from .permit.visual_benchmark import run_visual_iteration
+
+    summary = run_visual_iteration(
+        project_dir,
+        target,
+        max_rounds=max_rounds,
+    )
+    click.echo(f"status={summary['status']}")
+    click.echo(f"wrote {summary['final_summary']}")
+    if summary["status"] != "PASS":
+        for action in summary.get("next_actions", []):
+            click.echo(f"- {action}")
+
+
 @click.command(name="pvess-lookup-check")
 @click.argument("address", nargs=-1, required=False)
 def lookup_check_cmd(address: tuple[str, ...]) -> None:

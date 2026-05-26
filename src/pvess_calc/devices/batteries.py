@@ -3,10 +3,9 @@
 Each entry produces `pvess_calc.schema.Battery` kwargs (without quantity;
 project decides the count).
 
-**HV battery entries** (K.4.6.2 — in-house, Growatt APX) pair with
-HV-input hybrid inverters (Megarevo R-series, Growatt MIN-X, Sol-Ark
-12K). DC-coupled at the inverter, no separate AC bridge — simpler
-wiring than the AC-coupled Tesla / FranklinWH approach.
+Installer-direct entries pair with the selected inverter family:
+Pytes/Hoymiles low-voltage batteries for LV hybrid inverters, and Growatt
+APX for Growatt MIN-XH-US. DC-coupled at the inverter, no separate AC bridge.
 """
 from __future__ import annotations
 
@@ -37,7 +36,26 @@ BATTERIES: dict[str, dict] = {
         nominal_voltage=240.0,           # AC-coupled with integrated micros
         capacity_kwh_each=5.0,
     ),
-    # ─── HV battery stacks (K.4.6.2 — pair w/ HV hybrid inverter) ─────
+    # ─── Installer-direct battery stacks ──────────────────────────────
+    "pytes_v16": dict(
+        brand="Pytes",
+        model="V16",
+        nominal_voltage=51.2,            # LV LFP stack for Megarevo R-LNA
+        capacity_kwh_each=16.0,
+    ),
+    "hoymiles_hbx_10lv_usg1": dict(
+        brand="Hoymiles",
+        model="HBX-10LV-USG1",
+        nominal_voltage=51.2,
+        capacity_kwh_each=10.0,
+    ),
+    # Back-compat aliases kept for older web drafts and scenario fixtures.
+    "paizhi_16kwh_lfp": dict(
+        brand="Pytes",
+        model="V16",
+        nominal_voltage=51.2,
+        capacity_kwh_each=16.0,
+    ),
     "inhouse_16kwh_hv": dict(
         brand="InHouse",
         model="HV-16",
@@ -64,6 +82,9 @@ BATTERY_PRICES_USD: dict[str, float] = {
     "eg4_lifepower4_v2": 1700,
     "franklinwh_apower": 8500,
     "enphase_iq_battery_5p": 4200,
+    "pytes_v16": 6000,               # installer BOM cost placeholder
+    "paizhi_16kwh_lfp": 6000,        # back-compat alias for Pytes V16
+    "hoymiles_hbx_10lv_usg1": 5500,  # installer BOM cost placeholder
     "inhouse_16kwh_hv": 6000,        # in-house BOM cost (2026-05-17)
     "growatt_apx_20kwh": 10000,      # wholesale ($500/kWh)
 }

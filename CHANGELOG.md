@@ -8,6 +8,25 @@ All notable changes to **pvess-calc** are listed below. Format follows
 
 Tracked work that's merged but not yet bundled into a tagged release.
 
+### 2026-05-22 — OSR3-OSR12 roof-topology workflow hardening
+
+- Promoted Step 2 into the primary roof-topology workflow: satellite
+  evidence, outline candidate, topology draft, and panel-layout checks now
+  emit one shared `roof_topology` status object.
+- Added roof workflow validation artifacts (`roof-workflow-validation.json`
+  and `.md`) so real-address checks can be reviewed step by step.
+- Added an editable Step 2 roof-outline tool with tighten/expand, vertex
+  edit/add/remove, and save-regenerate actions for cases where the satellite
+  mask covers too much of a roof.
+- Made reviewed `site.ee4_trace` the downstream drawing source of truth by
+  deriving a polygon `roof_section` from the accepted outline before
+  calculation and permit rendering.
+- Added a Web endpoint for the `pvess-roof-topology-vision` skill so a
+  structured proposal can be generated as reviewable YAML/PDF/QA artifacts.
+- Extended Web regression coverage for accepted topology state, edited
+  outline-only traces, proposal generation, workflow artifacts, and static UI
+  controls.
+
 ### 2026-05-20 — Web UI P11: staged checklist and review console
 
 - Reworked the wizard side panel so steps 1-5 show **Project checklist**

@@ -39,14 +39,21 @@ scoped to the jobs they create.
 2. Optional: click **Check address**. Online mode uses configured
    Mapbox, NREL, and Google Solar providers when keys are available; offline
    mode uses only bundled utility/AHJ/NEC/rate datasets.
-3. Run **Check readiness**. This checks schema validity, interconnection status,
+3. In **Roof and usage**, build the roof preview and complete the Step 2
+   roof workflow before relying on permit drawings. The workflow reviews the
+   satellite image, roof-outline candidate, saved topology draft, and panel
+   layout count.
+4. In **Review and generate**, choose a package type: customer estimate,
+   engineering review, or AHJ-ready candidate.
+5. Run **Check readiness**. This checks schema validity, interconnection status,
    reference-profile intake gaps, ESS placement inputs, BOM cost, ITC cost,
    and payback sensitivity without writing a project package.
-4. Select outputs and click **Generate estimate package**.
-5. Review **Handoff readiness**, **Review preview**,
-   **BOM and quote estimate**, and **Generated deliverables**.
-6. Run **Package QA** when a generated package is ready for internal review.
-7. Download **Complete Project ZIP** for handoff.
+6. Confirm selected deliverables and click **Generate package**.
+7. Review generated artifacts in the **Package review workspace**. The
+   workspace paginates package overview, each PDF/PNG preview, BOM/cost,
+   source materials, all deliverables, and final handoff.
+8. Run **Package QA** when a generated package is ready for internal review.
+9. Download **Complete Project ZIP** for handoff.
 
 User-facing copy follows **[Web UI language](web-ui-language.md)**.
 Production deployment details live in **[Web deployment](web-deployment.md)**.
@@ -56,8 +63,7 @@ Production deployment details live in **[Web deployment](web-deployment.md)**.
 The main page is organized as a dense operator workspace rather than a
 marketing page:
 
-- a compact top bar with product identity, public-request entry point, and
-  optional operator token
+- a compact top bar with product identity and public-request entry point
 - a sticky workflow rail for quick jumps through basics, site data, equipment,
   costs, evidence, and generation
 - a left-side intake form and a right-side panel that behaves as a compact
@@ -83,8 +89,9 @@ the operator now works through six reviewable steps:
 2. **Usage & Goals** — monthly usage, simulated-vs-real source status, meter
    data, and ESS install constraints.
 3. **System Equipment** — module, string, inverter, and battery selections.
-4. **Electrical & Roof Costs** — service, interconnection, tariff, roof
-   geometry, and cost assumptions.
+4. **Electrical & Roof Costs** — service amperage, interconnection
+   preference, utility tariff, usage behavior, roof fallback, and cost
+   assumptions.
 5. **Evidence** — utility bill, site photos, structural letter, and spec
    sheets.
 6. **Review & Generate** — output selection, readiness check, and package
@@ -109,6 +116,58 @@ back through the full form to understand what is wrong. Step feedback, invalid
 field highlighting, and the sticky Back / Save draft / Continue controls must
 stay visible while completing each step.
 
+## OSR Roof Topology Workflow
+
+OSR3-OSR12 make Step 2 the source of truth for the roof model used by
+downstream permit sheets.
+
+Step 2 now emits one `roof_topology` status object with four checks:
+
+- **OSR3 Roof evidence** — satellite image, uploaded roof photo, or accepted
+  manual trace evidence exists.
+- **OSR4 Roof outline** — a satellite, draft, or manually edited polygon
+  outline is available.
+- **OSR5 Topology draft** — the accepted `site.ee4_trace` has an outline plus
+  roof lines/facets and fire-pathway candidates.
+- **OSR6 Panel layout preview** — traced module geometry matches the project
+  module count and clears blocking layout lints.
+
+Every generated project writes:
+
+- `output/roof-workflow-validation.json`
+- `output/roof-workflow-validation.md`
+
+These files are the repeatable real-address validation record. They capture
+the input address, coordinates, satellite crop mode, Step 2 stage, module
+count match, accepted trace state, R8 status, and the OSR3-OSR6 check rows.
+
+When the satellite mask is too broad, the operator can use **Editable roof
+outline** in Step 2. The tool supports:
+
+- tighten/expand by 5 percent around the outline centroid
+- direct vertex coordinate edits
+- add/remove vertex controls
+- saving the edited outline as reviewed `site.ee4_trace`
+
+Saving an edited outline regenerates the package. The backend completes
+missing roof lines and fire-pathway candidates, then derives a polygon
+`roof_section` from the accepted trace. That keeps EE-4, PV-1/PV-4/PV-6,
+module placement, and layout QA aligned to the same reviewed topology instead
+of falling back to provider roof-segment boxes.
+
+The `pvess-roof-topology-vision` skill is exposed through
+`POST /api/jobs/{job_id}/roof-topology/proposal`. It generates reviewable
+proposal artifacts under `output/roof-topology-vision/`:
+
+- `site-ee4-trace-proposed.yaml`
+- `roof-topology-review.pdf`
+- `roof-topology-qa.json`
+- `roof-topology-qa.md`
+
+The skill is an assistant, not the final drafter. Model or deterministic
+output must still pass PVESS structured validation, module-count matching,
+setback/fire-pathway checks, and operator review before acceptance.
+
 ## P11 Right Panel
 
 P11 reduces attention cost in the right-side panel:
@@ -118,15 +177,19 @@ P11 reduces attention cost in the right-side panel:
   appear only when a step has an error or warning.
 - Field-level error and warning text is written directly below the affected
   input whenever a step check identifies a specific field.
-- Step 6 switches to **Review and generate**: readiness check, generation
-  progress, delivery ZIP, handoff readiness, preview, BOM, generated files,
-  and source-material status.
+- Step 6 switches to **Review and generate**: project summary, package type,
+  selected deliverables, readiness check, then a paginated
+  **Package review workspace** after a package is generated.
+- After generation, Step 6 enters **Review Focus Mode**. The right panel and
+  generation action bar are hidden, the review workspace expands to full
+  width, and a compact sticky status bar shows page position, required
+  approvals, readiness, Package QA, and ZIP state.
 - Step 6 is the only place for the full **Review checklist**, including
-  readiness, blocking issues, warnings, missing evidence, selected
-  deliverables, and Package QA access.
-- Leads, recent projects, and Package QA are grouped under collapsed
-  **Operator tools** on Step 6 only, so internal utilities stay out of the
-  customer-intake path.
+  readiness, blocking issues, estimate warnings, AHJ-ready evidence gaps,
+  selected deliverables, and Package QA access.
+- Generated file review no longer lives in the right panel. The right panel
+  remains a lightweight status rail before generation; after generation,
+  detailed status moves into the **Status details** drawer.
 
 The panel should read as guidance while the operator is entering facts, and as
 a run console only when the operator intentionally reaches Review.
@@ -150,16 +213,16 @@ fields stay in hidden payload defaults or the Review checklist.
 | Usage | Roof material | Keep as a simple select. Detailed roof structure stays in Review/AHJ-ready checklist. |
 | Usage | Meter number, ESID, roof height, construction, framing, condition, attic access, decking, roof layers | Hide from the customer path. These are AHJ/structural review fields collected from utility bills, photos, site survey, or operator review. |
 | Usage | Engineer firm/contact/address, installer details, equipment coordinates | Hide from the customer path. Engineer/installer values are profile/default data; coordinates are internal routing inputs. |
-| Equipment | Module, inverter, battery | Split into three visible sections: PV modules, Inverter, and Battery. Keep one inverter brand/model family selected at a time. |
+| Equipment | Module, inverter, battery | Split into three visible sections: PV modules, Inverter, and Battery. Keep one inverter brand/model family selected at a time; battery package follows the selected inverter brand. |
 | Equipment | Module watts/brand/model, inverter model, battery kWh/model | These are read-only derived fields. P12 should visually mark them as derived or collapse them under equipment details. |
 | Equipment | Modules, strings, inverter qty, battery qty | Keep numeric. P12 should offer steppers or suggested package sizes. |
 | Equipment | AC output amps | Usually derived from selected inverter. Keep editable only under advanced override. |
-| Electrical | Main breaker, busbar | Convert to standard amperage selects in P12 (`100/125/150/175/200/225/400`). |
-| Electrical | Interconnection, export tariff | Already good as selects. Keep. |
-| Electrical | Self-consumption | Replace raw 0-1 input with a scenario select in P12 (`PV-only`, `PV+ESS typical`, `High backup/load shifting`, `Custom`). |
-| Electrical | PV turnkey $/W, inverter cost, battery cost | Keep for quoting, but show as BOM cost assumptions rather than general electrical inputs. |
-| Electrical | Roof pitch, azimuth, width, height | Keep for manual fallback. P12 should prefer roof lookup/manual roof editor and make raw dimensions advanced. |
-| Evidence | Source mode, files, photos | Keep. P12 should show required-vs-optional status by selected mode and output target. |
+| Electrical | Main breaker, busbar | Standard amperage selects (`100/125/150/175/200/225/400`). |
+| Electrical | Interconnection, export tariff | Customer-facing selects with engineering-friendly labels. |
+| Electrical | Self-consumption | Scenario select mapped to the underlying 0-1 calculation value. |
+| Electrical | PV turnkey $/W, inverter cost, battery cost | PV $/W stays visible for quoting; inverter/battery overrides are advanced. |
+| Electrical | Roof pitch, azimuth, width, height | Manual fallback remains in advanced roof geometry; address lookup and evidence should replace it when available. |
+| Evidence | Source mode, files, photos | Keep as an evidence-level choice plus bulk uploaders. Full required-vs-optional status belongs in Review. |
 | Review | Output checkboxes | Keep. They are explicit and understandable. |
 
 ### P10 Testing Plan
@@ -293,19 +356,22 @@ guarantee APN data.
 
 ## Source Materials
 
-The form accepts:
+Step 5 is an evidence collection step, not another engineering data-entry
+sheet. The normal user path exposes:
 
-- PV-7 site photos: front elevation, roof, meter, main panel, sub-panel, and
-  equipment location.
-- Unsorted site photos. The Web intake helper classifies these by filename
-  into the closest PV-7 kind and keeps the classification visible for review.
-- Utility bill or usage export.
-- Signed structural letter PDF.
-- Manufacturer spec sheets for module, inverter, battery, racking, and
-  optimizer.
-- Unsorted spec sheets. The intake helper classifies module, inverter,
-  optimizer, racking, and battery PDFs by filename and reports coverage for
-  the equipment selected in the form.
+- Evidence mode: quick estimate with simulated evidence, or uploaded field
+  evidence.
+- Utility bill or Smart Meter export.
+- One bulk site-photo uploader. The Web intake helper classifies these by
+  filename into PV-7 targets: front elevation, roof/array area, meter, main
+  panel, sub-panel/load center, and equipment location.
+- A collapsed engineering-documents area for signed structural letters and
+  missing manufacturer documents.
+
+Per-equipment spec sheet upload fields are intentionally hidden from the main
+path. The system-selected equipment should use internal library references
+first; uploaded spec PDFs are for custom equipment, missing library references,
+or AHJ-ready review support.
 
 Uploaded files are copied into `source_materials/` under the generated job
 directory and listed in `simulated-site-data.yaml` so simulated or missing
@@ -334,10 +400,16 @@ Every run writes:
 Optional outputs add customer PDF, permit PDF, DXF/PNG previews, NEC labels,
 and QET.
 
-PDFs and PNG sheet previews render inside the **Preview** panel. Direct
-Open/download links remain available for external PDF viewers and CAD review.
-The preview grid also shows document/sheet thumbnails for PDFs, Markdown
-reports, and PNG previews.
+PDFs and PNG sheet previews render inside the Step 6
+**Package review workspace** as separate review pages. Direct Open/download
+links remain available for external PDF viewers and CAD review. The final
+handoff page centralizes readiness, Package QA, required artifact approvals,
+blocking items, and ZIP download.
+
+The **Status details** drawer is the only expanded status surface during
+Review Focus Mode. It contains readiness warnings, blocking items, Package QA,
+and required artifact approvals without permanently reducing PDF or drawing
+preview width.
 
 Each generated artifact can be marked:
 
@@ -377,8 +449,9 @@ and checks generated PDFs for page count and searchable text. The job result is
 updated with the QA status and the ZIP is rebuilt so the QA reports are included
 in the handoff archive. A package cannot reach `AHJ-ready candidate` until
 Package QA is `PASS` and the required handoff artifacts have been approved in
-the Preview review controls. The Readiness panel shows the required artifact
-approval count and each required artifact's current review status.
+the paginated review workspace. The Step 6 status rail shows the required
+artifact approval count, while the final handoff page shows each required
+artifact's current review status.
 
 ## History
 

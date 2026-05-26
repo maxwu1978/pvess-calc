@@ -14,6 +14,7 @@ new yaml fields required.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +25,22 @@ from reportlab.pdfgen import canvas
 
 from ..calc.engine import CalculationResult
 from ._textfit import fit
+from .ee4_trace_modules import ee4_module_geometries
+from .roof_cad_library import (
+    CAD_BLACK,
+    FIRE_ORANGE,
+    draw_closed_polygon,
+    draw_facet_tag,
+    draw_fire_pathway,
+    draw_fire_swatch,
+    draw_keepout_area,
+    draw_keepout_swatch,
+    draw_pv_module,
+    draw_roof_facet,
+    draw_roof_line,
+    draw_roof_outline,
+    draw_roof_symbol,
+)
 
 
 # Visual token: dimension line / extension line styling.
@@ -31,6 +48,37 @@ _DIM_COLOR = colors.HexColor("#666666")
 _ROUTE_COLOR = colors.HexColor("#D97706")    # warm orange = electrical route
 _PV_COLOR = colors.HexColor("#FFE680")
 _HOUSE_COLOR = colors.HexColor("#E8E8E8")
+_FACE_PRIORITY_COLORS = [
+    ("#16A34A", "#ECFDF5"),  # preferred PV face
+    ("#2563EB", "#EFF6FF"),
+    ("#F59E0B", "#FFFBEB"),
+    ("#7C3AED", "#F5F3FF"),
+]
+
+
+@dataclass(frozen=True)
+class EE4FaceAllocation:
+    section_name: str
+    section_names: tuple[str, ...]
+    direction: str
+    azimuth_deg: float
+    pitch_deg: float
+    modules: int
+    priority: int
+    stroke_hex: str
+    fill_hex: str
+
+
+@dataclass(frozen=True)
+class EE4TraceFacetDisplay:
+    tag: str
+    name: str
+    vertices: list[tuple[float, float]]
+    modules: int
+    direction: str
+    priority: int | None
+    stroke_hex: str
+    fill_hex: str
 
 
 def _sheet_label(result: CalculationResult, default_code: str = "EE-4") -> str:
@@ -50,7 +98,7 @@ def render_site_plan(result: CalculationResult, out_path: Path) -> None:
     # permit-style EE-4 sheet (left schedules + large roof plan). The
     # legacy lot/setback schematic below remains the fallback for old
     # yamls that do not carry roof geometry yet.
-    if site.roof_sections:
+    if site.roof_sections or site.ee4_trace.enabled:
         _render_permit_style_site_plan(c, result, W, H)
         c.save()
         return
@@ -478,6 +526,12 @@ def _draw_ee4_left_column(
         c, result, x, summary_top, w,
         optimizer_count=opt_count,
     )
+    _draw_ee4_face_allocation_table(
+        c, result,
+        x=x,
+        top_y=summary_top - 1.42 * inch,
+        w=w,
+    )
 
     c.setFillColor(colors.black)
     c.setFont("Helvetica", 7.2)
@@ -541,6 +595,7 @@ def _draw_ee4_legend(
         ("SATELLITE DISH", "satellite"),
         ("ELECTRICAL MAST", "mast"),
         ("CHIMNEY", "chimney"),
+        ("NO-PV AREA", "no_panel"),
         ("FIRECODE PATHWAY", "fire"),
     ]
     row_h = 0.18 * inch
@@ -569,32 +624,12 @@ def _draw_ee4_legend_symbol(
     cy: float,
     kind: str,
 ) -> None:
-    c.setLineWidth(0.45)
-    c.setStrokeColor(colors.black)
-    c.setFillColor(colors.white)
-    if kind == "roof_vent":
-        c.rect(cx - 4, cy - 4, 8, 8, fill=0, stroke=1)
-    elif kind == "plumbing":
-        c.circle(cx, cy, 4, fill=0, stroke=1)
-    elif kind == "ac":
-        c.rect(cx - 7, cy - 5, 14, 10, fill=0, stroke=1)
-        c.setFont("Helvetica-Bold", 5.8)
-        c.drawCentredString(cx, cy - 2, "A/C")
-    elif kind == "satellite":
-        c.arc(cx - 8, cy - 7, cx + 8, cy + 5, 200, 140)
-        c.line(cx, cy - 2, cx, cy - 7)
-    elif kind == "mast":
-        c.rect(cx - 2, cy - 5, 4, 8, fill=0, stroke=1)
-        c.line(cx - 5, cy + 5, cx + 5, cy + 5)
-    elif kind == "chimney":
-        c.rect(cx - 7, cy - 5, 14, 10, fill=0, stroke=1)
-        c.circle(cx, cy, 1.3, fill=0, stroke=1)
-    elif kind == "fire":
-        c.setFillColor(colors.HexColor("#FDBA74"))
-        c.rect(cx - 7, cy - 6, 14, 12, fill=1, stroke=0)
-        c.setStrokeColor(colors.HexColor("#EA580C"))
-        for off in range(-12, 13, 4):
-            c.line(cx - 8 + off, cy - 7, cx - 1 + off, cy + 7)
+    if kind == "fire":
+        draw_fire_swatch(c, cx, cy)
+    elif kind == "no_panel":
+        draw_keepout_swatch(c, cx, cy, label="NP")
+    else:
+        draw_roof_symbol(c, cx, cy, kind, size=8.0)
     c.setFillColor(colors.black)
     c.setStrokeColor(colors.black)
 
@@ -649,6 +684,224 @@ def _draw_ee4_equipment_summary(
         c.drawString(x + 0.04 * inch, yy,
                      fit(line, "Helvetica", 7.0, w - 0.08 * inch))
         yy -= 0.12 * inch
+
+
+def _ee4_face_direction_label(azimuth_deg: float) -> str:
+    """Return a human roof-face direction from PV azimuth degrees."""
+    az = azimuth_deg % 360.0
+    sectors = [
+        ("NORTH", 337.5, 360.0),
+        ("NORTH", 0.0, 22.5),
+        ("NORTHEAST", 22.5, 67.5),
+        ("EAST", 67.5, 112.5),
+        ("SOUTHEAST", 112.5, 157.5),
+        ("SOUTH", 157.5, 202.5),
+        ("SOUTHWEST", 202.5, 247.5),
+        ("WEST", 247.5, 292.5),
+        ("NORTHWEST", 292.5, 337.5),
+    ]
+    for label, lo, hi in sectors:
+        if lo <= az < hi:
+            return label
+    return "NORTH"
+
+
+def _ee4_direction_preference(direction: str) -> int:
+    """Lower is better for the current residential PV placement heuristic.
+
+    The order matches the project's design rule: use southwest first when it
+    exists, then east, then south/west shoulders, and keep north-facing faces
+    at the end unless an engineer explicitly assigns modules there.
+    """
+    return {
+        "SOUTHWEST": 0,
+        "EAST": 1,
+        "SOUTH": 2,
+        "WEST": 3,
+        "SOUTHEAST": 4,
+        "NORTHWEST": 7,
+        "NORTHEAST": 8,
+        "NORTH": 9,
+    }.get(direction, 6)
+
+
+def _ee4_face_allocation_rows(
+    result: CalculationResult,
+) -> list[EE4FaceAllocation]:
+    """Active roof-face rows grouped by orientation for annotations."""
+    groups: dict[str, dict[str, object]] = {}
+    for original_idx, section in enumerate(result.inputs.site.roof_sections):
+        placed_count = len(result.module_placements.get(section.name, []))
+        modules = placed_count if placed_count > 0 else section.module_count
+        if modules <= 0:
+            continue
+        direction = _ee4_face_direction_label(section.azimuth_deg)
+        group = groups.setdefault(direction, {
+            "direction": direction,
+            "modules": 0,
+            "weighted_azimuth": 0.0,
+            "weighted_pitch": 0.0,
+            "section_names": [],
+            "first_idx": original_idx,
+        })
+        group["modules"] = int(group["modules"]) + modules
+        group["weighted_azimuth"] = (
+            float(group["weighted_azimuth"]) + section.azimuth_deg * modules
+        )
+        group["weighted_pitch"] = (
+            float(group["weighted_pitch"]) + section.pitch_deg * modules
+        )
+        group["section_names"] = list(group["section_names"]) + [section.name]
+        group["first_idx"] = min(int(group["first_idx"]), original_idx)
+
+    rows: list[EE4FaceAllocation] = []
+    sort_rows = sorted(
+        groups.values(),
+        key=lambda g: (
+            _ee4_direction_preference(str(g["direction"])),
+            -int(g["modules"]),
+            int(g["first_idx"]),
+        ),
+    )
+    for rank, group in enumerate(
+        sort_rows, 1,
+    ):
+        direction = str(group["direction"])
+        modules = int(group["modules"])
+        stroke_hex, fill_hex = _FACE_PRIORITY_COLORS[
+            (rank - 1) % len(_FACE_PRIORITY_COLORS)
+        ]
+        rows.append(EE4FaceAllocation(
+            section_name=direction,
+            section_names=tuple(str(n) for n in group["section_names"]),
+            direction=direction,
+            azimuth_deg=float(group["weighted_azimuth"]) / modules,
+            pitch_deg=float(group["weighted_pitch"]) / modules,
+            modules=modules,
+            priority=rank,
+            stroke_hex=stroke_hex,
+            fill_hex=fill_hex,
+        ))
+    return rows
+
+
+def _ee4_trace_facet_displays(
+    result: CalculationResult,
+) -> list[EE4TraceFacetDisplay]:
+    """Trace roof facets with F# tags and PV allocation metadata."""
+    trace = result.inputs.site.ee4_trace
+    if not _ee4_trace_active(result.inputs.site) or not trace.roof_facets:
+        return []
+
+    sections_by_name = {
+        section.name.lower(): section
+        for section in result.inputs.site.roof_sections
+    }
+    allocation_by_direction = {
+        row.direction: row
+        for row in _ee4_face_allocation_rows(result)
+    }
+    displays: list[EE4TraceFacetDisplay] = []
+    for idx, facet in enumerate(trace.roof_facets, 1):
+        section = sections_by_name.get((facet.name or "").lower())
+        modules = 0
+        direction = "NO PV"
+        priority = None
+        stroke_hex = "#64748B"
+        fill_hex = "#F8FAFC"
+        if section is not None:
+            modules = len(result.module_placements.get(section.name, []))
+            if modules <= 0:
+                modules = section.module_count
+            direction = _ee4_face_direction_label(section.azimuth_deg)
+            row = allocation_by_direction.get(direction)
+            if row is not None:
+                priority = row.priority
+                stroke_hex = row.stroke_hex
+                fill_hex = row.fill_hex
+        displays.append(EE4TraceFacetDisplay(
+            tag=f"F{idx}",
+            name=facet.name or f"Roof facet {idx}",
+            vertices=list(facet.vertices),
+            modules=modules,
+            direction=direction,
+            priority=priority,
+            stroke_hex=stroke_hex,
+            fill_hex=fill_hex,
+        ))
+    return displays
+
+
+def _ee4_facet_tag_for_sections(
+    result: CalculationResult,
+    section_names: tuple[str, ...],
+) -> str:
+    names = {name.lower() for name in section_names}
+    for facet in _ee4_trace_facet_displays(result):
+        if facet.name.lower() in names:
+            return facet.tag
+    return ""
+
+
+def _draw_ee4_face_allocation_table(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    *,
+    x: float,
+    top_y: float,
+    w: float,
+    max_rows: int = 4,
+) -> None:
+    rows = _ee4_face_allocation_rows(result)
+    if not rows:
+        return
+
+    visible = rows[:max_rows]
+    row_h = 0.145 * inch
+    h = row_h * (len(visible) + 1)
+    y = top_y - h
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(0.55)
+    c.rect(x, y, w, h, fill=1, stroke=1)
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 7.1)
+    c.drawCentredString(x + w / 2, top_y - row_h + 0.045 * inch,
+                        "FACE ALLOCATION")
+    c.setLineWidth(0.35)
+    c.line(x, top_y - row_h, x + w, top_y - row_h)
+
+    yy = top_y - row_h * 1.70
+    for row in visible:
+        c.setFillColor(colors.HexColor(row.fill_hex))
+        c.setStrokeColor(colors.HexColor(row.stroke_hex))
+        c.setLineWidth(0.55)
+        c.rect(x + 0.05 * inch, yy - 0.03 * inch,
+               0.17 * inch, 0.10 * inch, fill=1, stroke=1)
+        c.setFillColor(colors.black)
+        c.setStrokeColor(colors.black)
+        c.setFont("Helvetica", 6.6)
+        facet_tag = _ee4_facet_tag_for_sections(result, row.section_names)
+        prefix = f"{facet_tag} " if facet_tag else ""
+        line = (
+            f"{prefix}P{row.priority} {row.direction}  "
+            f"AZ {row.azimuth_deg:.0f}  {row.modules} MOD"
+        )
+        c.drawString(
+            x + 0.27 * inch, yy - 0.005 * inch,
+            fit(line, "Helvetica", 6.6, w - 0.33 * inch),
+        )
+        yy -= row_h
+
+
+def _ee4_face_allocation_caption(result: CalculationResult) -> str:
+    rows = _ee4_face_allocation_rows(result)
+    if not rows:
+        return ""
+    return "FACE ALLOCATION: " + "; ".join(
+        f"P{row.priority} {row.direction} {row.modules} MOD"
+        for row in rows
+    )
 
 
 def _draw_ee4_site_notes(
@@ -834,8 +1087,22 @@ def _draw_ee4_roof_plan(
 
     if trace_active:
         _draw_ee4_trace_roof(c, trace, to_pt, fill_outline=True)
+        _draw_ee4_face_allocation_overlay(
+            c, result, to_pt,
+            draw_fill=False,
+            draw_labels=False,
+            line_width=0.85,
+        )
         _draw_ee4_trace_fire_pathways(c, trace, to_pt)
         _draw_ee4_trace_roof(c, trace, to_pt, fill_outline=False)
+        _draw_ee4_face_allocation_overlay(
+            c, result, to_pt,
+            draw_fill=False,
+            draw_labels=False,
+            line_width=1.05,
+            label_size=5.7,
+        )
+        _draw_ee4_obstruction_halos(c, result, to_pt)
     else:
         # Fire offset bands under roof outlines.
         for section in sections:
@@ -881,36 +1148,36 @@ def _draw_ee4_roof_plan(
             c.setLineWidth(0.45)
             for px, py in pt_pts:
                 c.line(cx, cy, px, py)
+        if not _ee4_untraced_roof_segment_schematic(i.site):
+            _draw_ee4_face_allocation_overlay(
+                c, result, to_pt,
+                draw_fill=False,
+                draw_labels=False,
+                line_width=1.0,
+                label_size=5.7,
+            )
 
-    # Real modules.
+    # Real modules.  When a reviewed trace is active, this helper keeps
+    # the drawn rectangles in the traced roof coordinate frame instead of
+    # the coarse Google Solar segment-box frame.
     module_bounds: list[tuple[float, float, float, float]] = []
     c.setStrokeColor(colors.HexColor("#1F5BD7"))
     c.setFillColor(colors.HexColor("#EEF4FF"))
     c.setLineWidth(0.55)
-    for section in sections:
-        for m in result.module_placements.get(section.name, []):
-            corners_local = [
-                (m.x_ft, m.y_ft),
-                (m.x_ft + m.width_ft, m.y_ft),
-                (m.x_ft + m.width_ft, m.y_ft + m.height_ft),
-                (m.x_ft, m.y_ft + m.height_ft),
-            ]
-            corners = [
-                _face_local_to_site(section, px, py)
-                for px, py in corners_local
-            ]
-            corners = [p for p in corners if p is not None]
-            if len(corners) < 4:
-                continue
-            pts = [to_pt(p) for p in corners]
-            _draw_poly(c, pts, stroke=colors.HexColor("#1F5BD7"),
-                       fill=colors.HexColor("#EEF4FF"), width=0.55)
-            xs = [p[0] for p in pts]
-            ys = [p[1] for p in pts]
-            module_bounds.append((min(xs), min(ys), max(xs), max(ys)))
+    for module in ee4_module_geometries(result):
+        pts = [to_pt(p) for p in module.corners]
+        draw_pv_module(c, pts, width=0.55)
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        module_bounds.append((min(xs), min(ys), max(xs), max(ys)))
 
     if trace_active:
         _draw_ee4_trace_symbols(c, trace, to_pt)
+        _draw_ee4_trace_facet_identifiers(
+            c, result, to_pt,
+            draw_labels=True,
+            line_width=0.82,
+        )
     else:
         # Common rooftop obstruction symbols. These are schematic, but the
         # legend now has matching shapes and the plan no longer looks empty.
@@ -930,9 +1197,23 @@ def _draw_ee4_roof_plan(
         )
 
     # Fire offset labels.
+    many_schematic_faces = len(sections) > 8 and not trace_active
     label_section = next((s for s in sections if s.site_anchor_x_ft is not None),
                          None)
-    if label_section is not None:
+    if many_schematic_faces:
+        c.setFont("Helvetica", 7)
+        c.setFillColor(colors.white)
+        c.setStrokeColor(colors.white)
+        label = '18" FIRE OFFSET (NEC 690.12)'
+        label_x = x + w * 0.48
+        label_y = y + h - 0.42 * inch
+        c.rect(label_x - 0.04 * inch, label_y - 0.045 * inch,
+               c.stringWidth(label, "Helvetica", 7) + 0.08 * inch,
+               0.13 * inch, fill=1, stroke=0)
+        c.setFillColor(colors.black)
+        c.setStrokeColor(colors.black)
+        c.drawString(label_x, label_y, label)
+    elif label_section is not None:
         start = to_pt((
             label_section.site_anchor_x_ft + label_section.width_ft * 0.55,
             label_section.site_anchor_y_ft + label_section.height_ft + 0.7,
@@ -983,14 +1264,18 @@ def _draw_ee4_roof_plan(
 
     _draw_ee4_equipment_leaders(c, result, to_pt, x, y, w, h)
     _draw_ee4_optimizer_callout(c, result, module_bounds, x, y, w, h)
+    if _ee4_untraced_roof_segment_schematic(i.site):
+        _draw_ee4_roof_geometry_warning(c, x, y, w, h)
 
     # PV array caption.
     kw_dc = i.pv_array.modules * i.pv_array.module.power_w / 1000.0
     c.setFillColor(colors.black)
     c.setFont("Helvetica-Bold", 8)
-    c.drawString(x + 0.10 * inch, y + 0.08 * inch,
-                 f"PV ARRAY · {i.pv_array.modules} MODULES · "
-                 f"{kw_dc:.2f} kW DC")
+    caption = (f"PV ARRAY · {i.pv_array.modules} MODULES · "
+               f"{kw_dc:.2f} kW DC")
+    if _ee4_untraced_roof_segment_schematic(i.site):
+        caption += " · SCHEMATIC ROOF GEOMETRY"
+    c.drawString(x + 0.10 * inch, y + 0.08 * inch, caption)
 
 
 def _ee4_drawing_bounds(
@@ -1009,10 +1294,13 @@ def _ee4_drawing_bounds(
             pts.extend(line.points)
         for symbol in trace.symbols:
             pts.append((symbol.x_ft, symbol.y_ft))
-    for section in result.inputs.site.roof_sections:
-        pts.extend(_ee4_section_points(section))
-        for m in result.module_placements.get(section.name, []):
-            pts.extend(_ee4_module_site_points(section, m))
+        for module in ee4_module_geometries(result):
+            pts.extend(module.corners)
+    else:
+        for section in result.inputs.site.roof_sections:
+            pts.extend(_ee4_section_points(section))
+            for m in result.module_placements.get(section.name, []):
+                pts.extend(_ee4_module_site_points(section, m))
     el = result.inputs.site.equipment_locations
     for item in _ee4_equipment_items(el):
         pts.append((item[1], item[2]))
@@ -1030,6 +1318,57 @@ def _ee4_trace_active(site) -> bool:
     return bool(trace is not None and trace.enabled and trace.has_geometry)
 
 
+def _ee4_untraced_roof_segment_schematic(site) -> bool:
+    """True when EE-4 is showing Google Solar-style segment boxes.
+
+    `roof_sections` from Google Solar buildingInsights include pitch,
+    azimuth, and rough area, but not the actual house roof outline or the
+    relative vertices of each plane. With many untraced square segments, the
+    renderer can only produce a capacity/layout schematic. That state must be
+    visibly marked so it is not mistaken for AHJ-ready roof geometry.
+    """
+    if _ee4_trace_active(site):
+        return False
+    sections = list(getattr(site, "roof_sections", []) or [])
+    if len(sections) <= 8:
+        return False
+    if getattr(site, "house_outline_vertices", None):
+        return False
+    if any(getattr(section, "vertices", None) for section in sections):
+        return False
+    return True
+
+
+def _draw_ee4_roof_geometry_warning(
+    c: canvas.Canvas,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> None:
+    """Draw a visible but compact warning for untraced roof geometry."""
+    box_x = x + 0.10 * inch
+    box_y = y + h - 0.50 * inch
+    box_w = min(w - 0.20 * inch, 4.65 * inch)
+    box_h = 0.36 * inch
+    c.setFillColor(colors.HexColor("#FFF7ED"))
+    c.setStrokeColor(colors.HexColor("#EA580C"))
+    c.setLineWidth(0.75)
+    c.roundRect(box_x, box_y, box_w, box_h, 6, fill=1, stroke=1)
+    c.setFillColor(colors.HexColor("#C2410C"))
+    c.setFont("Helvetica-Bold", 7.4)
+    c.drawString(box_x + 0.08 * inch, box_y + 0.22 * inch,
+                 "DRAFT ROOF GEOMETRY - SCHEMATIC ROOF SEGMENTS")
+    c.setFillColor(colors.HexColor("#7C2D12"))
+    c.setFont("Helvetica", 6.2)
+    c.drawString(
+        box_x + 0.08 * inch,
+        box_y + 0.09 * inch,
+        "Actual roof outline is not traced; verify with satellite or field "
+        "survey before AHJ submittal.",
+    )
+
+
 def _draw_ee4_trace_roof(
     c: canvas.Canvas,
     trace,
@@ -1039,33 +1378,18 @@ def _draw_ee4_trace_roof(
 ) -> None:
     """Draw Stage 9 permit-style traced roof linework."""
     if trace.roof_outline is not None:
-        _draw_poly(
+        draw_roof_outline(
             c,
             [to_pt(p) for p in trace.roof_outline.vertices],
-            stroke=colors.black,
-            fill=colors.white if fill_outline else None,
-            width=0.75,
+            fill=fill_outline,
         )
     for facet in trace.roof_facets:
-        _draw_poly(
-            c,
-            [to_pt(p) for p in facet.vertices],
-            stroke=colors.black,
-            fill=None,
-            width=0.55,
-        )
-    c.setStrokeColor(colors.black)
-    c.setLineWidth(0.45)
-    c.setDash()
+        draw_roof_facet(c, [to_pt(p) for p in facet.vertices])
     for line in trace.roof_lines:
         pts = [to_pt(p) for p in line.points]
         if len(pts) < 2:
             continue
-        path = c.beginPath()
-        path.moveTo(*pts[0])
-        for p in pts[1:]:
-            path.lineTo(*p)
-        c.drawPath(path, stroke=1, fill=0)
+        draw_roof_line(c, pts, kind=line.kind)
 
 
 def _draw_ee4_trace_fire_pathways(
@@ -1074,7 +1398,251 @@ def _draw_ee4_trace_fire_pathways(
     to_pt,
 ) -> None:
     for poly in trace.fire_pathways:
-        _draw_fire_path_polygon(c, [to_pt(p) for p in poly.vertices])
+        draw_fire_pathway(c, [to_pt(p) for p in poly.vertices])
+
+
+def _draw_ee4_obstruction_halos(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    to_pt,
+) -> None:
+    """Draw no-panel obstruction areas on traced roof sheets.
+
+    `ee4_trace.symbols` marks the obstruction center.  The engineering
+    keepout, however, lives on `site.roof_sections[].obstructions` in local
+    roof-face coordinates.  Rendering that halo on the traced plan makes the
+    CAD-reviewed no-panel areas visible on both PV-2 and PV-4.
+    """
+    from ..calc.wire_routing import _face_local_to_site
+
+    for section in result.inputs.site.roof_sections:
+        for obs in section.obstructions:
+            halo = [
+                (obs.x_ft - obs.setback_ft, obs.y_ft - obs.setback_ft),
+                (
+                    obs.x_ft + obs.width_ft + obs.setback_ft,
+                    obs.y_ft - obs.setback_ft,
+                ),
+                (
+                    obs.x_ft + obs.width_ft + obs.setback_ft,
+                    obs.y_ft + obs.height_ft + obs.setback_ft,
+                ),
+                (
+                    obs.x_ft - obs.setback_ft,
+                    obs.y_ft + obs.height_ft + obs.setback_ft,
+                ),
+            ]
+            inner = [
+                (obs.x_ft, obs.y_ft),
+                (obs.x_ft + obs.width_ft, obs.y_ft),
+                (obs.x_ft + obs.width_ft, obs.y_ft + obs.height_ft),
+                (obs.x_ft, obs.y_ft + obs.height_ft),
+            ]
+            halo_site = [
+                _face_local_to_site(section, px, py)
+                for px, py in halo
+            ]
+            inner_site = [
+                _face_local_to_site(section, px, py)
+                for px, py in inner
+            ]
+            if any(p is None for p in halo_site + inner_site):
+                continue
+            halo_pts = [to_pt(p) for p in halo_site if p is not None]
+            inner_pts = [to_pt(p) for p in inner_site if p is not None]
+            _draw_hatched_keepout(c, halo_pts)
+            _draw_poly(
+                c,
+                inner_pts,
+                stroke=colors.HexColor("#92400E"),
+                fill=colors.white,
+                width=0.45,
+            )
+            _draw_keepout_label(c, halo_pts, "NP")
+
+
+def _draw_ee4_face_allocation_overlay(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    to_pt,
+    *,
+    draw_fill: bool = True,
+    draw_labels: bool = True,
+    line_width: float = 1.15,
+    label_size: float = 5.8,
+) -> None:
+    """Color-code active roof faces and annotate their module allocation."""
+    rows = _ee4_face_allocation_rows(result)
+    if not rows:
+        return
+    by_direction = {row.direction: row for row in rows}
+
+    for section in result.inputs.site.roof_sections:
+        direction = _ee4_face_direction_label(section.azimuth_deg)
+        row = by_direction.get(direction)
+        if row is None:
+            continue
+        pts = _ee4_section_points(section)
+        if len(pts) < 3:
+            continue
+        pt_pts = [to_pt(p) for p in pts]
+        if draw_fill:
+            _draw_poly(
+                c,
+                pt_pts,
+                stroke=colors.HexColor(row.stroke_hex),
+                fill=colors.HexColor(row.fill_hex),
+                width=0.35,
+            )
+        stroke = colors.HexColor(row.stroke_hex) if draw_labels else CAD_BLACK
+        stroke_width = line_width if draw_labels else min(line_width, 0.62)
+        _draw_poly(
+            c,
+            pt_pts,
+            stroke=stroke,
+            fill=None,
+            width=stroke_width,
+        )
+        if draw_labels:
+            _draw_ee4_face_allocation_label(
+                c,
+                row,
+                pt_pts,
+                label_size=label_size,
+            )
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+
+
+def _draw_ee4_trace_facet_identifiers(
+    c: canvas.Canvas,
+    result: CalculationResult,
+    to_pt,
+    *,
+    draw_labels: bool = True,
+    line_width: float = 0.75,
+) -> None:
+    """Mark each traced roof facet boundary with an F# identifier."""
+    for facet in _ee4_trace_facet_displays(result):
+        pt_pts = [to_pt(p) for p in facet.vertices]
+        if len(pt_pts) < 3:
+            continue
+        _draw_poly(
+            c,
+            pt_pts,
+            stroke=CAD_BLACK,
+            fill=None,
+            width=line_width,
+        )
+        if draw_labels:
+            _draw_ee4_trace_facet_tag(c, facet, pt_pts)
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+
+
+def _draw_ee4_trace_facet_tag(
+    c: canvas.Canvas,
+    facet: EE4TraceFacetDisplay,
+    pts: list[tuple[float, float]],
+) -> None:
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x0, x1 = min(xs), max(xs)
+    y0, y1 = min(ys), max(ys)
+    width = max(x1 - x0, 1.0)
+    height = max(y1 - y0, 1.0)
+    if facet.priority is not None:
+        label = f"{facet.tag}/P{facet.priority}"
+    else:
+        label = f"{facet.tag} NO PV"
+    font = "Helvetica-Bold"
+    size = 5.4 if facet.modules else 5.1
+    # Place active PV facet tags near the upper-left edge where the reviewed
+    # Frisco plan has fire-path space; non-PV context uses a lower-left tag.
+    if facet.direction == "SOUTH":
+        bx = x0 + min(width * 0.12, 0.24 * inch)
+        by = y0 + min(height * 0.18, 0.30 * inch)
+    elif facet.modules:
+        bx = x0 + min(width * 0.10, 0.18 * inch)
+        by = y1 - min(height * 0.18, 0.20 * inch) - size
+    else:
+        bx = x0 + min(width * 0.16, 0.25 * inch)
+        by = y0 + min(height * 0.38, 0.46 * inch)
+    by = max(y0 + 2.0, min(by, y1 - size - 2.0))
+    draw_facet_tag(c, bx, by, label, font=font, size=size)
+
+
+def _draw_ee4_face_allocation_label(
+    c: canvas.Canvas,
+    row: EE4FaceAllocation,
+    pts: list[tuple[float, float]],
+    *,
+    label_size: float,
+) -> None:
+    if len(pts) < 3:
+        return
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x0, x1 = min(xs), max(xs)
+    y0, y1 = min(ys), max(ys)
+    width = max(x1 - x0, 1.0)
+    height = max(y1 - y0, 1.0)
+    label = f"P{row.priority} {row.direction} | {row.modules} MOD"
+    font = "Helvetica-Bold"
+    text_w = c.stringWidth(label, font, label_size)
+    label_w = min(text_w, max(0.72 * inch, width * 0.84))
+    label = fit(label, font, label_size, label_w)
+    text_w = c.stringWidth(label, font, label_size)
+    bx = x0 + min(width * 0.10, 0.20 * inch)
+    by = y1 - min(height * 0.18, 0.22 * inch) - label_size - 2.2
+    if by < y0 + 2.0:
+        by = y0 + 2.0
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.HexColor(row.stroke_hex))
+    c.setLineWidth(0.35)
+    c.rect(bx - 2.2, by - 1.8, text_w + 4.4, label_size + 3.8,
+           fill=1, stroke=1)
+    c.setFillColor(colors.HexColor(row.stroke_hex))
+    c.setFont(font, label_size)
+    c.drawString(bx, by, label)
+    c.setFillColor(colors.black)
+    c.setStrokeColor(colors.black)
+
+
+def _draw_hatched_keepout(
+    c: canvas.Canvas,
+    pts: list[tuple[float, float]],
+) -> None:
+    if len(pts) < 3:
+        return
+    draw_keepout_area(c, pts)
+
+
+def _draw_keepout_label(
+    c: canvas.Canvas,
+    pts: list[tuple[float, float]],
+    label: str,
+) -> None:
+    if len(pts) < 3:
+        return
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    width = max(xs) - min(xs)
+    height = max(ys) - min(ys)
+    size = 4.8
+    text_w = c.stringWidth(label, "Helvetica-Bold", size)
+    if width < text_w + 4.0 or height < size + 3.0:
+        return
+    cx = sum(xs) / len(xs)
+    cy = sum(ys) / len(ys)
+    x0 = cx - text_w / 2 - 1.8
+    y0 = cy - size / 2 - 1.2
+    c.setFillColor(colors.white)
+    c.setStrokeColor(colors.white)
+    c.rect(x0, y0, text_w + 3.6, size + 2.4, fill=1, stroke=0)
+    c.setFillColor(colors.HexColor("#92400E"))
+    c.setFont("Helvetica-Bold", size)
+    c.drawCentredString(cx, cy - size * 0.35, label)
 
 
 def _draw_ee4_trace_symbols(
@@ -1082,27 +1650,9 @@ def _draw_ee4_trace_symbols(
     trace,
     to_pt,
 ) -> None:
-    c.setStrokeColor(colors.black)
-    c.setFillColor(colors.white)
-    c.setLineWidth(0.5)
     for symbol in trace.symbols:
         px, py = to_pt((symbol.x_ft, symbol.y_ft))
-        kind = symbol.kind
-        if kind == "roof_vent":
-            c.rect(px - 3, py - 3, 6, 6, fill=0, stroke=1)
-        elif kind == "plumbing":
-            c.circle(px, py, 2.5, fill=0, stroke=1)
-        elif kind == "ac":
-            c.rect(px - 6, py - 4, 12, 8, fill=0, stroke=1)
-        elif kind == "satellite":
-            c.arc(px - 7, py - 5, px + 7, py + 5, 200, 140)
-            c.line(px, py - 2, px, py - 7)
-        elif kind == "mast":
-            c.rect(px - 2, py - 5, 4, 8, fill=0, stroke=1)
-            c.line(px - 5, py + 5, px + 5, py + 5)
-        else:
-            c.rect(px - 6, py - 5, 12, 10, fill=0, stroke=1)
-            c.circle(px, py, 1.2, fill=0, stroke=1)
+        draw_roof_symbol(c, px, py, symbol.kind, size=6.4)
 
 
 def _ee4_section_points(section) -> list[tuple[float, float]]:
@@ -1268,8 +1818,18 @@ def _draw_ee4_satellite_underlay(
     mask_candidate = None
     if assets is not None:
         from ..calc.mask_contour import contour_from_mask
-        mask_candidate = contour_from_mask(
+        from ..customer.roof_satellite import target_component_from_mask
+
+        target_component = target_component_from_mask(
             assets.mask,
+            assets.target_px,
+        )
+        contour_mask = (
+            target_component.mask if target_component is not None
+            else assets.mask
+        )
+        mask_candidate = contour_from_mask(
+            contour_mask,
             radius_m=radius_m,
             center_site_ft=center_site_ft,
             simplify_ft=alignment.contour_simplify_ft,
@@ -1492,32 +2052,14 @@ def _draw_fire_path_band(
     """
     if len(outer_pts) < 3 or len(inner_pts) < 3:
         return
-    _draw_poly(c, outer_pts,
-               stroke=colors.HexColor("#EA580C"),
-               fill=colors.HexColor("#FFF7ED"), width=0.35)
-    xs = [p[0] for p in outer_pts]
-    ys = [p[1] for p in outer_pts]
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    span = max_y - min_y
-    c.saveState()
-    clip = c.beginPath()
-    clip.moveTo(*outer_pts[0])
-    for pt in outer_pts[1:]:
-        clip.lineTo(*pt)
-    clip.close()
-    c.clipPath(clip, stroke=0, fill=0)
-    c.setStrokeColor(colors.HexColor("#F97316"))
-    c.setLineWidth(0.35)
-    step = 4.0
-    start = min_x - span - 6.0
-    while start < max_x + span + 6.0:
-        c.line(start, min_y, start + span, max_y)
-        start += step
-    c.restoreState()
-    _draw_poly(c, inner_pts,
-               stroke=colors.HexColor("#EA580C"),
-               fill=colors.white, width=0.25)
+    draw_fire_pathway(c, outer_pts)
+    draw_closed_polygon(
+        c,
+        inner_pts,
+        stroke=FIRE_ORANGE,
+        fill=colors.white,
+        width=0.25,
+    )
 
 
 def _draw_fire_path_polygon(
@@ -1527,38 +2069,7 @@ def _draw_fire_path_polygon(
     """Draw a Stage 9 hand-traced fire pathway polygon with hatch."""
     if len(pts) < 3:
         return
-    _draw_poly(
-        c, pts,
-        stroke=colors.HexColor("#EA580C"),
-        fill=colors.HexColor("#FFF7ED"),
-        width=0.35,
-    )
-    xs = [p[0] for p in pts]
-    ys = [p[1] for p in pts]
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    span = max_y - min_y
-    c.saveState()
-    clip = c.beginPath()
-    clip.moveTo(*pts[0])
-    for pt in pts[1:]:
-        clip.lineTo(*pt)
-    clip.close()
-    c.clipPath(clip, stroke=0, fill=0)
-    c.setStrokeColor(colors.HexColor("#F97316"))
-    c.setLineWidth(0.35)
-    step = 4.0
-    start = min_x - span - 6.0
-    while start < max_x + span + 6.0:
-        c.line(start, min_y, start + span, max_y)
-        start += step
-    c.restoreState()
-    _draw_poly(
-        c, pts,
-        stroke=colors.HexColor("#EA580C"),
-        fill=None,
-        width=0.35,
-    )
+    draw_fire_pathway(c, pts)
 
 
 def _draw_ee4_roof_symbols(
@@ -1581,21 +2092,9 @@ def _draw_ee4_roof_symbols(
         ("satellite", s.site_anchor_x_ft + s.width_ft * 0.50,
          s.site_anchor_y_ft + s.height_ft * 0.88),
     ]
-    c.setStrokeColor(colors.black)
-    c.setFillColor(colors.white)
-    c.setLineWidth(0.5)
     for kind, fx, fy in symbols:
         px, py = to_pt((fx, fy))
-        if kind == "roof_vent":
-            c.rect(px - 3, py - 3, 6, 6, fill=0, stroke=1)
-        elif kind == "plumbing":
-            c.circle(px, py, 2.5, fill=0, stroke=1)
-        elif kind == "chimney":
-            c.rect(px - 6, py - 5, 12, 10, fill=0, stroke=1)
-            c.circle(px, py, 1.2, fill=0, stroke=1)
-        else:
-            c.arc(px - 7, py - 5, px + 7, py + 5, 200, 140)
-            c.line(px, py - 2, px, py - 7)
+        draw_roof_symbol(c, px, py, kind, size=6.4)
 
 
 def _ee4_equipment_items(el) -> list[tuple[str, float, float, str]]:
